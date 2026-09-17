@@ -1,9 +1,5 @@
-# Todo el servicio en tu VPS: base de datos y servidor.
-#
-#   docker compose up -d
-#
-# Los datos de Postgres viven en un volumen, asi que sobreviven a
-# `docker compose down` y a las actualizaciones de la imagen.
+# Todo el servicio en tu VPS o en local: base de datos y servidor.
+# Los datos de Postgres viven en un volumen y sobreviven a las actualizaciones.
 
 services:
   db:
@@ -16,9 +12,6 @@ services:
       POSTGRES_PASSWORD: ${DB_CLAVE:?Falta DB_CLAVE en el archivo .env}
     volumes:
       - datos_postgres:/var/lib/postgresql/data
-    # Sin `ports`: la base de datos NO se expone a internet. Solo la alcanza
-    # el servidor a traves de la red interna de Docker. Si necesitas entrar
-    # con psql desde fuera, hazlo por un tunel SSH, no abriendo el 5432.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USUARIO:-relay} -d ${DB_NOMBRE:-relay}"]
       interval: 10s
@@ -26,6 +19,9 @@ services:
       retries: 5
 
   servidor:
+    # Localmente Compose construye esta imagen con `--build`. En CI/CD,
+    # SERVIDOR_IMAGEN apunta a la imagen inmutable publicada en GHCR.
+    image: ${SERVIDOR_IMAGEN:-tubehub-relay:local}
     build: .
     restart: unless-stopped
     mem_limit: ${SERVIDOR_MEMORIA:-640m}
@@ -53,7 +49,6 @@ services:
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
       APPLE_CLAVE_PRIVADA: ${APPLE_CLAVE_PRIVADA:-}
     volumes:
-      # Solo lectura: el contenedor no tiene por que poder modificar la clave.
       - ${FCM_CREDENCIALES_HOST}:/secretos/fcm.json:ro
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]

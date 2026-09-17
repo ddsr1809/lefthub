@@ -1,0 +1,164 @@
+name: TubeHub CI/CD
+
+on:
+  pull_request:
+    branches: [development, master]
+    paths:
+      - "relay-server/**"
+      - "scripts/deploy-vps.sh"
+      - "Makefile"
+      - ".github/workflows/pipeline.yml"
+  push:
+    branches: [development, master]
+    paths:
+      - "relay-server/**"
+      - "scripts/deploy-vps.sh"
+      - "Makefile"
+      - ".github/workflows/pipeline.yml"
+  workflow_dispatch:
+    inputs:
+      ambiente:
+        description: "Ambiente a desplegar (none solo compila y prueba)"
+        required: true
+        default: none
+        type: choice
+        options:
+          - none
+          - test
+          - prod
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: tubehub-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ddsr1809/tubehub-relay
+
+jobs:
+  verificar-backend:
+    name: Probar backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: relay-server
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Preparar cache de Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Ejecutar pruebas
+        run: ./gradlew test --no-daemon
+
+      - name: Guardar resultados de pruebas
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: pruebas-backend
+          path: relay-server/build/reports/tests/test
+          if-no-files-found: ignore
+          retention-days: 7
+
+  construir-imagen:
+    name: Construir imagen
+    needs: verificar-backend
+    runs-on: ubuntu-latest
+    outputs:
+      imagen: ${{ steps.imagen.outputs.valor }}
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Preparar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesion en GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Definir nombre inmutable de imagen
+        id: imagen
+        shell: bash
+        run: |
+          etiqueta_ref="${GITHUB_REF_NAME//\//-}"
+          echo "valor=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "ref=${REGISTRY}/${IMAGE_NAME}:${etiqueta_ref}" >> "$GITHUB_OUTPUT"
+
+      - name: Construir y publicar imagen
+        uses: docker/build-push-action@v6
+        with:
+          context: relay-server
+          file: relay-server/Dockerfile
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ steps.imagen.outputs.valor }}
+            ${{ steps.imagen.outputs.ref }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  desplegar:
+    name: Desplegar al VPS
+    needs: construir-imagen
+    if: >-
+      (github.event_name == 'push' &&
+       (github.ref_name == 'development' || github.ref_name == 'master')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.ambiente != 'none')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || (github.ref_name == 'master' && 'prod' || 'test') }}
+    steps:
+      - name: Descargar codigo
+        uses: actions/checkout@v4
+
+      - name: Elegir ambiente
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "DEPLOY_ENV=${{ inputs.ambiente }}" >> "$GITHUB_ENV"
+          elif [[ "${{ github.ref_name }}" == "master" ]]; then
+            echo "DEPLOY_ENV=prod" >> "$GITHUB_ENV"
+          else
+            echo "DEPLOY_ENV=test" >> "$GITHUB_ENV"
+          fi
+
+      - name: Configurar SSH
+        shell: bash
+        env:
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          test -n "$VPS_SSH_KEY"
+          test -n "$VPS_KNOWN_HOSTS"
+          install -m 700 -d "$HOME/.ssh"
+          printf '%s\n' "$VPS_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$VPS_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519" "$HOME/.ssh/known_hosts"
+
+      - name: Desplegar y comprobar salud
+        shell: bash
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_APP_DIR: ${{ secrets.VPS_APP_DIR }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          chmod +x scripts/deploy-vps.sh
+          scripts/deploy-vps.sh "$DEPLOY_ENV" "${{ needs.construir-imagen.outputs.imagen }}"
