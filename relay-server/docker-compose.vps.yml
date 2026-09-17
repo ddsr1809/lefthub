@@ -1,5 +1,5 @@
-# Desarrollo local de TubeHub. En el VPS se usa docker-compose.vps.yml.
-# Los datos de Postgres viven en un volumen y sobreviven a las actualizaciones.
+# Compose exclusivo para el VPS. No contiene `build`: siempre ejecuta la
+# imagen inmutable publicada por el pipeline y guardada en .env.imagen.
 
 services:
   db:
@@ -21,8 +21,7 @@ services:
       retries: 5
 
   servidor:
-    image: ${SERVIDOR_IMAGEN:-tubehub-relay:local}
-    build: .
+    image: ${SERVIDOR_IMAGEN:?Falta SERVIDOR_IMAGEN en .env.imagen}
     restart: unless-stopped
     mem_limit: ${SERVIDOR_MEMORIA:-640m}
     depends_on:
