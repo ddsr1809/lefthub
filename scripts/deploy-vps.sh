@@ -26,20 +26,21 @@ puerto="${VPS_PORT:-22}"
 [[ "$imagen" =~ ^ghcr\.io/[A-Za-z0-9._/-]+:[A-Za-z0-9._-]+$ ]] || { echo "Nombre de imagen GHCR invalido." >&2; exit 2; }
 
 destino="${VPS_USER}@${VPS_HOST}"
-directorio_servidor="${VPS_APP_DIR%/}/relay-server"
-archivo_env=".env.${ambiente}"
+directorio_config="${VPS_APP_DIR%/}/relay-server"
+directorio_runtime="${VPS_APP_DIR%/}/runtime/${ambiente}"
+archivo_env="${directorio_config}/.env.${ambiente}"
 proyecto="relay-${ambiente}"
-ssh_opciones=(-p "$puerto" -o BatchMode=yes -o StrictHostKeyChecking=yes)
+ssh_opciones=(-p "$puerto" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
 
-# El compose forma parte del artefacto de despliegue. Los .env y los datos no
-# se copian: permanecen exclusivamente en el VPS.
-ssh "${ssh_opciones[@]}" "$destino" bash -s -- "$directorio_servidor" <<'REMOTO_DIR'
+# Cada ambiente recibe su propio Compose fuera del clon Git. Los .env y los
+# datos no se copian: permanecen exclusivamente en el VPS.
+ssh "${ssh_opciones[@]}" "$destino" bash -s -- "$directorio_runtime" <<'REMOTO_DIR'
 set -Eeuo pipefail
 mkdir -p "$1"
 REMOTO_DIR
-scp -P "$puerto" -o BatchMode=yes -o StrictHostKeyChecking=yes \
-  relay-server/docker-compose.yml \
-  "$destino:$directorio_servidor/docker-compose.yml"
+scp -P "$puerto" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+  relay-server/docker-compose.vps.yml \
+  "$destino:$directorio_runtime/docker-compose.yml"
 
 # El token de GitHub solo viaja por stdin y se elimina del VPS al terminar.
 printf '%s' "$GHCR_TOKEN" | ssh "${ssh_opciones[@]}" "$destino" \
@@ -47,19 +48,28 @@ printf '%s' "$GHCR_TOKEN" | ssh "${ssh_opciones[@]}" "$destino" \
 
 estado=0
 ssh "${ssh_opciones[@]}" "$destino" bash -s -- \
-  "$directorio_servidor" "$archivo_env" "$proyecto" "$imagen" <<'REMOTO' || estado=$?
+  "$directorio_runtime" "$archivo_env" "$proyecto" "$imagen" <<'REMOTO' || estado=$?
 set -Eeuo pipefail
 
 directorio="$1"
 archivo_env="$2"
 proyecto="$3"
 imagen="$4"
+archivo_imagen=".env.imagen"
 
 cd "$directorio"
 test -f docker-compose.yml
 test -f "$archivo_env"
 
-compose=(docker compose --env-file "$archivo_env" -p "$proyecto" -f docker-compose.yml)
+compose=(docker compose --env-file "$archivo_env")
+if [[ -f "$archivo_imagen" ]]; then
+  compose+=(--env-file "$archivo_imagen")
+fi
+compose+=(-p "$proyecto" -f docker-compose.yml)
+
+# La variable exportada tiene prioridad sobre los archivos y permite validar el
+# primer despliegue antes de que exista .env.imagen.
+export SERVIDOR_IMAGEN="$imagen"
 "${compose[@]}" config --quiet
 
 contenedor_anterior="$("${compose[@]}" ps -q servidor 2>/dev/null || true)"
@@ -70,7 +80,7 @@ fi
 
 docker pull "$imagen"
 "${compose[@]}" up -d db
-SERVIDOR_IMAGEN="$imagen" "${compose[@]}" up -d --no-deps --force-recreate servidor
+"${compose[@]}" up -d --no-deps --force-recreate servidor
 
 esperar_salud() {
   local intento contenedor salud
@@ -90,7 +100,16 @@ esperar_salud() {
   return 1
 }
 
+guardar_imagen() {
+  local valor="$1" temporal
+  umask 077
+  temporal="$(mktemp "${archivo_imagen}.tmp.XXXXXX")"
+  printf 'SERVIDOR_IMAGEN=%s\n' "$valor" > "$temporal"
+  mv -f -- "$temporal" "$archivo_imagen"
+}
+
 if esperar_salud; then
+  guardar_imagen "$imagen"
   "${compose[@]}" ps
   echo "Despliegue saludable: $imagen"
   exit 0
@@ -101,8 +120,10 @@ echo "El healthcheck fallo para $imagen" >&2
 
 if [[ -n "$imagen_anterior" && "$imagen_anterior" != "$imagen" ]]; then
   echo "Restaurando imagen anterior: $imagen_anterior" >&2
-  SERVIDOR_IMAGEN="$imagen_anterior" "${compose[@]}" up -d --no-deps --force-recreate servidor
+  export SERVIDOR_IMAGEN="$imagen_anterior"
+  "${compose[@]}" up -d --no-deps --force-recreate servidor
   if esperar_salud; then
+    guardar_imagen "$imagen_anterior"
     echo "Rollback completado correctamente." >&2
   else
     echo "ATENCION: el rollback tampoco paso el healthcheck." >&2

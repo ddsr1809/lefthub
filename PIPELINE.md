@@ -10,16 +10,19 @@ sus compilaciones independientes porque no se despliegan en el VPS.
 | Pull request a `development` o `master` | Pruebas Java y construccion de la imagen, sin desplegar |
 | Push a `development` | Publica la imagen y despliega `relay-test` con `.env.test` |
 | Push a `master` | Publica la imagen y despliega `relay-prod` con `.env.prod` |
-| Ejecucion manual | Permite solo validar (`none`) o elegir `test`/`prod` |
+| Ejecucion manual desde cualquier rama | Permite validar (`none`) o desplegar `test` |
+| Ejecucion manual desde `master` | Tambien permite desplegar `prod` |
 
 Cada imagen queda identificada por el SHA completo del commit. El VPS conserva
 Postgres y sus volumenes; el pipeline solo reemplaza el contenedor `servidor`.
 Si el healthcheck no queda saludable en dos minutos, intenta restaurar la
-imagen que estaba ejecutandose antes.
+imagen anterior.
 
-El rollback cubre la imagen de la aplicacion, no revierte migraciones de
-Flyway. Las futuras migraciones de base de datos deben ser compatibles con la
-version anterior durante al menos un despliegue.
+La imagen confirmada queda guardada de forma atomica en un archivo
+`.env.imagen` separado para cada ambiente. Un rollback exitoso tambien restaura
+ese archivo. El rollback cubre la imagen de la aplicacion, no revierte
+migraciones de Flyway; las migraciones deben ser compatibles con la version
+anterior durante al menos un despliegue.
 
 ## Uso local
 
@@ -41,36 +44,56 @@ Para detenerlo sin borrar la base de datos:
 make local-down
 ```
 
-Si necesitas otro archivo o nombre de proyecto:
-
-```bash
-make local-up ENV_FILE=relay-server/.env.test PROJECT=relay-test-local
-```
-
 `RELAY_URL_PUBLICA=http://localhost:8080` permite probar la API, pero Google no
 puede entregar WebSub a localhost. Para probar notificaciones de extremo a
-extremo, usa una URL HTTPS publica temporal y colocala en `.env.local`.
+extremo, usa una URL HTTPS publica temporal en `.env.local`.
 
-## Preparar el VPS una sola vez
+## Estructura del VPS
 
-El directorio indicado por `VPS_APP_DIR` debe existir y contener la carpeta
-`relay-server`. Dentro deben vivir estos archivos, creados manualmente y fuera
-de Git:
+Con `VPS_APP_DIR=/opt/tubehub`, los secretos actuales permanecen donde estan:
 
 ```text
-relay-server/.env.test
-relay-server/.env.prod
+/opt/tubehub/relay-server/.env.test
+/opt/tubehub/relay-server/.env.prod
 ```
 
-Tambien deben existir los JSON de FCM en las rutas declaradas por
-`FCM_CREDENCIALES_HOST`. El usuario SSH necesita permiso para ejecutar Docker.
+El pipeline crea y administra automaticamente directorios separados que no
+forman parte del clon Git:
 
-Genera una llave dedicada para el pipeline y agrega solamente su parte publica
-a `~/.ssh/authorized_keys` del usuario del VPS:
+```text
+/opt/tubehub/runtime/test/docker-compose.yml
+/opt/tubehub/runtime/test/.env.imagen
+/opt/tubehub/runtime/prod/docker-compose.yml
+/opt/tubehub/runtime/prod/.env.imagen
+```
+
+No ejecutes `git pull`, `docker compose build` ni `docker compose up` dentro de
+los directorios `runtime`. El pipeline copia el Compose exclusivo del VPS y
+solo utiliza imagenes inmutables de GHCR. Los JSON de FCM permanecen en las
+rutas absolutas declaradas mediante `FCM_CREDENCIALES_HOST`.
+
+## Configurar SSH
+
+La llave del pipeline debe ser exclusiva y no tener passphrase, porque GitHub
+Actions no puede responder una solicitud interactiva:
 
 ```bash
-ssh-keygen -t ed25519 -C tubehub-github-actions -f tubehub_deploy
-ssh-keyscan -H TU_HOST_VPS > tubehub_known_hosts
+ssh-keygen -t ed25519 -N "" \
+  -C tubehub-github-actions-ci \
+  -f "$HOME/.ssh/tubehub_actions_ci"
+
+ssh-copy-id -i "$HOME/.ssh/tubehub_actions_ci.pub" \
+  -p 22 root@TU_HOST_VPS
+```
+
+Prueba exactamente el modo no interactivo del pipeline:
+
+```bash
+SSH_AUTH_SOCK= ssh \
+  -o BatchMode=yes \
+  -o IdentitiesOnly=yes \
+  -i "$HOME/.ssh/tubehub_actions_ci" \
+  -p 22 root@TU_HOST_VPS whoami
 ```
 
 ## Configurar GitHub
@@ -78,34 +101,57 @@ ssh-keyscan -H TU_HOST_VPS > tubehub_known_hosts
 En **Settings > Environments**, crea `test` y `prod`. En cada Environment agrega
 estos secretos (pueden apuntar al mismo VPS):
 
-| Secreto | Ejemplo / funcion |
+| Secreto | Valor actual de TubeHub |
 |---|---|
-| `VPS_HOST` | Dominio o IP del VPS |
-| `VPS_PORT` | `22` si no cambiaste SSH |
-| `VPS_USER` | Usuario con acceso a Docker |
-| `VPS_SSH_KEY` | Contenido completo de `tubehub_deploy` (privada) |
-| `VPS_KNOWN_HOSTS` | Contenido completo de `tubehub_known_hosts` |
-| `VPS_APP_DIR` | `/home/ddsr/tubehub` (carpeta que contiene `relay-server`) |
+| `VPS_HOST` | `ythub.d2600.com` |
+| `VPS_PORT` | `22` |
+| `VPS_USER` | `root` |
+| `VPS_SSH_KEY` | Contenido completo de la llave privada sin passphrase |
+| `VPS_KNOWN_HOSTS` | Resultado de `ssh-keyscan -H -p 22 ythub.d2600.com` |
+| `VPS_APP_DIR` | `/opt/tubehub` |
 
-En `prod` conviene activar **Required reviewers** y permitir despliegues solo
-desde `master`. Asi una union a `master` compila inmediatamente, pero espera tu
-aprobacion antes de tocar produccion.
+En `prod` es obligatorio permitir despliegues solamente desde `master`. Tambien
+se recomienda activar **Required reviewers**. El workflow contiene una segunda
+proteccion: un despliegue manual de `prod` se omite si la rama no es `master`.
 
-La imagen se almacena en GitHub Container Registry. El token temporal de cada
-ejecucion inicia sesion solo para descargar la imagen y despues ejecuta
-`docker logout`; no se guarda como secreto permanente en el VPS.
+## Operacion manual de emergencia
 
-## Primera ejecucion
-
-1. Abre **Actions > TubeHub CI/CD > Run workflow**.
-2. Elige la rama `development` y el ambiente `test`.
-3. Verifica el job `Desplegar al VPS` y despues ejecuta en el VPS:
+El pipeline es el metodo normal de despliegue. Para consultar `test` en el VPS:
 
 ```bash
-cd /RUTA/DE/TUBEHUB/relay-server
-docker compose --env-file .env.test -p relay-test ps
+cd /opt/tubehub/runtime/test
+docker compose \
+  --env-file /opt/tubehub/relay-server/.env.test \
+  --env-file .env.imagen \
+  -p relay-test \
+  -f docker-compose.yml \
+  ps
+```
+
+Para recrear solamente el servidor de `test` sin compilar nada:
+
+```bash
+docker compose \
+  --env-file /opt/tubehub/relay-server/.env.test \
+  --env-file .env.imagen \
+  -p relay-test \
+  -f docker-compose.yml \
+  up -d --no-deps --force-recreate servidor
+```
+
+Para `prod`, cambia `test` por `prod` en la ruta, el archivo `.env` y el nombre
+del proyecto. Nunca uses `--build` en el VPS.
+
+## Verificacion
+
+Despues de un despliegue a `test`:
+
+```bash
 curl -fsS http://127.0.0.1:8081/actuator/health
 ```
 
-Para produccion, une `development` a `master` o ejecuta manualmente el workflow
-seleccionando `prod`.
+Despues de un despliegue a `prod`:
+
+```bash
+curl -fsS http://127.0.0.1:8080/actuator/health
+```
