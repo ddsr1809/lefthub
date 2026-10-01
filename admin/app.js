@@ -228,7 +228,9 @@
     vista: (location.hash || '#resumen').slice(1),
     creadores: null,        // caché compartida: formularios, nombres en reportes, avisos
     filtroCreadores: { q: '', categoria: '' },
-    publicaciones: null
+    publicaciones: null,
+    usuarios: null,         // la página que está en pantalla
+    filtroUsuarios: { q: '', filtro: '', orden: 'vistos', pagina: 0 }
   };
 
   const VISTAS = {
@@ -237,6 +239,7 @@
     suscripciones: vistaSuscripciones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
+    usuarios: vistaUsuarios,
     administradores: vistaAdministradores
   };
 
@@ -615,6 +618,197 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Usuarios
+  // ---------------------------------------------------------------------------
+  // Todo lo que se ve aquí ya lo guardaba el servidor: cuándo se creó la
+  // cuenta, cuándo abrió la app por última vez, a quién sigue y qué
+  // preferencias eligió. Esta vista no hace que se recoja nada nuevo.
+  const PROVEEDORES = { anonimo: ['Invitado', 'b-mute'], google: ['Google', 'b-info'], apple: ['Apple', 'b-info'] };
+  const ESCALAS = { normal: 'Normal', grande: 'Grande', muyGrande: 'Muy grande' };
+  const TEMAS = { sistema: 'Como el teléfono', oscuro: 'Oscuro', claro: 'Claro' };
+
+  const pct = (parte, total) => (total ? Math.round((parte / total) * 100) : 0) + '%';
+  const fmtDia = (iso) => {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    return isNaN(d) ? '—' : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  // "2026-10-01" es un día de calendario, no un instante: se arma a mano para
+  // que el navegador no lo corra un día al interpretarlo como UTC.
+  const fmtDiaCorto = (dia) => {
+    const [a, m, d] = String(dia).split('-').map(Number);
+    return new Date(a, m - 1, d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+  };
+  const badgeProveedor = (u) => {
+    const [t, c] = PROVEEDORES[u.proveedor] || [u.proveedor, 'b-mute'];
+    return `<span class="badge ${c}">${esc(t)}</span>` + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '');
+  };
+
+  function graficaAltas(altas) {
+    if (!altas.length) return '<div class="empty">Sin datos.</div>';
+    const pico = Math.max(...altas.map((a) => a.altas));
+    const total = altas.reduce((s, a) => s + a.altas, 0);
+    return `
+      <div class="barras" role="img" aria-label="${esc(plural(total, 'cuenta nueva', 'cuentas nuevas') + ' en los últimos ' + altas.length + ' días')}">
+        ${altas.map((a) => `<div class="col ${a.altas ? '' : 'cero'}" title="${esc(fmtDiaCorto(a.dia) + ': ' + plural(a.altas, 'cuenta nueva', 'cuentas nuevas'))}"><i style="height:${a.altas ? Math.max(4, Math.round((a.altas / pico) * 100)) : 0}%"></i></div>`).join('')}
+      </div>
+      <div class="barras-pie"><span>${esc(fmtDiaCorto(altas[0].dia))}</span><span>${total ? 'El mejor día: ' + num(pico) : 'Ninguna en este periodo'}</span><span>${esc(fmtDiaCorto(altas[altas.length - 1].dia))}</span></div>`;
+  }
+
+  function reparto(titulo, mapa, etiquetas, total) {
+    // Primero las opciones conocidas, en su orden; después cualquier valor
+    // que el servidor tenga y este panel todavía no conozca.
+    const claves = Object.keys(etiquetas).concat(Object.keys(mapa || {}).filter((k) => !(k in etiquetas)));
+    return `<p class="reparto-titulo">${esc(titulo)}</p><div class="reparto">${claves.map((k) => {
+      const n = (mapa && mapa[k]) || 0;
+      return `<span>${esc(etiquetas[k] || k)}</span><span class="pista"><i style="width:${total ? (n / total) * 100 : 0}%"></i></span><span class="cifra">${num(n)} · ${pct(n, total)}</span>`;
+    }).join('')}</div>`;
+  }
+
+  let pedidoUsuarios = 0;
+  /** Trae la página que piden los filtros. Devuelve false si llegó tarde y otra más nueva ya ganó. */
+  async function cargarUsuarios() {
+    const f = estado.filtroUsuarios;
+    const miPedido = ++pedidoUsuarios;
+    const p = new URLSearchParams({ q: f.q.trim(), filtro: f.filtro, orden: f.orden, pagina: String(f.pagina) });
+    const datos = await api('/api/admin/usuarios?' + p.toString());
+    if (miPedido !== pedidoUsuarios) return false;
+    estado.usuarios = datos;
+    return true;
+  }
+
+  function filasUsuarios() {
+    const pag = estado.usuarios;
+    if (!pag || !pag.usuarios.length) {
+      const f = estado.filtroUsuarios;
+      return `<tr><td colspan="6"><div class="empty">${f.q.trim() || f.filtro ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'}</div></td></tr>`;
+    }
+    return pag.usuarios.map((u) => `<tr>
+      <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b></div><span class="mono muted">${esc(u.id)}</span></td>
+      <td>${badgeProveedor(u)}</td>
+      <td class="num">${num(u.favoritos)}</td>
+      <td class="num">${esc(fmtDia(u.creadoEn))}</td>
+      <td class="num" title="${esc(fmtFecha(u.vistoEn))}">${esc(relativo(u.vistoEn))}</td>
+      <td class="acciones"><button class="btn sm" data-accion="ver-usuario" data-id="${esc(u.id)}">Ver</button></td>
+    </tr>`).join('');
+  }
+
+  function pieUsuarios() {
+    const pag = estado.usuarios;
+    if (!pag) return '';
+    const desde = pag.total ? pag.pagina * pag.tamano + 1 : 0;
+    const hasta = Math.min((pag.pagina + 1) * pag.tamano, pag.total);
+    return `<span class="muted">${pag.total ? num(desde) + '–' + num(hasta) + ' de ' + num(pag.total) : '0 cuentas'}</span>
+      <button class="btn sm" data-accion="pagina-usuarios" data-pagina="${pag.pagina - 1}" ${pag.pagina <= 0 ? 'disabled' : ''}>Anterior</button>
+      <button class="btn sm" data-accion="pagina-usuarios" data-pagina="${pag.pagina + 1}" ${pag.pagina >= pag.paginas - 1 ? 'disabled' : ''}>Siguiente</button>`;
+  }
+
+  async function repintarUsuarios() {
+    let llego;
+    try { llego = await cargarUsuarios(); } catch (e) {
+      if (e.estado !== 401 && e.estado !== 403) toast(e.message, true);
+      return;
+    }
+    if (!llego || estado.vista !== 'usuarios') return;
+    const filas = $('#filasUsuarios'), pie = $('#pieUsuarios');
+    if (filas) filas.innerHTML = filasUsuarios();
+    if (pie) pie.innerHTML = pieUsuarios();
+  }
+
+  async function vistaUsuarios() {
+    const f = estado.filtroUsuarios;
+    let zona = 'UTC';
+    try { zona = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { /* UTC */ }
+
+    const [r] = await Promise.all([
+      api('/api/admin/usuarios/resumen?zona=' + encodeURIComponent(zona)),
+      cargarUsuarios()
+    ]);
+    const guardadas = r.conGoogle + r.conApple;
+    const promedio = r.conFavoritos ? (r.seguimientos / r.conFavoritos) : 0;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Usuarios</h1><p class="sub">Cada instalación crea una cuenta de invitado al abrir la app; pasa a tener correo cuando la persona la guarda con Google o Apple. "Activo" significa que abrió la app en ese periodo.</p></div></div>
+      <div class="stack">
+        <div class="stats tres">
+          <div class="stat"><div class="k">Cuentas</div><div class="v">${num(r.total)}</div><div class="n">${num(r.invitados)} de invitado</div></div>
+          <div class="stat"><div class="k">Cuentas guardadas</div><div class="v">${num(guardadas)}</div><div class="n">${pct(guardadas, r.total)} del total · ${num(r.conGoogle)} con Google, ${num(r.conApple)} con Apple</div></div>
+          <div class="stat"><div class="k">Siguen a alguien</div><div class="v">${num(r.conFavoritos)}</div><div class="n">${pct(r.conFavoritos, r.total)} del total · ${promedio.toLocaleString('es-MX', { maximumFractionDigits: 1 })} creadores en promedio</div></div>
+          <div class="stat"><div class="k">Abrieron la app en 24 h</div><div class="v">${num(r.activos24h)}</div><div class="n">${pct(r.activos24h, r.total)} de las cuentas</div></div>
+          <div class="stat"><div class="k">Activos en 7 días</div><div class="v">${num(r.activos7d)}</div><div class="n">${num(r.activos30d)} en 30 días</div></div>
+          <div class="stat"><div class="k">Cuentas nuevas en 7 días</div><div class="v">${num(r.nuevos7d)}</div><div class="n">${num(r.nuevos30d)} en 30 días</div></div>
+        </div>
+        <div class="dos">
+          <section class="panel"><div class="panel-head"><h2>Cuentas nuevas por día</h2><span class="muted" style="font-size:13px">últimos ${r.altas.length} días</span></div>
+            <div class="panel-body">${graficaAltas(r.altas)}</div></section>
+          <section class="panel"><div class="panel-head"><h2>Cómo usan la app</h2></div>
+            <div class="panel-body stack" style="gap:18px">
+              <div>${reparto('Tamaño de letra', r.porEscalaTexto, ESCALAS, r.total)}</div>
+              <div>${reparto('Fondo', r.porTema, TEMAS, r.total)}</div>
+            </div></section>
+        </div>
+        <section class="panel">
+          <div class="panel-head"><div class="toolbar">
+            <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo o por ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
+            <select class="input" id="filtroUsuarios" aria-label="Tipo de cuenta">
+              ${[['', 'Todas las cuentas'], ['anonimo', 'Invitados'], ['google', 'Con Google'], ['apple', 'Con Apple'], ['admin', 'Administradores']].map(([k, v]) => `<option value="${k}" ${f.filtro === k ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+            <select class="input" id="ordenUsuarios" aria-label="Orden">
+              <option value="vistos" ${f.orden === 'vistos' ? 'selected' : ''}>Últimos en abrir la app</option>
+              <option value="nuevos" ${f.orden === 'nuevos' ? 'selected' : ''}>Cuentas más nuevas</option>
+            </select>
+          </div></div>
+          <div class="tablewrap"><table><thead><tr><th>Cuenta</th><th>Tipo</th><th>Sigue a</th><th>Alta</th><th>Abrió la app</th><th></th></tr></thead>
+          <tbody id="filasUsuarios">${filasUsuarios()}</tbody></table></div>
+          <div class="paginas" id="pieUsuarios">${pieUsuarios()}</div>
+        </section>
+      </div>`;
+
+    let espera;
+    $('#qUsuarios').addEventListener('input', (e) => {
+      f.q = e.target.value; f.pagina = 0;
+      clearTimeout(espera);
+      espera = setTimeout(repintarUsuarios, 300);
+    });
+    $('#filtroUsuarios').addEventListener('change', (e) => { f.filtro = e.target.value; f.pagina = 0; repintarUsuarios(); });
+    $('#ordenUsuarios').addEventListener('change', (e) => { f.orden = e.target.value; f.pagina = 0; repintarUsuarios(); });
+  }
+
+  async function abrirUsuario(id) {
+    const d = await api('/api/admin/usuarios/' + encodeURIComponent(id));
+    const u = d.usuario;
+    const soyYo = sesion && sesion.id === u.id;
+    const invitado = u.proveedor === 'anonimo';
+
+    let rol = '';
+    if (u.esAdmin) {
+      rol = soyYo
+        ? '<p class="hint" style="margin:0">Es tu cuenta. El rol te lo tiene que quitar otro administrador.</p>'
+        : `<button class="btn danger" data-accion="rol-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${esc(u.email || u.id)}">Quitar acceso al panel</button>`;
+    } else if (!invitado) {
+      rol = `<button class="btn" data-accion="rol-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${esc(u.email || u.id)}">Dar acceso al panel</button>`;
+    }
+
+    abrirModal(u.email || 'Cuenta de invitado', `
+      <div class="stack" style="gap:16px">
+        <dl class="ficha">
+          <dt>Tipo</dt><dd>${badgeProveedor(u)}</dd>
+          <dt>ID</dt><dd class="mono">${esc(u.id)}</dd>
+          <dt>Alta</dt><dd>${esc(fmtDia(u.creadoEn))}</dd>
+          <dt>Abrió la app</dt><dd>${esc(relativo(u.vistoEn))} <span class="muted">(${esc(fmtFecha(u.vistoEn))})</span></dd>
+          <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
+          <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
+          <dt>Enlaces reportados</dt><dd>${num(d.reportes)}</dd>
+        </dl>
+        <div>
+          <p class="reparto-titulo">Sigue a ${plural(d.sigue.length, 'creador', 'creadores')}</p>
+          ${d.sigue.length ? '<ul class="lista-simple">' + d.sigue.map((c) => `<li><span><b>${esc(c.nombre)}</b> <span class="muted">· ${esc(CATEGORIAS[c.categoria] || c.categoria)}</span></span>${c.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Todavía no sigue a nadie, así que no recibe avisos.</p>'}
+        </div>
+        ${rol ? '<div>' + rol + '</div>' : ''}
+      </div>`, [{ texto: 'Cerrar' }]);
+  }
+
+  // ---------------------------------------------------------------------------
   // Administradores
   // ---------------------------------------------------------------------------
   async function vistaAdministradores() {
@@ -631,7 +825,7 @@
         <section class="panel"><div class="panel-head"><h2>Tu cuenta</h2></div><div class="panel-body">
           <p style="margin:0"><b>${esc(sesion && sesion.email || (perfil && perfil.email) || '—')}</b></p>
           <p class="mono muted" style="margin:4px 0 0">${esc((perfil && perfil.id) || (sesion && sesion.id) || '')}</p>
-          <p class="hint" style="margin:10px 0 0">Para quitarle el rol a alguien, por ahora hace falta hacerlo en la base: <span class="mono">update usuarios set es_admin = false where email = '…';</span></p>
+          <p class="hint" style="margin:10px 0 0">Para ver quién tiene el rol o quitárselo a alguien, entra a <button class="link" data-accion="ver-admins">Usuarios</button> y filtra por Administradores.</p>
         </div></section>
       </div>`;
     $('#admCorreo').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-accion="nombrar-admin"]').click(); });
@@ -699,6 +893,40 @@
         }
 
         case 'mover': abrirMover(b.dataset.video); break;
+
+        case 'ver-usuario': {
+          b.disabled = true;
+          await abrirUsuario(id);
+          b.disabled = false;
+          break;
+        }
+
+        case 'pagina-usuarios': {
+          estado.filtroUsuarios.pagina = Math.max(0, Number(b.dataset.pagina) || 0);
+          await repintarUsuarios();
+          break;
+        }
+
+        case 'ver-admins': {
+          Object.assign(estado.filtroUsuarios, { q: '', filtro: 'admin', pagina: 0 });
+          ir('usuarios');
+          break;
+        }
+
+        case 'rol-usuario': {
+          const dar = b.dataset.valor === 'true';
+          const nombre = b.dataset.nombre;
+          const ok = await confirmar(
+            dar ? '¿Dar acceso a ' + nombre + '?' : '¿Quitar el acceso a ' + nombre + '?',
+            dar ? 'Podrá entrar a este panel, editar el directorio, mover videos, avisar a los seguidores y ver las cuentas de los usuarios.'
+                : 'Ya no podrá volver a entrar al panel. Si lo tiene abierto ahora mismo, su sesión sigue valiendo hasta que la cierre o caduque.',
+            dar ? 'Dar acceso' : 'Quitar acceso', !dar || config.ambiente === 'produccion');
+          if (!ok) break;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/admin?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (estado.vista === 'usuarios') repintarUsuarios();
+          break;
+        }
 
         case 'resolver': {
           b.disabled = true;
