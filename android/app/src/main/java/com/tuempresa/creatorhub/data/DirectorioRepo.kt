@@ -33,9 +33,14 @@ class DirectorioRepo(
         ApiRelay.creadores()
     }
 
-    fun perfil(): Flow<Perfil> = sondear(intervaloMs = 60_000L) {
-        ApiRelay.perfil()
-    }
+    /**
+     * El perfil tal como está en el servidor, una sola lectura.
+     *
+     * No es un Flow como los otros: el perfil es lo único que el usuario
+     * cambia desde la app, y AppViewModel necesita decidir cuándo una lectura
+     * llegó tarde y pisaría un cambio que acaba de hacerse en pantalla.
+     */
+    suspend fun perfil(): Perfil = ApiRelay.perfil()
 
     /**
      * El parámetro `favoritos` ya no se usa para filtrar: el servidor sabe a

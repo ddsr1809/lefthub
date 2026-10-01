@@ -195,7 +195,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             composable("directorio") {
                 DirectorioPantalla(
                     creadores = estado.creadores,
-                    sigue = modelo::sigue,
+                    favoritos = estado.perfil.favoritos,
                     onSeguir = { modelo.alternarFavorito(it) },
                     onAbrirCreador = { nav.navigate("creador/$it") }
                 )
@@ -208,7 +208,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 val id = entrada.arguments?.getString("creatorId").orEmpty()
                 CreadorPantalla(
                     creador = modelo.creador(id),
-                    siguiendo = modelo.sigue(id),
+                    siguiendo = id in estado.perfil.favoritos,
                     onSeguir = { modelo.alternarFavorito(id) },
                     onVolver = { nav.popBackStack() }
                 )

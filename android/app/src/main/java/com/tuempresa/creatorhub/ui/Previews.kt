@@ -221,7 +221,7 @@ private fun PreviaDirectorio() {
     Marco {
         DirectorioPantalla(
             creadores = creadores,
-            sigue = { it == "juan" },
+            favoritos = listOf("juan"),
             onSeguir = {},
             onAbrirCreador = {}
         )

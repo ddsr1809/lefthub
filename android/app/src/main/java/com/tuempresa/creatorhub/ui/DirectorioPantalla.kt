@@ -40,7 +40,10 @@ private val TEMAS = listOf(
 @Composable
 fun DirectorioPantalla(
     creadores: List<Creador>,
-    sigue: (String) -> Boolean,
+    // La lista y no una función que consulte: Compose compara los parámetros
+    // para decidir si repinta, y una función es siempre "la misma" aunque su
+    // respuesta haya cambiado. Con la lista, seguir a alguien repinta la fila.
+    favoritos: List<String>,
     onSeguir: (String) -> Unit,
     onAbrirCreador: (String) -> Unit
 ) {
@@ -106,7 +109,7 @@ fun DirectorioPantalla(
                 items(visibles, key = { it.id }) { creador ->
                     FilaCreador(
                         creador = creador,
-                        siguiendo = sigue(creador.id),
+                        siguiendo = creador.id in favoritos,
                         onAbrir = { onAbrirCreador(creador.id) },
                         onSeguir = { onSeguir(creador.id) }
                     )

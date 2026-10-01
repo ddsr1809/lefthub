@@ -5,8 +5,11 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tuempresa.creatorhub.data.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class EstadoApp(
     val listo: Boolean = false,
@@ -29,7 +32,18 @@ class AppViewModel(
     private val _estado = MutableStateFlow(EstadoApp())
     val estado: StateFlow<EstadoApp> = _estado.asStateFlow()
 
+    // El perfil que el servidor ya confirmó. Es el que dispara la recarga de
+    // Novedades: si la disparáramos con el cambio optimista, pediríamos el
+    // feed antes de que el servidor supiera del favorito nuevo.
     private val perfilFlow = MutableStateFlow(Perfil())
+
+    // Sube cada vez que el perfil cambia desde este teléfono. Una lectura del
+    // servidor que empezó con una versión anterior se descarta: trae el estado
+    // de antes del cambio y devolvería el botón a como estaba.
+    private var versionPerfil = 0
+
+    // Los cambios salen de uno en uno y en el orden en que se tocaron.
+    private val escrituras = Mutex()
 
     init {
         viewModelScope.launch {
@@ -54,12 +68,9 @@ class AppViewModel(
         }
 
         viewModelScope.launch {
-            directorio.perfil().collect { p ->
-                perfilFlow.value = p
-                _estado.update { it.copy(perfil = p) }
-                // Los favoritos viven en la cuenta, pero los topics son por
-                // aparato. Un teléfono nuevo no está suscrito a nada.
-                directorio.sincronizarTopics(p.favoritos)
+            while (true) {
+                refrescarPerfil()
+                delay(INTERVALO_PERFIL_MS)
             }
         }
 
@@ -76,13 +87,79 @@ class AppViewModel(
 
     fun sigue(id: String) = _estado.value.perfil.favoritos.contains(id)
 
-    fun alternarFavorito(id: String) = viewModelScope.launch {
-        runCatching { directorio.alternarFavorito(id, sigue(id)) }
-            .onFailure { avisar("No se pudo guardar el cambio. Revisa tu conexión.") }
+    /**
+     * Trae el perfil del servidor y lo pone en pantalla.
+     *
+     * Antes Firestore empujaba los cambios solo; ahora el servidor no avisa de
+     * nada, así que esta lectura periódica solo sirve para enterarse de lo que
+     * cambió en OTRO teléfono. Lo que el usuario toca aquí se pinta en el
+     * momento, sin esperar a esta lectura.
+     */
+    private suspend fun refrescarPerfil() {
+        val version = versionPerfil
+        val p = runCatching { directorio.perfil() }.getOrNull() ?: return
+        if (version != versionPerfil) return
+
+        perfilFlow.value = p
+        _estado.update { it.copy(perfil = p) }
+        // Los favoritos viven en la cuenta, pero los topics son por aparato.
+        // Un teléfono nuevo no está suscrito a nada.
+        directorio.sincronizarTopics(p.favoritos)
     }
 
+    /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
+    private suspend fun recargarPerfil() {
+        versionPerfil++
+        refrescarPerfil()
+    }
+
+    /**
+     * Seguir o dejar de seguir.
+     *
+     * El botón cambia en el mismo toque y el servidor se entera después. Si
+     * el servidor falla, el botón vuelve a como estaba y se avisa.
+     */
+    fun alternarFavorito(id: String) = viewModelScope.launch {
+        val siguiendo = sigue(id)
+
+        versionPerfil++
+        _estado.update { it.copy(perfil = it.perfil.conFavorito(id, !siguiendo)) }
+
+        val resultado = escrituras.withLock {
+            runCatching { directorio.alternarFavorito(id, siguiendo) }
+        }
+        versionPerfil++
+
+        resultado
+            .onSuccess { perfilFlow.update { p -> p.conFavorito(id, !siguiendo) } }
+            .onFailure {
+                _estado.update { e -> e.copy(perfil = e.perfil.conFavorito(id, siguiendo)) }
+                avisar("No se pudo guardar el cambio. Revisa tu conexión.")
+            }
+    }
+
+    /** Tema, tamaño de letra y avisos: mismo trato que los favoritos. */
     fun guardarPreferencia(clave: String, valor: Any) = viewModelScope.launch {
-        runCatching { directorio.guardarPreferencia(clave, valor) }
+        val anterior = _estado.value.perfil.preferencia(clave)
+
+        versionPerfil++
+        _estado.update { it.copy(perfil = it.perfil.conPreferencia(clave, valor)) }
+
+        val resultado = escrituras.withLock {
+            runCatching { directorio.guardarPreferencia(clave, valor) }
+        }
+        versionPerfil++
+
+        resultado.onFailure {
+            // Solo se deshace si en pantalla sigue este cambio; si el usuario
+            // ya eligió otra cosa mientras tanto, manda lo último que tocó.
+            _estado.update { e ->
+                if (e.perfil.preferencia(clave) == valor)
+                    e.copy(perfil = e.perfil.conPreferencia(clave, anterior))
+                else e
+            }
+            avisar("No se pudo guardar el cambio. Revisa tu conexión.")
+        }
     }
 
     fun reportarEnlace(videoId: String?, creatorId: String?) = viewModelScope.launch {
@@ -99,12 +176,14 @@ class AppViewModel(
         _estado.update { it.copy(ocupado = true) }
         val resultado = autenticacion.vincularConGoogle(contexto)
         procesar(resultado)
+        recargarPerfil()
     }
 
     fun resolverConflicto(contexto: Context) = viewModelScope.launch {
         val pendiente = _estado.value.conflicto ?: return@launch
         _estado.update { it.copy(ocupado = true, conflicto = null) }
         procesar(autenticacion.resolverConflicto(contexto, pendiente.credencialPendiente))
+        recargarPerfil()
     }
 
     fun descartarConflicto() = _estado.update { it.copy(conflicto = null) }
@@ -136,6 +215,7 @@ class AppViewModel(
     fun cerrarSesion(contexto: Context) = viewModelScope.launch {
         runCatching { autenticacion.cerrarSesion(contexto) }
         _estado.update { it.copy(esAnonimo = true, correo = null, mensaje = "Sesión cerrada.") }
+        recargarPerfil()
     }
 
     fun borrarCuenta(contexto: Context) = viewModelScope.launch {
@@ -144,9 +224,34 @@ class AppViewModel(
             .onSuccess { avisar("Cuenta borrada. Puedes seguir usando la app como invitado.") }
             .onFailure { avisar("No se pudo borrar la cuenta: ${it.localizedMessage}") }
         _estado.update { it.copy(ocupado = false, esAnonimo = true, correo = null) }
+        recargarPerfil()
     }
 
     private fun avisar(texto: String) = _estado.update { it.copy(mensaje = texto) }
 
     fun mensajeVisto() = _estado.update { it.copy(mensaje = null) }
+
+    private companion object {
+        const val INTERVALO_PERFIL_MS = 60_000L
+    }
+}
+
+// --- Cambios locales sobre el perfil -----------------------------------------
+
+private fun Perfil.conFavorito(id: String, siguiendo: Boolean): Perfil = copy(
+    favoritos = if (siguiendo) (favoritos + id).distinct() else favoritos - id
+)
+
+private fun Perfil.preferencia(clave: String): Any? = when (clave) {
+    "tema" -> tema
+    "escalaTexto" -> escalaTexto
+    "avisos" -> avisos
+    else -> null
+}
+
+private fun Perfil.conPreferencia(clave: String, valor: Any?): Perfil = when (clave) {
+    "tema" -> copy(tema = valor as? String ?: tema)
+    "escalaTexto" -> copy(escalaTexto = valor as? String ?: escalaTexto)
+    "avisos" -> copy(avisos = valor as? Boolean ?: avisos)
+    else -> this
 }
