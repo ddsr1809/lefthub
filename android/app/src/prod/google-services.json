@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "389825726990-gp3oc5k6pmcuvi3aj5rj90vkcach8fou.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.tuempresa.creatorhub",
+            "certificate_hash": "c74a4658cbd81d8268ea0b75b0d4562508b40a3c"
+          }
+        },
+        {
           "client_id": "389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com",
           "client_type": 3
         }
