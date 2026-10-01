@@ -269,7 +269,12 @@ object ApiRelay {
                     // Un 401 significa que el token caducó o que la cuenta ya
                     // no existe. Lo borramos para que el siguiente arranque
                     // cree una sesión limpia en vez de reintentar en bucle.
-                    if (respuesta.code == 401) cerrarSesion()
+                    //
+                    // Solo si la petición llevaba NUESTRO token. Al entrar con
+                    // Google el 401 habla del token de Google, no del nuestro:
+                    // borrar la sesión ahí dejaba la app sin poder guardar
+                    // nada hasta reabrirla, por un inicio de sesión fallido.
+                    if (respuesta.code == 401 && conToken) cerrarSesion()
 
                     val motivo = runCatching {
                         JSONObject(cuerpo).optString("message").takeIf { it.isNotBlank() }

@@ -1,11 +1,13 @@
 package com.tuempresa.relay.modelo;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -77,6 +79,60 @@ public final class Repositorios {
         /** Quienes siguen a un creador. Sirve para contar audiencia. */
         @Query("select count(u) from Usuario u join u.favoritos f where f = :creador")
         long cuantosSiguen(@Param("creador") UUID creador);
+
+        // --- Panel: sección Usuarios -----------------------------------------
+        // Todo sale de columnas que ya existían; no se guarda nada nuevo.
+
+        /** Abrió la app después de esa fecha: visto_en se toca en cada arranque. */
+        long countByVistoEnAfter(Instant desde);
+
+        long countByCreadoEnAfter(Instant desde);
+
+        /** Cuentas que siguen al menos a un creador. */
+        @Query("select count(distinct u) from Usuario u join u.favoritos f")
+        long conFavoritos();
+
+        /** Una fila por cada "seguir": el total de seguimientos. */
+        @Query("select count(u) from Usuario u join u.favoritos f")
+        long seguimientos();
+
+        @Query("select u.proveedor, count(u) from Usuario u group by u.proveedor")
+        List<Object[]> porProveedor();
+
+        @Query("select u.escalaTexto, count(u) from Usuario u group by u.escalaTexto")
+        List<Object[]> porEscalaTexto();
+
+        @Query("select u.tema, count(u) from Usuario u group by u.tema")
+        List<Object[]> porTema();
+
+        /** Fechas de alta recientes; el controlador las agrupa por día. */
+        @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
+        List<Instant> altasDesde(@Param("desde") Instant desde);
+
+        /**
+         * Listado paginado con filtros.
+         *
+         * Los filtros vacíos llegan como cadena vacía y no como null: un
+         * parámetro null dentro de "(:x is null or ...)" obliga a PostgreSQL a
+         * adivinar su tipo y es una fuente clásica de errores en tiempo de
+         * ejecución.
+         */
+        @Query(value = """
+                select u from Usuario u
+                where (:proveedor = '' or u.proveedor = :proveedor)
+                  and (:texto = '' or lower(u.email) like :texto)
+                  and (:soloAdmins = false or u.esAdmin = true)
+                """,
+               countQuery = """
+                select count(u) from Usuario u
+                where (:proveedor = '' or u.proveedor = :proveedor)
+                  and (:texto = '' or lower(u.email) like :texto)
+                  and (:soloAdmins = false or u.esAdmin = true)
+                """)
+        Page<Usuario> buscar(@Param("proveedor") String proveedor,
+                             @Param("texto") String texto,
+                             @Param("soloAdmins") boolean soloAdmins,
+                             Pageable pagina);
     }
 
     public interface Suscripciones extends JpaRepository<Suscripcion, String> {
@@ -91,5 +147,7 @@ public final class Repositorios {
         @Modifying
         @Query("delete from Reporte r where r.usuarioId = :usuario")
         void borrarDeUsuario(@Param("usuario") UUID usuario);
+
+        long countByUsuarioId(UUID usuarioId);
     }
 }

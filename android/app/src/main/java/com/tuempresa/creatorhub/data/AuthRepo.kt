@@ -93,12 +93,36 @@ class AuthRepo {
         val idToken = try {
             idTokenDeGoogle(contexto)
         } catch (e: GetCredentialCancellationException) {
+            // Google usa esta MISMA excepción para dos cosas distintas: que la
+            // persona cerró el selector, y que eligió su cuenta pero Google no
+            // reconoce la app ("[16] Account reauth failed"). Lo segundo pasa
+            // cuando el paquete y la huella SHA-1 con que se firmó este APK no
+            // están dados de alta como cliente OAuth de Android en el mismo
+            // proyecto que WEB_CLIENT_ID. Tratarlo como cancelación es lo que
+            // hacía que el botón "no hiciera nada".
+            if (e.message.orEmpty().contains("[16]")) {
+                Log.e(
+                    TAG,
+                    "Google rechazó la app tras elegir cuenta. Falta registrar el paquete " +
+                        "${contexto.packageName} con la huella SHA-1 de esta firma " +
+                        "(./gradlew signingReport) en el proyecto de Google.",
+                    e
+                )
+                return Resultado.Fallo("Google no dejó entrar desde esta app. Inténtalo más tarde.")
+            }
+            Log.i(TAG, "Selector de Google cerrado: ${e.message}")
             return Resultado.Cancelada
         } catch (e: NoCredentialException) {
+            Log.w(TAG, "Sin credenciales de Google", e)
             return Resultado.Fallo("No hay ninguna cuenta de Google configurada en este teléfono.")
         } catch (e: GetCredentialException) {
-            Log.w(TAG, "Credential Manager falló", e)
-            return Resultado.Fallo("No se pudo abrir el selector de cuentas de Google.")
+            Log.w(TAG, "Credential Manager falló (${e.type})", e)
+            return Resultado.Fallo("No se pudo entrar con Google. Inténtalo más tarde.")
+        } catch (e: Exception) {
+            // Credencial de un tipo inesperado o un token que no se pudo leer.
+            // Sin esto la excepción subía sin que nadie la atrapara.
+            Log.w(TAG, "Respuesta inesperada de Google", e)
+            return Resultado.Fallo("No se pudo entrar con Google. Inténtalo más tarde.")
         }
 
         return try {

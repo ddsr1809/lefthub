@@ -182,6 +182,71 @@ public final class Dtos {
             long seguidores
     ) {}
 
+    // -------------------------------------------------------------------------
+    // Panel: usuarios
+    // -------------------------------------------------------------------------
+
+    /**
+     * Una cuenta tal como la ve el panel.
+     *
+     * No lleva deviceId, proveedorSub ni el refresh token de Apple: son
+     * identificadores y credenciales que al equipo no le sirven para atender a
+     * nadie, y lo que no sale del servidor no se puede filtrar.
+     */
+    public record UsuarioAdminDto(
+            UUID id,
+            String proveedor,
+            String email,
+            boolean esAdmin,
+            int favoritos,
+            String escalaTexto,
+            String tema,
+            Instant creadoEn,
+            Instant vistoEn
+    ) {
+        public static UsuarioAdminDto de(Usuario u) {
+            return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
+                    u.getFavoritos().size(), u.getEscalaTexto(), u.getTema(),
+                    u.getCreadoEn(), u.getVistoEn());
+        }
+    }
+
+    public record PaginaUsuarios(
+            List<UsuarioAdminDto> usuarios,
+            long total,
+            int pagina,
+            int paginas,
+            int tamano
+    ) {}
+
+    public record CreadorSeguido(UUID id, String nombre, String categoria, boolean activo) {}
+
+    public record UsuarioDetalle(
+            UsuarioAdminDto usuario,
+            List<CreadorSeguido> sigue,
+            long reportes
+    ) {}
+
+    /** Día en formato AAAA-MM-DD, ya en la zona horaria que pidió el panel. */
+    public record AltasDelDia(String dia, long altas) {}
+
+    public record ResumenUsuarios(
+            long total,
+            long invitados,
+            long conGoogle,
+            long conApple,
+            long activos24h,
+            long activos7d,
+            long activos30d,
+            long nuevos7d,
+            long nuevos30d,
+            long conFavoritos,
+            long seguimientos,
+            Map<String, Long> porEscalaTexto,
+            Map<String, Long> porTema,
+            List<AltasDelDia> altas
+    ) {}
+
     public record Reporte(
             String videoId,
             UUID creadorId,
