@@ -196,4 +196,5 @@ dialog::backdrop{background:rgba(10,20,16,.45)}
 .lista-simple li:last-child{border-bottom:0}
 @media (max-width:1000px){.dos{grid-template-columns:minmax(0,1fr)}}
 
+.aviso-mal{background:var(--danger-soft);color:var(--danger);border-radius:var(--radius);padding:10px 12px;font-size:13.5px;font-weight:600}
 .aviso-ok{background:var(--accent-soft);color:var(--accent);border-radius:var(--radius);padding:10px 12px;font-size:13.5px;font-weight:600}

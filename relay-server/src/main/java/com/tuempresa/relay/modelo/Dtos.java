@@ -192,6 +192,10 @@ public final class Dtos {
      * No lleva deviceId, proveedorSub ni el refresh token de Apple: son
      * identificadores y credenciales que al equipo no le sirven para atender a
      * nadie, y lo que no sale del servidor no se puede filtrar.
+     *
+     * Los datos de conexión (ip, pais, asn, red, agente) son los del último
+     * acceso; vienen en null en las cuentas que no han abierto la app desde
+     * que se empezaron a guardar.
      */
     public record UsuarioAdminDto(
             UUID id,
@@ -202,12 +206,21 @@ public final class Dtos {
             String escalaTexto,
             String tema,
             Instant creadoEn,
-            Instant vistoEn
+            Instant vistoEn,
+            String ip,
+            String pais,
+            Long asn,
+            String red,
+            String agente,
+            boolean posibleBot,
+            String motivoBot
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
                     u.getFavoritos().size(), u.getEscalaTexto(), u.getTema(),
-                    u.getCreadoEn(), u.getVistoEn());
+                    u.getCreadoEn(), u.getVistoEn(),
+                    u.getIp(), u.getPais(), u.getAsn(), u.getRed(), u.getAgente(),
+                    u.isPosibleBot(), u.getMotivoBot());
         }
     }
 
@@ -242,8 +255,11 @@ public final class Dtos {
             long nuevos30d,
             long conFavoritos,
             long seguimientos,
+            long posiblesBots,
             Map<String, Long> porEscalaTexto,
             Map<String, Long> porTema,
+            /** Código de país → cuentas, de más a menos. Sin las que no tienen país todavía. */
+            Map<String, Long> porPais,
             List<AltasDelDia> altas
     ) {}
 
