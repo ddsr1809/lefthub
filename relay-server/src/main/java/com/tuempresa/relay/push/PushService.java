@@ -13,8 +13,11 @@ import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 import java.io.FileInputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 /**
@@ -65,6 +68,17 @@ public class PushService {
             return;
         }
 
+        // El contenedor corre con un usuario sin privilegios. Si el JSON se
+        // monta desde el host con permisos 600, ese usuario no puede leerlo y
+        // el servidor arranca "sano" pero mudo. Lo decimos con todas las letras.
+        Path ruta = Path.of(config.fcm().credenciales());
+        if (!Files.isRegularFile(ruta) || !Files.isReadable(ruta)) {
+            log.error("FCM DESACTIVADO: {} no existe, es un directorio o no es legible por el "
+                    + "usuario del proceso. En el host: chmod 644 sobre el archivo de "
+                    + "FCM_CREDENCIALES_HOST y recrea el contenedor.", ruta);
+            return;
+        }
+
         try (FileInputStream flujo = new FileInputStream(config.fcm().credenciales())) {
             credenciales = GoogleCredentials.fromStream(flujo).createScoped(List.of(SCOPE));
             urlEnvio = "https://fcm.googleapis.com/v1/projects/"
@@ -103,17 +117,37 @@ public class PushService {
      * El texto está escrito para entenderse de un vistazo: quién publicó, qué
      * publicó, y nada más. Sin emojis decorativos ni jerga de plataforma.
      */
-    public void avisarPublicacion(Creador creador, String videoId, String titulo,
-                                  String miniatura, YouTubeClient.DetalleDeVideo detalle) {
+    public boolean avisarPublicacion(Creador creador, String videoId, String titulo,
+                                     String miniatura, YouTubeClient.DetalleDeVideo detalle) {
 
-        String encabezado;
         if (detalle != null && detalle.enVivo()) {
-            encabezado = creador.getNombre() + " está en vivo ahora";
-        } else if (detalle != null && "short".equals(detalle.tipo())) {
-            encabezado = creador.getNombre() + " publicó un video corto";
-        } else {
-            encabezado = creador.getNombre() + " subió un video nuevo";
+            return avisarDirecto(creador, videoId, titulo, miniatura);
         }
+
+        String encabezado = (detalle != null && "short".equals(detalle.tipo()))
+                ? creador.getNombre() + " publicó un video corto"
+                : creador.getNombre() + " subió un video nuevo";
+
+        // Un solo aviso por creador: si llegan tres videos seguidos, el último
+        // reemplaza al anterior en vez de apilar tres tarjetas.
+        return enviarPublicacion(creador, videoId, titulo, miniatura, encabezado,
+                topicDe(creador.getId()));
+    }
+
+    /**
+     * Avisa de que un directo acaba de arrancar.
+     *
+     * Lleva etiqueta propia. Con la etiqueta del creador, el aviso del
+     * siguiente clip que subiera el canal lo borraba de la pantalla, y el
+     * directo es justo el aviso que caduca si no se ve a tiempo.
+     */
+    public boolean avisarDirecto(Creador creador, String videoId, String titulo, String miniatura) {
+        return enviarPublicacion(creador, videoId, titulo, miniatura,
+                creador.getNombre() + " está en vivo ahora", "directo_" + videoId);
+    }
+
+    private boolean enviarPublicacion(Creador creador, String videoId, String titulo,
+                                      String miniatura, String encabezado, String etiqueta) {
 
         ObjectNode mensaje = json.createObjectNode();
         mensaje.put("topic", topicDe(creador.getId()));
@@ -137,9 +171,7 @@ public class PushService {
         android.put("priority", "HIGH");
         ObjectNode androidNotif = android.putObject("notification");
         androidNotif.put("channel_id", CANAL_PUBLICACIONES);
-        // Un solo aviso por creador: si llegan tres videos seguidos, el último
-        // reemplaza al anterior en vez de apilar tres tarjetas.
-        androidNotif.put("tag", topicDe(creador.getId()));
+        androidNotif.put("tag", etiqueta);
         if (miniatura != null) androidNotif.put("image", miniatura);
 
         ObjectNode apns = mensaje.putObject("apns");
@@ -150,7 +182,7 @@ public class PushService {
         aps.put("mutable-content", 1);
         if (miniatura != null) apns.putObject("fcm_options").put("image", miniatura);
 
-        enviar(mensaje, "publicación de " + creador.getNombre());
+        return enviar(mensaje, encabezado) == null;
     }
 
     /**
@@ -161,8 +193,8 @@ public class PushService {
      * sin tener que buscar nada. Es la diferencia entre que un creador pierda
      * su audiencia y que solo pierda un video.
      */
-    public void avisarContenidoMovido(Creador creador, String videoId, String tituloVideo,
-                                      String destinoUrl, String destinoPlataforma) {
+    public boolean avisarContenidoMovido(Creador creador, String videoId, String tituloVideo,
+                                         String destinoUrl, String destinoPlataforma) {
 
         String donde = nombreDePlataforma(destinoPlataforma);
         String cuerpo = (tituloVideo != null && !tituloVideo.isBlank())
@@ -180,8 +212,10 @@ public class PushService {
         datos.put("tipo", "movido");
         datos.put("creatorId", String.valueOf(creador.getId()));
         datos.put("videoId", videoId);
-        datos.put("platform", destinoPlataforma);
-        datos.put("url", destinoUrl);
+        // FCM exige que todos los valores de data sean cadenas: un null
+        // devuelve 400 y el aviso se pierde entero.
+        datos.put("platform", destinoPlataforma != null ? destinoPlataforma : "web");
+        datos.put("url", destinoUrl != null ? destinoUrl : "");
 
         ObjectNode android = mensaje.putObject("android");
         android.put("priority", "HIGH");
@@ -191,15 +225,41 @@ public class PushService {
         apns.putObject("headers").put("apns-priority", "10");
         apns.putObject("payload").putObject("aps").put("sound", "default");
 
-        enviar(mensaje, "contenido movido de " + creador.getNombre());
+        return enviar(mensaje, "contenido movido de " + creador.getNombre()) == null;
+    }
+
+    /**
+     * Aviso de prueba al topic de un creador. Sirve para comprobar el tramo
+     * servidor → FCM → teléfono sin esperar a que alguien publique un video.
+     *
+     * Devuelve null si FCM aceptó el mensaje, o el motivo del fallo.
+     */
+    public String avisarPrueba(Creador creador) {
+        ObjectNode mensaje = json.createObjectNode();
+        mensaje.put("topic", topicDe(creador.getId()));
+
+        ObjectNode notificacion = mensaje.putObject("notification");
+        notificacion.put("title", "Aviso de prueba");
+        notificacion.put("body", "Si lees esto, los avisos de " + creador.getNombre() + " llegan bien.");
+
+        ObjectNode android = mensaje.putObject("android");
+        android.put("priority", "HIGH");
+        android.putObject("notification").put("channel_id", CANAL_AVISOS);
+
+        ObjectNode apns = mensaje.putObject("apns");
+        apns.putObject("headers").put("apns-priority", "10");
+        apns.putObject("payload").putObject("aps").put("sound", "default");
+
+        return enviar(mensaje, "prueba de " + creador.getNombre());
     }
 
     // -------------------------------------------------------------------------
 
-    private void enviar(ObjectNode mensaje, String descripcion) {
+    /** Devuelve null si FCM aceptó el mensaje, o el motivo del fallo. */
+    private String enviar(ObjectNode mensaje, String descripcion) {
         if (credenciales == null) {
             log.warn("FCM sin configurar; no se envió el aviso de {}", descripcion);
-            return;
+            return "FCM sin configurar en el servidor (revisa FCM_PROYECTO_ID y el JSON de credenciales).";
         }
 
         try {
@@ -219,13 +279,24 @@ public class PushService {
                     .retrieve()
                     .body(JsonNode.class);
 
-            log.info("Aviso enviado ({}): {}", descripcion,
+            log.info("Aviso enviado ({}) al topic {}: {}", descripcion,
+                    mensaje.path("topic").asText(),
                     respuesta != null ? respuesta.path("name").asText() : "sin id");
+            return null;
+
+        } catch (RestClientResponseException e) {
+            // El cuerpo trae el motivo real (PERMISSION_DENIED, SENDER_ID_MISMATCH,
+            // API desactivada...). Sin él solo se ve "403" y no se sabe por qué.
+            String motivo = "FCM respondió HTTP " + e.getStatusCode().value()
+                    + ": " + e.getResponseBodyAsString();
+            log.error("No se pudo enviar el aviso de {}: {}", descripcion, motivo);
+            return motivo;
 
         } catch (Exception e) {
             // Un fallo de push no debe tumbar el procesado del aviso: el video
             // ya está guardado y aparecerá en la app la próxima vez que abra.
-            log.error("No se pudo enviar el aviso de {}: {}", descripcion, e.getMessage());
+            log.error("No se pudo enviar el aviso de {}", descripcion, e);
+            return String.valueOf(e.getMessage());
         }
     }
 }

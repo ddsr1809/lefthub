@@ -77,6 +77,11 @@ class DirectorioRepo(
     suspend fun sincronizarTopics(favoritos: List<String>) {
         favoritos.forEach { id ->
             runCatching { mensajeria.subscribeToTopic(topicDe(id)).await() }
+                // Sin este registro, un teléfono que no logra suscribirse
+                // (sin Play Services, google-services.json de otro proyecto)
+                // es indistinguible de uno que sí.
+                .onSuccess { Log.d(TAG, "Suscrito a ${topicDe(id)}") }
+                .onFailure { Log.w(TAG, "No se pudo suscribir a ${topicDe(id)}", it) }
         }
     }
 
