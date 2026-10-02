@@ -56,6 +56,7 @@ android {
             // anfitrion se alcanza por 10.0.2.2. Con un telefono fisico por
             // USB, cambia esto por la IP de tu computadora en la red local.
             buildConfigField("String", "API_BASE", "\"http://10.0.2.2:8080\"")
+            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
         }
 
         create("pruebas") {
@@ -68,12 +69,22 @@ android {
             // test.ythub.d2600.com. Tiene que coincidir con RELAY_URL_PUBLICA
             // del ambiente de pruebas en el VPS.
             buildConfigField("String", "API_BASE", "\"https://testhub.d2600.com\"")
+            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
         }
 
         create("prod") {
             dimension = "ambiente"
             // Sin sufijo: este es el applicationId de verdad, el que va a Play.
             buildConfigField("String", "API_BASE", "\"https://ythub.d2600.com\"")
+
+            // "¿Estoy suscrito en YouTube?" pide el permiso youtube.readonly,
+            // que Google trata como sensible. Mientras la verificación de
+            // OAuth del proyecto no esté aprobada, solo 100 personas pueden
+            // darlo EN TODA LA VIDA del proyecto, y al agotarse Google
+            // desactiva también el inicio de sesión. Ese cupo no se recupera.
+            // Por eso en producción sale apagado: cámbialo a "true" el día que
+            // Google apruebe la verificación, no antes.
+            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "false")
         }
     }
 
@@ -137,6 +148,7 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
+    implementation(libs.play.services.auth)
 
     implementation(libs.okhttp)
     implementation(libs.coil.compose)

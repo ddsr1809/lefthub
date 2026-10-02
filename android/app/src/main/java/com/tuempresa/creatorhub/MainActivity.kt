@@ -5,8 +5,11 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.app.Activity
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,6 +19,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -56,6 +60,20 @@ class MainActivity : ComponentActivity() {
             // volvería a abrirse el video.
             LaunchedEffect(Unit) { procesarIntent(intent) }
         }
+    }
+
+    /**
+     * Cada vez que la app pasa a primer plano: al abrirla y al volver de
+     * YouTube. Es el momento de comprobar si la persona está suscrita a los
+     * creadores, porque es cuando pudo haber cambiado.
+     *
+     * El ViewModel es el mismo que usa la interfaz (ambos salen del almacén de
+     * esta Activity), y él decide si toca: espera a que haya sesión, ignora a
+     * los invitados y no repite si acaba de comprobar.
+     */
+    override fun onResume() {
+        super.onResume()
+        ViewModelProvider(this)[AppViewModel::class.java].verificarYouTube(applicationContext)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -145,6 +163,20 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         }
     }
 
+    // La pantalla de permiso de YouTube es de Google, no nuestra: el ViewModel
+    // avisa de que hay que abrirla y aquí se abre y se recoge la respuesta.
+    val pantallaDePermiso = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartIntentSenderForResult()
+    ) { respuesta ->
+        modelo.permisoDeYouTubeRespondido(contexto, respuesta.resultCode == Activity.RESULT_OK)
+    }
+
+    LaunchedEffect(Unit) {
+        modelo.permisosDeYouTube.collect { pedir ->
+            pantallaDePermiso.launch(IntentSenderRequest.Builder(pedir).build())
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -196,6 +228,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 DirectorioPantalla(
                     creadores = estado.creadores,
                     favoritos = estado.perfil.favoritos,
+                    youtube = estado.youtube,
                     onSeguir = { modelo.alternarFavorito(it) },
                     onAbrirCreador = { nav.navigate("creador/$it") }
                 )
@@ -209,7 +242,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 CreadorPantalla(
                     creador = modelo.creador(id),
                     siguiendo = id in estado.perfil.favoritos,
+                    youtube = estado.youtube,
+                    esAnonimo = estado.esAnonimo,
                     onSeguir = { modelo.alternarFavorito(id) },
+                    onConectarYouTube = { modelo.conectarYouTube(contexto) },
                     onVolver = { nav.popBackStack() }
                 )
             }
@@ -220,7 +256,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onGuardarPreferencia = modelo::guardarPreferencia,
                     onVincularGoogle = { modelo.vincularConGoogle(contexto) },
                     onCerrarSesion = { modelo.cerrarSesion(contexto) },
-                    onBorrarCuenta = { modelo.borrarCuenta(contexto) }
+                    onBorrarCuenta = { modelo.borrarCuenta(contexto) },
+                    onConectarYouTube = { modelo.conectarYouTube(contexto) },
+                    onDesconectarYouTube = { modelo.desconectarYouTube(contexto) }
                 )
             }
         }

@@ -124,6 +124,34 @@ public final class Dtos {
     public record Preferencias(String escalaTexto, String tema, Boolean avisos) {}
 
     // -------------------------------------------------------------------------
+    // Suscripciones de YouTube del usuario
+    // -------------------------------------------------------------------------
+
+    /**
+     * El token de acceso de Google que la app acaba de obtener en el teléfono,
+     * con permiso de solo lectura sobre YouTube. Dura una hora, se usa en el
+     * momento y no se guarda.
+     */
+    public record VerificarYouTube(
+            @NotBlank(message = "Falta el permiso de YouTube.")
+            @Size(max = 4096, message = "El permiso de YouTube no es válido.")
+            String accessToken
+    ) {}
+
+    /**
+     * A qué creadores del directorio está suscrita la persona en YouTube.
+     *
+     * Van los dos lados porque "no suscrito" y "no lo sabemos" no son lo
+     * mismo: un creador sin canal de YouTube no aparece en ninguna lista.
+     * {@code verificadoEn} falta cuando nunca se ha comprobado.
+     */
+    public record SuscripcionesYouTube(
+            Instant verificadoEn,
+            List<UUID> suscritos,
+            List<UUID> noSuscritos
+    ) {}
+
+    // -------------------------------------------------------------------------
     // Moderación
     // -------------------------------------------------------------------------
 

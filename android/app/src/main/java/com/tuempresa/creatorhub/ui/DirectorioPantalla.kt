@@ -17,7 +17,10 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
+import com.tuempresa.creatorhub.BuildConfig
 import com.tuempresa.creatorhub.data.Creador
+import com.tuempresa.creatorhub.data.EstadoYouTube
+import com.tuempresa.creatorhub.data.PermisoYouTube
 import com.tuempresa.creatorhub.enlaces.Enrutador
 
 // El directorio es cerrado: solo aparecen los creadores que el equipo aprobó.
@@ -45,7 +48,8 @@ fun DirectorioPantalla(
     // respuesta haya cambiado. Con la lista, seguir a alguien repinta la fila.
     favoritos: List<String>,
     onSeguir: (String) -> Unit,
-    onAbrirCreador: (String) -> Unit
+    onAbrirCreador: (String) -> Unit,
+    youtube: EstadoYouTube = EstadoYouTube()
 ) {
     var tema by remember { mutableStateOf("todos") }
     val esquema = MaterialTheme.colorScheme
@@ -111,7 +115,8 @@ fun DirectorioPantalla(
                         creador = creador,
                         siguiendo = creador.id in favoritos,
                         onAbrir = { onAbrirCreador(creador.id) },
-                        onSeguir = { onSeguir(creador.id) }
+                        onSeguir = { onSeguir(creador.id) },
+                        suscritoEnYouTube = youtube.suscritoA(creador.id)
                     )
                 }
             }
@@ -131,7 +136,10 @@ fun CreadorPantalla(
     creador: Creador?,
     siguiendo: Boolean,
     onSeguir: () -> Unit,
-    onVolver: () -> Unit
+    onVolver: () -> Unit,
+    youtube: EstadoYouTube = EstadoYouTube(),
+    esAnonimo: Boolean = true,
+    onConectarYouTube: () -> Unit = {}
 ) {
     val contexto = LocalContext.current
     val esquema = MaterialTheme.colorScheme
@@ -201,10 +209,26 @@ fun CreadorPantalla(
             )
         }
 
+        val suscrito = youtube.suscritoA(creador.id)
+
         conexiones.forEach { (plataforma, conexion) ->
+            if (BuildConfig.SUSCRIPCIONES_YOUTUBE &&
+                plataforma == "youtube" && !conexion.channelId.isNullOrBlank()
+            ) {
+                SuscripcionEnYouTube(
+                    suscrito = suscrito,
+                    youtube = youtube,
+                    esAnonimo = esAnonimo,
+                    onConectar = onConectarYouTube
+                )
+            }
+
             BotonGrande(
                 titulo = Enrutador.accionDe(plataforma),
-                subtitulo = "Se abre la app de ${Enrutador.nombreDe(plataforma)}",
+                subtitulo = if (plataforma == "youtube" && suscrito == false)
+                    "Se abre YouTube; ahí puedes suscribirte"
+                else
+                    "Se abre la app de ${Enrutador.nombreDe(plataforma)}",
                 variante = VarianteBoton.SECUNDARIO,
                 onClick = {
                     Enrutador.abrirCanal(contexto, plataforma, conexion.url, campana = "perfil_creador")
@@ -217,6 +241,49 @@ fun CreadorPantalla(
             style = MaterialTheme.typography.bodySmall,
             color = esquema.onSurfaceVariant,
             modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.xxl)
+        )
+    }
+}
+
+/**
+ * Dice si la persona está suscrita al canal de YouTube del creador, o qué
+ * falta para saberlo.
+ *
+ * Seguir aquí y suscribirse allá son cosas distintas y se confunden con
+ * facilidad. Cada caso lo dice con una frase entera, y solo aparece un botón
+ * cuando tocarlo sirve de algo.
+ */
+@Composable
+private fun SuscripcionEnYouTube(
+    suscrito: Boolean?,
+    youtube: EstadoYouTube,
+    esAnonimo: Boolean,
+    onConectar: () -> Unit
+) {
+    val esquema = MaterialTheme.colorScheme
+
+    val frase = when {
+        suscrito == true -> "Estás suscrito a su canal de YouTube."
+        suscrito == false -> "No estás suscrito a su canal de YouTube."
+        esAnonimo -> "Para ver aquí si estás suscrito a su canal de YouTube, " +
+            "guarda tu cuenta con Google en Ajustes."
+        youtube.verificando -> "Comprobando si estás suscrito a su canal de YouTube…"
+        else -> null
+    }
+
+    if (frase != null) {
+        Text(
+            frase,
+            style = MaterialTheme.typography.bodyLarge,
+            color = if (suscrito == true) esquema.onBackground else esquema.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = Espacio.md)
+        )
+    } else if (youtube.permiso == PermisoYouTube.SIN_PERMISO) {
+        BotonGrande(
+            titulo = "Ver si estoy suscrito en YouTube",
+            subtitulo = "Google te pedirá permiso para consultar tus suscripciones",
+            variante = VarianteBoton.SECUNDARIO,
+            onClick = onConectar
         )
     }
 }

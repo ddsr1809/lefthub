@@ -77,3 +77,37 @@ data class Perfil(
     val tema: String = "sistema",
     val avisos: Boolean = true
 )
+
+// --- Suscripciones de YouTube ------------------------------------------------
+
+/** Lo que contesta el servidor: IDs de creadores, no de canales. */
+data class SuscripcionesYouTube(
+    val suscritos: Set<String> = emptySet(),
+    val noSuscritos: Set<String> = emptySet(),
+    val verificadoEn: Instant? = null
+)
+
+enum class PermisoYouTube {
+    /** Todavía no se ha preguntado. Es el estado al abrir la app. */
+    DESCONOCIDO,
+    CONCEDIDO,
+    /** La persona no ha dado el permiso, lo retiró o lo apagó en Ajustes. */
+    SIN_PERMISO
+}
+
+data class EstadoYouTube(
+    val permiso: PermisoYouTube = PermisoYouTube.DESCONOCIDO,
+    val suscripciones: SuscripcionesYouTube = SuscripcionesYouTube(),
+    val verificando: Boolean = false
+) {
+    /**
+     * `true` o `false` si se sabe; `null` si no: falta el permiso, el creador
+     * no tiene canal de YouTube o aún no se ha comprobado. La interfaz no debe
+     * pintar "no suscrito" cuando en realidad no lo sabemos.
+     */
+    fun suscritoA(creadorId: String): Boolean? = when (creadorId) {
+        in suscripciones.suscritos -> true
+        in suscripciones.noSuscritos -> false
+        else -> null
+    }
+}

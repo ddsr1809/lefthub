@@ -90,10 +90,18 @@ fun FilaCreador(
     creador: Creador,
     siguiendo: Boolean,
     onAbrir: () -> Unit,
-    onSeguir: () -> Unit
+    onSeguir: () -> Unit,
+    // true o false si se sabe; null si no (sin permiso, sin canal o sin
+    // comprobar todavía). Con null la fila queda como siempre.
+    suscritoEnYouTube: Boolean? = null
 ) {
     val esquema = MaterialTheme.colorScheme
     val lugares = creador.platforms.size
+    val textoYouTube = when (suscritoEnYouTube) {
+        true -> "Suscrito en YouTube"
+        false -> "Sin suscripción en YouTube"
+        null -> null
+    }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -111,7 +119,8 @@ fun FilaCreador(
                 .clickable(onClick = onAbrir)
                 .semantics(mergeDescendants = true) {
                     role = Role.Button
-                    contentDescription = "${creador.name}, ${creador.category}. Ver su perfil."
+                    contentDescription = "${creador.name}, ${creador.category}. " +
+                        (textoYouTube?.let { "$it. " } ?: "") + "Ver su perfil."
                 }
                 .padding(vertical = Espacio.sm)
         ) {
@@ -132,6 +141,17 @@ fun FilaCreador(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
+                // Línea aparte y con palabras: la diferencia no puede depender
+                // solo de un color ni de un icono que haya que interpretar.
+                if (textoYouTube != null) {
+                    Text(
+                        textoYouTube,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (suscritoEnYouTube == true) esquema.onBackground else esquema.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
