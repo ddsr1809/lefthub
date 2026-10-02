@@ -1,4 +1,4 @@
-// Panel de administración de TubeHub.
+// Panel de administración de VocesLeft.
 //
 // Solo usa rutas que ya existen en el relay-server: /api/auth/google para
 // entrar y /api/admin/* para todo lo demás. El acceso lo decide el servidor,
@@ -17,7 +17,7 @@
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
   const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const main = $('#main');
-  const CONFIG = window.TUBEHUB_CONFIG || {};
+  const CONFIG = window.VOCESLEFT_CONFIG || {};
   const BASE = (CONFIG.apiBase || '').replace(/\/$/, '');
 
   const CATEGORIAS = { cine: 'Cine', comida: 'Comida', politica: 'Política', musica: 'Música', salud: 'Salud', noticias: 'Noticias', tecnologia: 'Tecnología', otros: 'Otros' };
@@ -62,7 +62,7 @@
   // ---------------------------------------------------------------------------
   // sessionStorage y no localStorage: el token de administrador se olvida al
   // cerrar el navegador. Volver a entrar es un clic.
-  const CLAVE = 'tubehub_admin';
+  const CLAVE = 'vocesleft_admin';
   let sesion = null;
   try { sesion = JSON.parse(sessionStorage.getItem(CLAVE) || 'null'); } catch (e) { sesion = null; }
 
@@ -138,7 +138,7 @@
   const host = location.hostname;
   const config = {
     googleClientId: CONFIG.googleClientId || '',
-    ambiente: host.startsWith('testhub.') || host.includes('test') ? 'pruebas'
+    ambiente: host.startsWith('testapp.') || host.includes('test') ? 'pruebas'
       : (host === 'localhost' || host === '127.0.0.1' || location.protocol === 'file:') ? 'local'
       : 'produccion'
   };
@@ -163,7 +163,7 @@
     el.className = 'ambiente ' + config.ambiente;
     el.textContent = textos[config.ambiente];
     el.hidden = false;
-    document.title = (config.ambiente === 'produccion' ? '' : '[' + config.ambiente + '] ') + 'Panel de TubeHub';
+    document.title = (config.ambiente === 'produccion' ? '' : '[' + config.ambiente + '] ') + 'Panel de VocesLeft';
   }
 
   let googleListo = false;

@@ -1,10 +1,10 @@
-package com.tuempresa.creatorhub
+package com.vocesdeizquierda.lefthub
 
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
-import com.tuempresa.creatorhub.data.ApiRelay
+import com.vocesdeizquierda.lefthub.data.ApiRelay
 
 
 /**

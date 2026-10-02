@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.ui
+package com.vocesdeizquierda.lefthub.ui
 
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -17,11 +17,11 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
-import com.tuempresa.creatorhub.BuildConfig
-import com.tuempresa.creatorhub.data.Creador
-import com.tuempresa.creatorhub.data.EstadoYouTube
-import com.tuempresa.creatorhub.data.PermisoYouTube
-import com.tuempresa.creatorhub.enlaces.Enrutador
+import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.data.Creador
+import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.PermisoYouTube
+import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 // El directorio es cerrado: solo aparecen los creadores que el equipo aprobó.
 // Por eso no hay buscador abierto hacia todo YouTube, y por eso la app no cae

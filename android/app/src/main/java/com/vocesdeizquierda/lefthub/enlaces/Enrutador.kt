@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.enlaces
+package com.vocesdeizquierda.lefthub.enlaces
 
 import android.content.ActivityNotFoundException
 import android.content.Context

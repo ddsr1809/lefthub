@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.tuempresa.creatorhub"
+    namespace = "com.vocesdeizquierda.lefthub"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.tuempresa.creatorhub"
+        applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -20,7 +20,7 @@ android {
         // Credential Manager lo necesita para que el servidor pueda validar el
         // token; con el ID de Android puesto aqui, el login falla en silencio.
         //
-        // OJO: si dev y pruebas viven en OTRO proyecto de Firebase, este valor
+        // OJO: si pruebas vive en OTRO proyecto de Firebase, este valor
         // cambia por sabor. En ese caso borra esta linea y pon un
         // buildConfigField("String", "WEB_CLIENT_ID", ...) dentro de cada uno.
         buildConfigField(
@@ -38,44 +38,38 @@ android {
     // -------------------------------------------------------------------------
     // Ambientes
     // -------------------------------------------------------------------------
-    // Cada sabor instala una app distinta en el telefono: applicationId
-    // distinto, nombre distinto, icono propio si quieres. Puedes tener los tres
-    // a la vez y comparar comportamientos sin desinstalar nada.
+    // Solo hay dos sabores, uno por cada servidor del VPS:
+    //
+    //   pruebas -> https://testapp.vocesdeizquierda.com   (com.vocesdeizquierda.lefthub.pruebas)
+    //   prod    -> https://leftapp.vocesdeizquierda.com   (com.vocesdeizquierda.lefthub)
+    //
+    // Cada sabor instala una app distinta en el telefono, asi que puedes tener
+    // las dos a la vez. Ambos hablan con el servidor por HTTPS: ya no existe
+    // un sabor que permita trafico en claro hacia un servidor local.
+    //
+    // Los dos applicationId tienen que estar registrados en Firebase, y cada
+    // carpeta src/<sabor>/ necesita su google-services.json con ese paquete.
     //
     // No se puede llamar "test" a un sabor: el AGP reserva ese prefijo para los
     // conjuntos de fuentes de pruebas unitarias y la sincronizacion falla.
     flavorDimensions += "ambiente"
 
     productFlavors {
-        create("dev") {
-            dimension = "ambiente"
-            applicationIdSuffix = ".dev"
-            versionNameSuffix = "-dev"
-
-            // Dentro del emulador, localhost es el propio emulador; el equipo
-            // anfitrion se alcanza por 10.0.2.2. Con un telefono fisico por
-            // USB, cambia esto por la IP de tu computadora en la red local.
-            buildConfigField("String", "API_BASE", "\"http://10.0.2.2:8080\"")
-            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
-        }
-
         create("pruebas") {
             dimension = "ambiente"
             applicationIdSuffix = ".pruebas"
             versionNameSuffix = "-pruebas"
 
-            // Confirma este nombre antes de compilar: el Caddyfile del
-            // repositorio sirve testhub.d2600.com, pero .env.test.example dice
-            // test.ythub.d2600.com. Tiene que coincidir con RELAY_URL_PUBLICA
-            // del ambiente de pruebas en el VPS.
-            buildConfigField("String", "API_BASE", "\"https://testhub.d2600.com\"")
+            // Tiene que coincidir con RELAY_URL_PUBLICA de .env.test en el VPS.
+            buildConfigField("String", "API_BASE", "\"https://testapp.vocesdeizquierda.com\"")
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
         }
 
         create("prod") {
             dimension = "ambiente"
             // Sin sufijo: este es el applicationId de verdad, el que va a Play.
-            buildConfigField("String", "API_BASE", "\"https://ythub.d2600.com\"")
+            // Tiene que coincidir con RELAY_URL_PUBLICA de .env.prod en el VPS.
+            buildConfigField("String", "API_BASE", "\"https://leftapp.vocesdeizquierda.com\"")
 
             // "¿Estoy suscrito en YouTube?" pide el permiso youtube.readonly,
             // que Google trata como sensible. Mientras la verificación de
@@ -101,8 +95,8 @@ android {
         debug {
             // Ya NO lleva applicationIdSuffix = ".debug".
             // El sufijo lo pone el sabor. Si ambos pusieran el suyo saldrian
-            // seis paquetes distintos (...dev.debug, ...pruebas.debug, etc.) y
-            // habria que registrar los seis en Firebase.
+            // cuatro paquetes distintos (...pruebas.debug, ...debug, etc.) y
+            // habria que registrar los cuatro en Firebase.
         }
     }
 

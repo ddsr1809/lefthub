@@ -1,4 +1,4 @@
-# Desarrollo local de TubeHub. En el VPS se usa docker-compose.vps.yml.
+# Desarrollo local de VocesLeft. En el VPS se usa docker-compose.vps.yml.
 # Los datos de Postgres viven en un volumen y sobreviven a las actualizaciones.
 
 services:
@@ -21,7 +21,7 @@ services:
       retries: 5
 
   servidor:
-    image: ${SERVIDOR_IMAGEN:-tubehub-relay:local}
+    image: ${SERVIDOR_IMAGEN:-vocesleft-relay:local}
     build: .
     restart: unless-stopped
     mem_limit: ${SERVIDOR_MEMORIA:-640m}

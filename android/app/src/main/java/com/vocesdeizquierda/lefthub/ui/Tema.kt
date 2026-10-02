@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.ui
+package com.vocesdeizquierda.lefthub.ui
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme

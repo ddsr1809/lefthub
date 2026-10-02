@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.data
+package com.vocesdeizquierda.lefthub.data
 
 import java.time.Instant
 

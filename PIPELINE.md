@@ -1,4 +1,4 @@
-# Pipeline de TubeHub
+# Pipeline de VocesLeft
 
 Este pipeline cubre el backend que corre en Docker. Android e iOS conservan
 sus compilaciones independientes porque no se despliegan en el VPS.
@@ -8,8 +8,8 @@ sus compilaciones independientes porque no se despliegan en el VPS.
 | Evento | Resultado |
 |---|---|
 | Pull request a `development` o `master` | Pruebas Java y construccion de la imagen, sin desplegar |
-| Push a `development` | Publica la imagen y despliega `relay-test` con `.env.test` |
-| Push a `master` | Publica la imagen y despliega `relay-prod` con `.env.prod` |
+| Push a `development` | Publica la imagen y despliega `vocesleft-test` con `.env.test` |
+| Push a `master` | Publica la imagen y despliega `vocesleft-prod` con `.env.prod` |
 | Ejecucion manual desde cualquier rama | Permite validar (`none`) o desplegar `test` |
 | Ejecucion manual desde `master` | Tambien permite desplegar `prod` |
 
@@ -50,21 +50,21 @@ extremo, usa una URL HTTPS publica temporal en `.env.local`.
 
 ## Estructura del VPS
 
-Con `VPS_APP_DIR=/opt/tubehub`, los secretos actuales permanecen donde estan:
+Con `VPS_APP_DIR=/opt/vocesleft`, los secretos actuales permanecen donde estan:
 
 ```text
-/opt/tubehub/relay-server/.env.test
-/opt/tubehub/relay-server/.env.prod
+/opt/vocesleft/relay-server/.env.test
+/opt/vocesleft/relay-server/.env.prod
 ```
 
 El pipeline crea y administra automaticamente directorios separados que no
 forman parte del clon Git:
 
 ```text
-/opt/tubehub/runtime/test/docker-compose.yml
-/opt/tubehub/runtime/test/.env.imagen
-/opt/tubehub/runtime/prod/docker-compose.yml
-/opt/tubehub/runtime/prod/.env.imagen
+/opt/vocesleft/runtime/test/docker-compose.yml
+/opt/vocesleft/runtime/test/.env.imagen
+/opt/vocesleft/runtime/prod/docker-compose.yml
+/opt/vocesleft/runtime/prod/.env.imagen
 ```
 
 No ejecutes `git pull`, `docker compose build` ni `docker compose up` dentro de
@@ -72,18 +72,29 @@ los directorios `runtime`. El pipeline copia el Compose exclusivo del VPS y
 solo utiliza imagenes inmutables de GHCR. Los JSON de FCM permanecen en las
 rutas absolutas declaradas mediante `FCM_CREDENCIALES_HOST`.
 
-## Configurar SSH
+## Configurar SSH y GitHub
+
+Todo lo de esta seccion y la siguiente lo hace un solo comando desde tu laptop:
+
+```bash
+bash scripts/configurar-github.sh
+```
+
+Crea la llave, la autoriza en el VPS, comprueba las huellas, crea los
+Environments y guarda los secretos. Lo que sigue describe lo mismo paso a
+paso, por si necesitas hacerlo o revisarlo a mano.
+
 
 La llave del pipeline debe ser exclusiva y no tener passphrase, porque GitHub
 Actions no puede responder una solicitud interactiva:
 
 ```bash
 ssh-keygen -t ed25519 -N "" \
-  -C tubehub-github-actions-ci \
-  -f "$HOME/.ssh/tubehub_actions_ci"
+  -C vocesleft-github-actions-ci \
+  -f "$HOME/.ssh/vocesleft_actions_ci"
 
-ssh-copy-id -i "$HOME/.ssh/tubehub_actions_ci.pub" \
-  -p 22 root@TU_HOST_VPS
+ssh-copy-id -i "$HOME/.ssh/vocesleft_actions_ci.pub" \
+  -p 22 root@216.238.70.157
 ```
 
 Prueba exactamente el modo no interactivo del pipeline:
@@ -92,23 +103,23 @@ Prueba exactamente el modo no interactivo del pipeline:
 SSH_AUTH_SOCK= ssh \
   -o BatchMode=yes \
   -o IdentitiesOnly=yes \
-  -i "$HOME/.ssh/tubehub_actions_ci" \
-  -p 22 root@TU_HOST_VPS whoami
+  -i "$HOME/.ssh/vocesleft_actions_ci" \
+  -p 22 root@216.238.70.157 whoami
 ```
 
-## Configurar GitHub
+### Environments y secretos
 
 En **Settings > Environments**, crea `test` y `prod`. En cada Environment agrega
 estos secretos (pueden apuntar al mismo VPS):
 
-| Secreto | Valor actual de TubeHub |
+| Secreto | Valor de VocesLeft |
 |---|---|
-| `VPS_HOST` | `ythub.d2600.com` |
+| `VPS_HOST` | `216.238.70.157` |
 | `VPS_PORT` | `22` |
 | `VPS_USER` | `root` |
 | `VPS_SSH_KEY` | Contenido completo de la llave privada sin passphrase |
-| `VPS_KNOWN_HOSTS` | Resultado de `ssh-keyscan -H -p 22 ythub.d2600.com` |
-| `VPS_APP_DIR` | `/opt/tubehub` |
+| `VPS_KNOWN_HOSTS` | Resultado de `ssh-keyscan -p 22 -t ed25519,ecdsa,rsa 216.238.70.157` (sin `-H`) |
+| `VPS_APP_DIR` | `/opt/vocesleft` |
 
 En `prod` es obligatorio permitir despliegues solamente desde `master`. Tambien
 se recomienda activar **Required reviewers**. El workflow contiene una segunda
@@ -119,11 +130,11 @@ proteccion: un despliegue manual de `prod` se omite si la rama no es `master`.
 El pipeline es el metodo normal de despliegue. Para consultar `test` en el VPS:
 
 ```bash
-cd /opt/tubehub/runtime/test
+cd /opt/vocesleft/runtime/test
 docker compose \
-  --env-file /opt/tubehub/relay-server/.env.test \
+  --env-file /opt/vocesleft/relay-server/.env.test \
   --env-file .env.imagen \
-  -p relay-test \
+  -p vocesleft-test \
   -f docker-compose.yml \
   ps
 ```
@@ -132,9 +143,9 @@ Para recrear solamente el servidor de `test` sin compilar nada:
 
 ```bash
 docker compose \
-  --env-file /opt/tubehub/relay-server/.env.test \
+  --env-file /opt/vocesleft/relay-server/.env.test \
   --env-file .env.imagen \
-  -p relay-test \
+  -p vocesleft-test \
   -f docker-compose.yml \
   up -d --no-deps --force-recreate servidor
 ```

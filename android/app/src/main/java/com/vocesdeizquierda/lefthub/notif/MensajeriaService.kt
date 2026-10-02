@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.notif
+package com.vocesdeizquierda.lefthub.notif
 
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -8,11 +8,11 @@ import androidx.core.app.NotificationCompat
 import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
-import com.tuempresa.creatorhub.MainActivity
-import com.tuempresa.creatorhub.R
-import com.tuempresa.creatorhub.RelayApp
-import com.tuempresa.creatorhub.data.ApiRelay
-import com.tuempresa.creatorhub.data.DirectorioRepo
+import com.vocesdeizquierda.lefthub.MainActivity
+import com.vocesdeizquierda.lefthub.R
+import com.vocesdeizquierda.lefthub.RelayApp
+import com.vocesdeizquierda.lefthub.data.ApiRelay
+import com.vocesdeizquierda.lefthub.data.DirectorioRepo
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob

@@ -6,10 +6,10 @@
 // No es secreto: viaja en cualquier página que muestre el botón de Google.
 //
 // apiBase: vacío cuando el panel se sirve desde el mismo dominio que la API
-// (https://ythub.d2600.com/admin o https://testhub.d2600.com/admin). Solo para
+// (https://leftapp.vocesdeizquierda.com/admin o https://testapp.vocesdeizquierda.com/admin). Solo para
 // abrirlo desde otro origen, pon aquí la URL del servidor y agrega ese origen
 // a CORS_ORIGENES en el .env.
-window.TUBEHUB_CONFIG = {
+window.VOCESLEFT_CONFIG = {
   googleClientId: '389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com',
   apiBase: ''
 };
