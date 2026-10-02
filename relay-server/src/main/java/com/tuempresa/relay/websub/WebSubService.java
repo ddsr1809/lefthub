@@ -9,8 +9,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.HttpClientErrorException;
@@ -21,7 +23,9 @@ import org.springframework.web.client.RestClient;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.locks.ReentrantLock;
 
 @Service
 public class WebSubService {
@@ -36,12 +40,18 @@ public class WebSubService {
     private final YouTubeClient youtube;
     private final PushService push;
     private final LectorDeFeed lector;
+    private final TransactionTemplate transaccionNueva;
+
+    // El hub y el vigilante pueden querer revisar los directos a la vez. Con
+    // el cerrojo, solo uno manda el aviso de "está en vivo".
+    private final ReentrantLock cerrojoDirectos = new ReentrantLock();
 
     public WebSubService(Repositorios.Creadores creadores,
                          Repositorios.Publicaciones publicaciones,
                          Repositorios.Suscripciones suscripciones,
                          RestClient http, RelayProperties config,
-                         YouTubeClient youtube, PushService push, LectorDeFeed lector) {
+                         YouTubeClient youtube, PushService push, LectorDeFeed lector,
+                         PlatformTransactionManager gestorDeTransacciones) {
         this.creadores = creadores;
         this.publicaciones = publicaciones;
         this.suscripciones = suscripciones;
@@ -50,6 +60,9 @@ public class WebSubService {
         this.youtube = youtube;
         this.push = push;
         this.lector = lector;
+
+        this.transaccionNueva = new TransactionTemplate(gestorDeTransacciones);
+        this.transaccionNueva.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     // -------------------------------------------------------------------------
@@ -69,7 +82,6 @@ public class WebSubService {
      * antes de que esta peticion termine. Si el registro no estuviera
      * confirmado, rechazariamos nuestra propia suscripcion.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void handshake(String channelId, String modo) {
         if (config.urlPublica().isBlank()) {
             throw new IllegalStateException(
@@ -78,14 +90,22 @@ public class WebSubService {
 
         String topic = RelayProperties.feedDe(channelId);
 
-        Suscripcion registro = suscripciones.findById(channelId).orElseGet(Suscripcion::new);
-        registro.setChannelId(channelId);
-        registro.setTopic(topic);
-        registro.setModo(modo);
-        registro.setEstado(Suscripcion.PENDIENTE);
-        registro.setSolicitadoEn(Instant.now());
-        registro.setUltimoError(null);
-        suscripciones.saveAndFlush(registro);
+        // La anotación @Transactional(REQUIRES_NEW) que había aquí no hacía
+        // nada: suscribir() llama a este método sobre `this`, sin pasar por el
+        // proxy de Spring. Desde el panel, el registro quedaba dentro de la
+        // transacción del controlador, sin confirmar, y el GET de verificación
+        // del hub no lo encontraba. Con la plantilla, el commit ocurre de
+        // verdad antes de hablar con el hub.
+        transaccionNueva.executeWithoutResult(estado -> {
+            Suscripcion registro = suscripciones.findById(channelId).orElseGet(Suscripcion::new);
+            registro.setChannelId(channelId);
+            registro.setTopic(topic);
+            registro.setModo(modo);
+            registro.setEstado(Suscripcion.PENDIENTE);
+            registro.setSolicitadoEn(Instant.now());
+            registro.setUltimoError(null);
+            suscripciones.saveAndFlush(registro);
+        });
 
         MultiValueMap<String, String> formulario = new LinkedMultiValueMap<>();
         formulario.add("hub.mode", modo);
@@ -100,9 +120,13 @@ public class WebSubService {
             log.info("Handshake {} enviado para {} (HTTP {})", modo, channelId, codigo);
 
         } catch (Exception e) {
-            registro.setEstado(Suscripcion.ERROR);
-            registro.setUltimoError(recortar(e.getMessage(), 500));
-            suscripciones.save(registro);
+            String motivo = recortar(e.getMessage(), 500);
+            transaccionNueva.executeWithoutResult(estado ->
+                    suscripciones.findById(channelId).ifPresent(registro -> {
+                        registro.setEstado(Suscripcion.ERROR);
+                        registro.setUltimoError(motivo);
+                        suscripciones.save(registro);
+                    }));
             throw new IllegalStateException("El hub rechazó la petición: " + e.getMessage(), e);
         }
     }
@@ -160,7 +184,10 @@ public class WebSubService {
         log.info("Repescando {} suscripciones que no llegaron a ACTIVA", atrasadas.size());
         for (Suscripcion s : atrasadas) {
             try {
-                suscribir(s.getChannelId());
+                // Una baja pendiente se reintenta como baja. Antes se volvía a
+                // suscribir un canal que el panel había pedido cancelar.
+                handshake(s.getChannelId(),
+                        "unsubscribe".equals(s.getModo()) ? "unsubscribe" : "subscribe");
             } catch (Exception e) {
                 log.warn("Repesca fallida para {}: {}", s.getChannelId(), e.getMessage());
             }
@@ -254,8 +281,16 @@ public class WebSubService {
         //    la entrada cada vez que el creador edita el título. El índice
         //    único sobre video_id es quien decide de verdad: si dos hilos
         //    llegan a la vez, uno inserta y el otro recibe la violación.
-        if (publicaciones.existsByVideoId(entrada.videoId())) {
-            log.debug("Entrada repetida ignorada: {}", entrada.videoId());
+        Optional<Publicacion> conocida = publicaciones.findByVideoId(entrada.videoId());
+        if (conocida.isPresent()) {
+            // La excepción son los directos programados: YouTube vuelve a
+            // mandar la entrada cuando arrancan, y ese segundo aviso es el que
+            // importa. Antes se descartaba aquí por repetido.
+            if (Publicacion.DIRECTO_PROGRAMADO.equals(conocida.get().getDirecto())) {
+                revisarDirectos();
+            } else {
+                log.debug("Entrada repetida ignorada: {}", entrada.videoId());
+            }
             return;
         }
 
@@ -283,6 +318,7 @@ public class WebSubService {
         p.setDuracion(detalle != null ? detalle.duracion() : null);
         p.setTipo(detalle != null ? detalle.tipo() : "video");
         p.setEnVivo(detalle != null && detalle.enVivo());
+        p.setDirecto(detalle != null ? detalle.directo() : Publicacion.DIRECTO_NO);
         p.setUrl("https://www.youtube.com/watch?v=" + entrada.videoId());
         p.setPublicadoEn(entrada.publicado() != null ? entrada.publicado() : Instant.now());
         p.setEstado(Publicacion.OK);
@@ -296,18 +332,151 @@ public class WebSubService {
             return;
         }
 
-        if (esViejo) {
+        // Un directo programado todavía no es noticia: se guarda y el
+        // vigilante avisa cuando arranque de verdad.
+        if (Publicacion.DIRECTO_PROGRAMADO.equals(p.getDirecto())) {
+            log.info("Directo {} programado; se avisará cuando arranque", entrada.videoId());
+            return;
+        }
+
+        // La fecha de un directo es la de cuando se programó, que puede ser de
+        // hace días. Si está al aire ahora, el corte de antigüedad no aplica.
+        boolean alAire = Publicacion.DIRECTO_EN_VIVO.equals(p.getDirecto());
+
+        if (esViejo && !alAire) {
             log.info("Video {} guardado sin notificar (publicado {})",
                     entrada.videoId(), entrada.publicado());
             return;
         }
 
         // 5. Avisar.
-        push.avisarPublicacion(creador, entrada.videoId(), p.getTitulo(),
+        boolean enviado = push.avisarPublicacion(creador, entrada.videoId(), p.getTitulo(),
                 p.getMiniaturaUrl(), detalle);
 
-        p.setNotificado(true);
+        // Solo se marca si FCM aceptó el mensaje. Antes quedaba en true aunque
+        // el envío fallara, y la base de datos decía "notificado" sin serlo.
+        p.setNotificado(enviado);
+        if (alAire) p.setDirectoAvisado(enviado);
         publicaciones.save(p);
+    }
+
+    // -------------------------------------------------------------------------
+    // Directos
+    // -------------------------------------------------------------------------
+
+    /**
+     * Revisa los directos programados o al aire y actúa sobre los que cambiaron.
+     *
+     * El hub no garantiza un aviso en el momento en que una transmisión
+     * arranca, así que no se puede depender de él. Esto pregunta a la Data API
+     * por todos los pendientes de una vez: 1 unidad de cuota por cada 50.
+     */
+    public void revisarDirectos() {
+        cerrojoDirectos.lock();
+        try {
+            List<Publicacion> pendientes = publicaciones.findByDirectoIn(
+                    List.of(Publicacion.DIRECTO_PROGRAMADO, Publicacion.DIRECTO_EN_VIVO));
+            if (pendientes.isEmpty()) return;
+
+            Map<String, YouTubeClient.DetalleDeVideo> detalles = youtube.detallesDeVideos(
+                    pendientes.stream().map(Publicacion::getVideoId).toList());
+
+            // null es un fallo de la API, no "ya no existen". Sin esta
+            // distinción, un corte de red daría todos los directos por
+            // terminados.
+            if (detalles == null) return;
+
+            for (Publicacion p : pendientes) {
+                try {
+                    actualizarDirecto(p, detalles.get(p.getVideoId()));
+                } catch (Exception e) {
+                    log.error("Fallo revisando el directo {}", p.getVideoId(), e);
+                }
+            }
+        } finally {
+            cerrojoDirectos.unlock();
+        }
+    }
+
+    private void actualizarDirecto(Publicacion p, YouTubeClient.DetalleDeVideo detalle) {
+        String antes = p.getDirecto();
+
+        // Un video que la API ya no devuelve se borró o se hizo privado.
+        String ahora = detalle != null ? detalle.directo() : Publicacion.DIRECTO_TERMINADO;
+
+        boolean alAire = Publicacion.DIRECTO_EN_VIVO.equals(ahora);
+        boolean faltaAvisar = alAire && !p.isDirectoAvisado();
+
+        if (ahora.equals(antes) && !faltaAvisar) return;
+
+        p.setDirecto(ahora);
+        p.setEnVivo(alAire);
+        if (detalle != null) {
+            // El título de un directo suele cambiar entre que se programa y
+            // que sale al aire.
+            p.setTitulo(detalle.titulo());
+            p.setDuracion(detalle.duracion());
+        }
+
+        if (faltaAvisar) {
+            Creador creador = creadores.findById(p.getCreadorId()).orElse(null);
+
+            if (creador != null && creador.isActivo()) {
+                boolean enviado = push.avisarDirecto(creador, p.getVideoId(),
+                        p.getTitulo(), p.getMiniaturaUrl());
+                // Si FCM falló, queda sin marcar y se reintenta en la
+                // siguiente pasada, mientras el directo siga al aire.
+                p.setDirectoAvisado(enviado);
+                if (enviado) p.setNotificado(true);
+            } else {
+                p.setDirectoAvisado(true);
+            }
+        }
+
+        publicaciones.save(p);
+        log.info("Directo {}: {} -> {}", p.getVideoId(), antes, ahora);
+    }
+
+    /**
+     * Lee el feed público de cada canal y procesa lo que el hub no entregó.
+     *
+     * Cubre tres huecos: lo que ya estaba publicado o programado cuando se dio
+     * de alta al creador, los avisos que el hub pierde, y los que entrega con
+     * horas de retraso. Leer el feed no gasta cuota; solo los videos nuevos
+     * cuestan 1 unidad al enriquecerlos.
+     */
+    public void sondearFeeds() {
+        for (Creador creador : creadores.activosConYouTube()) {
+            String canal = creador.getCanalDeYouTube();
+            if (canal == null || canal.isBlank()) continue;
+
+            try {
+                byte[] xml = http.get()
+                        .uri("https://www.youtube.com/feeds/videos.xml?channel_id={canal}", canal)
+                        .retrieve()
+                        .body(byte[].class);
+                if (xml == null || xml.length == 0) continue;
+
+                for (LectorDeFeed.Entrada entrada : lector.leer(xml).entradas()) {
+                    if (!canal.equals(entrada.channelId())) continue;
+                    if (publicaciones.existsByVideoId(entrada.videoId())) continue;
+
+                    log.info("Video {} de {} encontrado por sondeo", entrada.videoId(), canal);
+                    procesarEntrada(entrada);
+                }
+            } catch (Exception e) {
+                // El feed público falla de vez en cuando. No es grave: se
+                // vuelve a intentar en la siguiente pasada.
+                log.warn("Sondeo fallido para {}: {}", canal, e.getMessage());
+            }
+
+            try {
+                Thread.sleep(200);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+        }
     }
 
     // -------------------------------------------------------------------------

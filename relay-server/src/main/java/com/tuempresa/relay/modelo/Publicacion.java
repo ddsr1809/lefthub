@@ -14,6 +14,12 @@ public class Publicacion {
     public static final String MOVIDO = "moved";
     public static final String RETIRADO = "removed";
 
+    // Ciclo de vida de un directo. Un video normal se queda en NO.
+    public static final String DIRECTO_NO = "no";
+    public static final String DIRECTO_PROGRAMADO = "programado";
+    public static final String DIRECTO_EN_VIVO = "en_vivo";
+    public static final String DIRECTO_TERMINADO = "terminado";
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -59,6 +65,13 @@ public class Publicacion {
 
     @Column(nullable = false)
     private boolean notificado = false;
+
+    @Column(nullable = false)
+    private String directo = DIRECTO_NO;
+
+    /** Ya se mandó el aviso de "está en vivo ahora" para este video. */
+    @Column(name = "directo_avisado", nullable = false)
+    private boolean directoAvisado = false;
 
     @Column(nullable = false)
     private int reportes = 0;
@@ -113,6 +126,12 @@ public class Publicacion {
 
     public boolean isNotificado() { return notificado; }
     public void setNotificado(boolean notificado) { this.notificado = notificado; }
+
+    public String getDirecto() { return directo; }
+    public void setDirecto(String directo) { this.directo = directo; }
+
+    public boolean isDirectoAvisado() { return directoAvisado; }
+    public void setDirectoAvisado(boolean directoAvisado) { this.directoAvisado = directoAvisado; }
 
     public int getReportes() { return reportes; }
     public void setReportes(int reportes) { this.reportes = reportes; }

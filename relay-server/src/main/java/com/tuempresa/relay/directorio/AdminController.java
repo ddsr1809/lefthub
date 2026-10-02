@@ -162,6 +162,24 @@ public class AdminController {
     }
 
     /**
+     * Manda un aviso de prueba a quienes siguen a este creador. Aísla el tramo
+     * servidor → FCM → teléfono del tramo YouTube → servidor.
+     */
+    @PostMapping("/creadores/{id}/aviso-de-prueba")
+    public Dtos.RespuestaSimple avisoDePrueba(@PathVariable UUID id) {
+        Creador creador = creadores.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Ese creador ya no existe."));
+
+        String fallo = push.avisarPrueba(creador);
+        if (fallo != null) {
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, fallo);
+        }
+        return Dtos.RespuestaSimple.de("FCM aceptó el aviso para el topic "
+                + PushService.topicDe(creador.getId()) + ".");
+    }
+
+    /**
      * Busca los datos públicos de un canal para prellenar el formulario.
      * Acepta un ID UC..., un @handle o una URL completa.
      */

@@ -54,6 +54,9 @@ public final class Repositorios {
 
         boolean existsByVideoId(String videoId);
 
+        /** Directos pendientes de arrancar o de terminar. */
+        List<Publicacion> findByDirectoIn(Collection<String> estados);
+
         @Query("""
                 select p from Publicacion p
                 where p.creadorId in :creadores and p.estado <> 'removed'

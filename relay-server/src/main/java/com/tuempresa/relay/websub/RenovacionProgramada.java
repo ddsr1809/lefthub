@@ -57,6 +57,20 @@ public class RenovacionProgramada {
         if (!config.renovacion().programada()) return;
         servicio.reintentarNoActivas();
     }
+
+    /** Detecta cuándo arranca o termina un directo sin depender del hub. */
+    @Scheduled(fixedDelay = 2, timeUnit = TimeUnit.MINUTES, initialDelay = 1)
+    public void vigilarDirectos() {
+        if (!config.renovacion().programada()) return;
+        servicio.revisarDirectos();
+    }
+
+    /** Red de seguridad: recoge del feed público lo que el hub no entregó. */
+    @Scheduled(fixedDelay = 5, timeUnit = TimeUnit.MINUTES, initialDelay = 1)
+    public void sondearFeeds() {
+        if (!config.renovacion().programada()) return;
+        servicio.sondearFeeds();
+    }
 }
 
 /**

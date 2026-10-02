@@ -11,7 +11,9 @@ import org.springframework.web.util.UriUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Cliente de la Data API v3.
@@ -51,7 +53,9 @@ public class YouTubeClient {
             String publicado,
             String duracion,
             boolean enVivo,
-            String tipo
+            String tipo,
+            /** no | programado | en_vivo | terminado. Ver Publicacion.DIRECTO_*. */
+            String directo
     ) {}
 
     /**
@@ -74,9 +78,55 @@ public class YouTubeClient {
             return null;
         }
 
+        return aDetalle(videoId, item);
+    }
+
+    /**
+     * Estado actual de varios videos en una sola llamada. Coste: 1 unidad por
+     * cada 50 IDs, que es lo que hace barato vigilar los directos.
+     *
+     * Devuelve null si la llamada falló, y un mapa (quizá vacío) si funcionó.
+     * La diferencia importa: un video ausente en una respuesta correcta es un
+     * video borrado o privado; un fallo de red no dice nada de ninguno.
+     */
+    public Map<String, DetalleDeVideo> detallesDeVideos(List<String> videoIds) {
+        Map<String, DetalleDeVideo> detalles = new LinkedHashMap<>();
+
+        for (int desde = 0; desde < videoIds.size(); desde += 50) {
+            List<String> lote = videoIds.subList(desde, Math.min(desde + 50, videoIds.size()));
+
+            JsonNode respuesta = pedir(BASE + "/videos"
+                    + "?part=snippet,liveStreamingDetails,contentDetails"
+                    + "&maxResults=50"
+                    + "&id=" + codificar(String.join(",", lote))
+                    + "&key=" + config.youtube().apiKey());
+
+            if (respuesta == null) return null;
+
+            JsonNode items = respuesta.get("items");
+            if (items == null || !items.isArray()) continue;
+
+            for (JsonNode item : items) {
+                String id = texto(item, "id");
+                if (id != null) detalles.put(id, aDetalle(id, item));
+            }
+        }
+        return detalles;
+    }
+
+    private DetalleDeVideo aDetalle(String videoId, JsonNode item) {
         JsonNode snippet = item.get("snippet");
         JsonNode enVivo = item.get("liveStreamingDetails");
         String duracion = texto(item.path("contentDetails"), "duration");
+
+        // liveStreamingDetails solo existe en directos y estrenos. Las marcas
+        // de tiempo dicen en qué punto está: sin inicio real, aún no arranca;
+        // con inicio y sin final, está al aire; con final, ya terminó.
+        String directo;
+        if (enVivo == null) directo = "no";
+        else if (enVivo.has("actualEndTime")) directo = "terminado";
+        else if (enVivo.has("actualStartTime")) directo = "en_vivo";
+        else directo = "programado";
 
         return new DetalleDeVideo(
                 videoId,
@@ -87,8 +137,9 @@ public class YouTubeClient {
                 mejorMiniatura(snippet),
                 texto(snippet, "publishedAt"),
                 duracion,
-                enVivo != null && enVivo.has("actualStartTime") && !enVivo.has("actualEndTime"),
-                esCorto(duracion) ? "short" : "video"
+                "en_vivo".equals(directo),
+                esCorto(duracion) ? "short" : "video",
+                directo
         );
     }
 
