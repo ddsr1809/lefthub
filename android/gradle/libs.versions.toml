@@ -11,6 +11,7 @@ firebaseBom = "33.7.0"
 googleServices = "4.4.2"
 credentials = "1.3.0"
 googleid = "1.1.1"
+playServicesAuth = "21.5.0"
 coil = "2.7.0"
 coroutines = "1.9.0"
 okhttp = "4.12.0"
@@ -38,6 +39,11 @@ firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
 androidx-credentials-play-services = { group = "androidx.credentials", name = "credentials-play-services-auth", version.ref = "credentials" }
 googleid = { group = "com.google.android.libraries.identity.googleid", name = "googleid", version.ref = "googleid" }
+
+# AuthorizationClient: pide permisos sobre datos de Google (aquí, leer las
+# suscripciones de YouTube). Credential Manager solo dice QUIÉN es la persona;
+# esto es lo que da acceso a sus datos, y Google exige que sean flujos aparte.
+play-services-auth = { group = "com.google.android.gms", name = "play-services-auth", version.ref = "playServicesAuth" }
 
 # Cliente HTTP del servidor Relé. Reemplaza a firebase-functions, que solo
 # sabía hablar con Cloud Functions callable.

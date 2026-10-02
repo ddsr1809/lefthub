@@ -8,7 +8,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.tuempresa.creatorhub.BuildConfig
 import com.tuempresa.creatorhub.EstadoApp
+import com.tuempresa.creatorhub.data.PermisoYouTube
 
 @Composable
 fun AjustesPantalla(
@@ -16,7 +18,9 @@ fun AjustesPantalla(
     onGuardarPreferencia: (String, Any) -> Unit,
     onVincularGoogle: () -> Unit,
     onCerrarSesion: () -> Unit,
-    onBorrarCuenta: () -> Unit
+    onBorrarCuenta: () -> Unit,
+    onConectarYouTube: () -> Unit = {},
+    onDesconectarYouTube: () -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     var confirmandoBorrado by remember { mutableStateOf(false) }
@@ -102,6 +106,45 @@ fun AjustesPantalla(
                     variante = VarianteBoton.SECUNDARIO,
                     onClick = onCerrarSesion
                 )
+            }
+        }
+
+        // --- YouTube --------------------------------------------------------
+        // Solo con la cuenta guardada: las suscripciones son de una cuenta de
+        // Google, y un invitado no tiene ninguna que consultar.
+        if (BuildConfig.SUSCRIPCIONES_YOUTUBE && !estado.esAnonimo) {
+            Seccion("Tus suscripciones de YouTube") {
+                if (estado.youtube.permiso == PermisoYouTube.CONCEDIDO) {
+                    Text(
+                        "Cada vez que abres la app consultamos tu cuenta de YouTube para " +
+                            "decirte a cuáles de estos creadores estás suscrito. Solo podemos " +
+                            "leer: no suscribimos, comentamos ni cambiamos nada en tu nombre.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = esquema.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = Espacio.md)
+                    )
+                    BotonGrande(
+                        titulo = "Dejar de consultar YouTube",
+                        subtitulo = "Borra lo que guardamos y retira el permiso",
+                        variante = VarianteBoton.SECUNDARIO,
+                        onClick = onDesconectarYouTube
+                    )
+                } else {
+                    Text(
+                        "Seguir a un creador aquí no es lo mismo que estar suscrito a su " +
+                            "canal. Si conectas YouTube, te decimos en cuáles sí lo estás.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = esquema.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = Espacio.md)
+                    )
+                    BotonGrande(
+                        titulo = "Conectar con YouTube",
+                        subtitulo = "Google te pedirá permiso para consultar tus suscripciones",
+                        variante = VarianteBoton.SECUNDARIO,
+                        habilitado = !estado.youtube.verificando,
+                        onClick = onConectarYouTube
+                    )
+                }
             }
         }
 

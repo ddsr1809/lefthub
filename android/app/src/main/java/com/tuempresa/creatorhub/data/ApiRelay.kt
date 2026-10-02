@@ -80,6 +80,15 @@ object ApiRelay {
         val favoritosFusionados: Boolean
     )
 
+    /**
+     * Respuesta de error del servidor, con su código.
+     *
+     * Sigue siendo una IOException, así que todo lo que ya atrapaba fallos de
+     * red la atrapa igual. El código lo mira solo quien necesita distinguir
+     * un caso de otro, como YouTubeRepo con el 412.
+     */
+    class ErrorHttp(val codigo: Int, mensaje: String) : IOException(mensaje)
+
     /** Datos de la sesión actual, sin tocar la red. */
     var sesion: Sesion? = null
         private set
@@ -182,6 +191,35 @@ object ApiRelay {
     }
 
     // -------------------------------------------------------------------------
+    // Suscripciones de YouTube
+    // -------------------------------------------------------------------------
+
+    /** Lo último que el servidor comprobó. No llama a YouTube. */
+    suspend fun suscripcionesYouTube(): SuscripcionesYouTube =
+        suscripcionesDe(getObject("/api/youtube/suscripciones"))
+
+    /**
+     * Le pasa al servidor el token de acceso de Google para que pregunte a
+     * YouTube. El token dura una hora y el servidor no lo guarda.
+     */
+    suspend fun verificarSuscripcionesYouTube(tokenDeAcceso: String): SuscripcionesYouTube =
+        suscripcionesDe(post("/api/youtube/suscripciones", JSONObject().put("accessToken", tokenDeAcceso)))
+
+    suspend fun olvidarSuscripcionesYouTube() {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/youtube/suscripciones")
+            .delete())
+    }
+
+    private fun suscripcionesDe(json: JSONObject) = SuscripcionesYouTube(
+        suscritos = json.optJSONArray("suscritos").mapJsonStrings().toSet(),
+        noSuscritos = json.optJSONArray("noSuscritos").mapJsonStrings().toSet(),
+        verificadoEn = json.optStringONull("verificadoEn")?.let {
+            runCatching { Instant.parse(it) }.getOrNull()
+        }
+    )
+
+    // -------------------------------------------------------------------------
     // Mapeo
     // -------------------------------------------------------------------------
     // El servidor usa nombres en español; los modelos de la app conservan los
@@ -281,7 +319,7 @@ object ApiRelay {
                     }.getOrNull()
 
                     Log.w(TAG, "Respuesta ${respuesta.code} de ${respuesta.request.url}")
-                    throw IOException(motivo ?: "No se pudo completar la operación.")
+                    throw ErrorHttp(respuesta.code, motivo ?: "No se pudo completar la operación.")
                 }
 
                 cuerpo

@@ -1,10 +1,13 @@
 package com.tuempresa.creatorhub
 
 import android.content.Context
+import android.content.IntentSender
+import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tuempresa.creatorhub.data.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -20,13 +23,15 @@ data class EstadoApp(
     val correo: String? = null,
     val ocupado: Boolean = false,
     val mensaje: String? = null,
-    val conflicto: AuthRepo.Resultado.Conflicto? = null
+    val conflicto: AuthRepo.Resultado.Conflicto? = null,
+    val youtube: EstadoYouTube = EstadoYouTube()
 )
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(
     private val directorio: DirectorioRepo = DirectorioRepo(),
-    private val autenticacion: AuthRepo = AuthRepo()
+    private val autenticacion: AuthRepo = AuthRepo(),
+    private val youtube: YouTubeRepo = YouTubeRepo()
 ) : ViewModel() {
 
     private val _estado = MutableStateFlow(EstadoApp())
@@ -44,6 +49,16 @@ class AppViewModel(
 
     // Los cambios salen de uno en uno y en el orden en que se tocaron.
     private val escrituras = Mutex()
+
+    // Peticiones de "abre la pantalla de permiso de Google". Es un canal y no
+    // un campo del estado porque es un suceso, no algo que se pinta: si
+    // viviera en el estado, girar el teléfono volvería a abrir la pantalla.
+    private val _permisosDeYouTube = Channel<IntentSender>(Channel.BUFFERED)
+    val permisosDeYouTube: Flow<IntentSender> = _permisosDeYouTube.receiveAsFlow()
+
+    // Una sola comprobación de YouTube a la vez.
+    private val turnoYouTube = Mutex()
+    private var ultimaComprobacionYouTube = 0L
 
     init {
         viewModelScope.launch {
@@ -169,6 +184,132 @@ class AppViewModel(
     }
 
     // -------------------------------------------------------------------------
+    // Suscripciones de YouTube
+    // -------------------------------------------------------------------------
+
+    /**
+     * La comprobación "en cuanto entra". La llama MainActivity cada vez que la
+     * app pasa a primer plano: al abrirla y al volver de YouTube, que es justo
+     * cuando alguien acaba de suscribirse y espera verlo reflejado.
+     *
+     * Es silenciosa de principio a fin. Si falta el permiso no lo pide; solo
+     * deja el estado en SIN_PERMISO para que la pantalla ofrezca el botón. Y
+     * si algo falla no avisa: nadie pidió nada, así que no hay nada que
+     * explicar.
+     */
+    fun verificarYouTube(contexto: Context) = viewModelScope.launch {
+        if (!BuildConfig.SUSCRIPCIONES_YOUTUBE) return@launch
+
+        // onResume llega antes de que exista la sesión; esperamos a que esté.
+        estado.first { it.listo }
+        if (autenticacion.esAnonimo) return@launch
+
+        val ahora = SystemClock.elapsedRealtime()
+        if (ahora - ultimaComprobacionYouTube < PAUSA_YOUTUBE_MS) return@launch
+
+        comprobarYouTube(contexto.applicationContext, interactivo = false)
+    }
+
+    /** El botón "Conectar con YouTube". Aquí sí se muestra la pantalla de Google. */
+    fun conectarYouTube(contexto: Context) = viewModelScope.launch {
+        if (!BuildConfig.SUSCRIPCIONES_YOUTUBE) return@launch
+        if (autenticacion.esAnonimo) {
+            avisar("Primero guarda tu cuenta con Google, aquí en Ajustes.")
+            return@launch
+        }
+        youtube.encender(contexto)
+        comprobarYouTube(contexto.applicationContext, interactivo = true)
+    }
+
+    /** La pantalla de permiso de Google se cerró. */
+    fun permisoDeYouTubeRespondido(contexto: Context, concedido: Boolean) = viewModelScope.launch {
+        if (!concedido) {
+            // Dijo que no, o cerró la pantalla. Se respeta sin insistir.
+            _estado.update { it.copy(youtube = EstadoYouTube(PermisoYouTube.SIN_PERMISO)) }
+            return@launch
+        }
+        // Con el permiso ya dado, el mismo camino silencioso trae el token.
+        comprobarYouTube(contexto.applicationContext, interactivo = false, avisarSiFalla = true)
+    }
+
+    fun desconectarYouTube(contexto: Context) = viewModelScope.launch {
+        turnoYouTube.withLock {
+            youtube.desconectar(contexto.applicationContext, autenticacion.usuario?.email)
+            _estado.update { it.copy(youtube = EstadoYouTube(PermisoYouTube.SIN_PERMISO)) }
+        }
+        avisar("Listo. Ya no consultamos tus suscripciones de YouTube.")
+    }
+
+    private suspend fun comprobarYouTube(
+        contexto: Context,
+        interactivo: Boolean,
+        avisarSiFalla: Boolean = interactivo
+    ) {
+        turnoYouTube.withLock { comprobarYouTubeConTurno(contexto, interactivo, avisarSiFalla) }
+    }
+
+    private suspend fun comprobarYouTubeConTurno(
+        contexto: Context,
+        interactivo: Boolean,
+        avisarSiFalla: Boolean
+    ) {
+        ultimaComprobacionYouTube = SystemClock.elapsedRealtime()
+        val usuario = autenticacion.usuario?.uid
+        val primeraVez = _estado.value.youtube.permiso == PermisoYouTube.DESCONOCIDO
+
+        _estado.update { it.copy(youtube = it.youtube.copy(verificando = true)) }
+
+        // Lo que el servidor ya sabía, para pintar sin esperar a Google. Solo
+        // la primera vez: después, lo que hay en pantalla es igual de reciente.
+        if (primeraVez) {
+            youtube.guardadas()?.let { guardadas ->
+                _estado.update { it.copy(youtube = it.youtube.copy(suscripciones = guardadas)) }
+            }
+        }
+
+        val resultado = youtube.verificar(contexto)
+
+        // Si mientras tanto se cerró sesión o se cambió de cuenta, esta
+        // respuesta es de otra persona y no se pinta.
+        if (autenticacion.esAnonimo || autenticacion.usuario?.uid != usuario) {
+            _estado.update { it.copy(youtube = EstadoYouTube()) }
+            return
+        }
+
+        when (resultado) {
+            is YouTubeRepo.Resultado.Verificado -> _estado.update {
+                it.copy(youtube = EstadoYouTube(PermisoYouTube.CONCEDIDO, resultado.suscripciones))
+            }
+
+            is YouTubeRepo.Resultado.FaltaPermiso -> {
+                val habiaDatos = _estado.value.youtube.suscripciones.verificadoEn != null
+                _estado.update { it.copy(youtube = EstadoYouTube(PermisoYouTube.SIN_PERMISO)) }
+
+                if (interactivo && resultado.pedir != null) {
+                    _permisosDeYouTube.send(resultado.pedir)
+                } else if (habiaDatos) {
+                    // El servidor tenía datos pero el permiso ya no está: la
+                    // persona lo retiró desde su cuenta de Google. Lo guardado
+                    // ya no nos corresponde conservarlo.
+                    youtube.olvidar()
+                }
+            }
+
+            is YouTubeRepo.Resultado.Fallo -> {
+                // Se queda lo que hubiera en pantalla; solo se apaga el aviso
+                // de "comprobando".
+                _estado.update { it.copy(youtube = it.youtube.copy(verificando = false)) }
+                if (avisarSiFalla) avisar(resultado.mensaje)
+            }
+        }
+    }
+
+    private fun reiniciarYouTube() {
+        ultimaComprobacionYouTube = 0L
+        _estado.update { it.copy(youtube = EstadoYouTube()) }
+    }
+
+    // -------------------------------------------------------------------------
     // Cuenta
     // -------------------------------------------------------------------------
 
@@ -177,6 +318,11 @@ class AppViewModel(
         val resultado = autenticacion.vincularConGoogle(contexto)
         procesar(resultado)
         recargarPerfil()
+
+        // Cuenta recién guardada: si en otro teléfono ya había dado el permiso
+        // de YouTube, aquí se entera sin tener que cerrar y abrir la app.
+        reiniciarYouTube()
+        verificarYouTube(contexto)
     }
 
     fun resolverConflicto(contexto: Context) = viewModelScope.launch {
@@ -214,14 +360,29 @@ class AppViewModel(
 
     fun cerrarSesion(contexto: Context) = viewModelScope.launch {
         runCatching { autenticacion.cerrarSesion(contexto) }
+        youtube.alCerrarSesion(contexto)
+        reiniciarYouTube()
         _estado.update { it.copy(esAnonimo = true, correo = null, mensaje = "Sesión cerrada.") }
         recargarPerfil()
     }
 
     fun borrarCuenta(contexto: Context) = viewModelScope.launch {
         _estado.update { it.copy(ocupado = true) }
+
+        // Borrar la cuenta incluye retirarle a la app el permiso de YouTube.
+        // Lo guardado en el servidor se va con la cuenta; falta el lado de
+        // Google. El correo se anota ahora porque después del borrado ya no
+        // sabemos a qué cuenta de Google hay que retirárselo.
+        val teniaYouTube = _estado.value.youtube.permiso == PermisoYouTube.CONCEDIDO
+        val correo = autenticacion.usuario?.email
+
         runCatching { autenticacion.borrarCuenta(contexto) }
-            .onSuccess { avisar("Cuenta borrada. Puedes seguir usando la app como invitado.") }
+            .onSuccess {
+                if (teniaYouTube) youtube.desconectar(contexto.applicationContext, correo)
+                youtube.alCerrarSesion(contexto)
+                reiniciarYouTube()
+                avisar("Cuenta borrada. Puedes seguir usando la app como invitado.")
+            }
             .onFailure { avisar("No se pudo borrar la cuenta: ${it.localizedMessage}") }
         _estado.update { it.copy(ocupado = false, esAnonimo = true, correo = null) }
         recargarPerfil()
@@ -233,6 +394,10 @@ class AppViewModel(
 
     private companion object {
         const val INTERVALO_PERFIL_MS = 60_000L
+
+        // onResume se dispara varias veces seguidas al arrancar y al cerrarse
+        // la pantalla de permiso; con esto solo cuenta la primera.
+        const val PAUSA_YOUTUBE_MS = 3_000L
     }
 }
 

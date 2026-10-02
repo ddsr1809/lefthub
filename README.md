@@ -244,9 +244,47 @@ Tienes 10,000 unidades al día. El diseño gasta ~1 por video publicado.
 | WebSub | 0 | Detección de publicaciones |
 | `videos.list` | 1 | Rellenar título, descripción y miniatura |
 | `channels.list` | 1 | Solo al dar de alta un creador |
+| `subscriptions.list` | 1 por cada 50 creadores | Saber si el usuario está suscrito a los creadores del directorio, al abrir la app |
 | `search.list` | **100** | **Prohibido.** Agotaría el día en 100 llamadas |
 
 Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlist de subidas del canal (1 unidad), nunca con `search.list`.
+
+---
+
+## "¿Estoy suscrito en YouTube?"
+
+Seguir a un creador en la app y estar suscrito a su canal son cosas distintas. Con la cuenta guardada con Google, la app puede decirle a cada persona en cuáles sí lo está.
+
+**Cómo funciona**
+
+1. En el perfil de un creador o en Ajustes, la persona toca **Conectar con YouTube**. Google muestra su pantalla de permiso (`youtube.readonly`, solo lectura).
+2. A partir de ahí, cada vez que la app pasa a primer plano le pide a Google un token de acceso sin mostrar nada y lo manda a `POST /api/youtube/suscripciones`.
+3. El servidor comprueba con Google que el token es de esta app y de esa cuenta, pregunta a YouTube solo por los canales del directorio y guarda el resultado en `youtube_suscripciones`.
+4. La app lo pinta en el directorio y en el perfil de cada creador.
+
+El servidor no guarda tokens de Google ni necesita `client secret`: el token dura una hora y se usa en el momento. No hay variables de entorno nuevas.
+
+**Lo que hay que hacer en Google Cloud antes de probarlo**
+
+- **APIs y servicios → Pantalla de consentimiento de OAuth → Acceso a los datos:** agrega el permiso `https://www.googleapis.com/auth/youtube.readonly`.
+- Mientras el proyecto esté en modo **Prueba**, solo pueden dar el permiso las cuentas que agregues como usuarios de prueba.
+- `GOOGLE_CLIENT_ID` del servidor y el cliente OAuth de Android tienen que ser del **mismo proyecto**. El servidor rechaza tokens de cualquier otro.
+
+**Antes de encenderlo en producción**
+
+`youtube.readonly` es un permiso sensible. Sin la verificación de OAuth aprobada, Google muestra la pantalla de "app no verificada" y solo deja que 100 personas den el permiso en toda la vida del proyecto; al agotarse el cupo se desactiva también el inicio de sesión con Google. Por eso el sabor `prod` de Android trae `SUSCRIPCIONES_YOUTUBE` en `false` (`android/app/build.gradle.kts`). Pide la verificación, espera la aprobación y cámbialo entonces.
+
+Para la verificación y para cumplir las políticas de la API de YouTube, la política de privacidad tiene que decir qué se lee (a qué canales del directorio está suscrita la persona), para qué, y enlazar a la política de privacidad de Google y a los términos de YouTube.
+
+**Lo que el código ya cumple**
+
+- El permiso se pide aparte del inicio de sesión y solo cuando la persona toca el botón.
+- Se puede desconectar desde Ajustes: borra lo guardado y retira el permiso en Google.
+- Si la persona retira el permiso desde su cuenta de Google, la app lo detecta al abrirse y borra lo guardado.
+- Lo guardado se borra con la cuenta, y una tarea diaria elimina lo que lleve 30 días sin refrescarse.
+- Cada cuenta puede comprobar seis veces seguidas y luego una cada dos minutos, para que nadie agote la cuota del proyecto.
+
+La app de iOS todavía no tiene esta función.
 
 ---
 
