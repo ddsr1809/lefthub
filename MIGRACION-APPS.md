@@ -37,10 +37,10 @@ buildConfigField("String", "API_BASE", "\"https://TU-SERVIDOR\"")
 ### 2. Crea `data/ApiRelay.kt`
 
 ```kotlin
-package com.tuempresa.vocesleft.data
+package com.vocesdeizquierda.lefthub.data
 
 import com.google.firebase.auth.FirebaseAuth
-import com.tuempresa.vocesleft.BuildConfig
+import com.vocesdeizquierda.lefthub.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext

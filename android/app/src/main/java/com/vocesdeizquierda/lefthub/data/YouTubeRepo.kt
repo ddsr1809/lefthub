@@ -1,4 +1,4 @@
-package com.tuempresa.vocesleft.data
+package com.vocesdeizquierda.lefthub.data
 
 import android.accounts.Account
 import android.content.Context

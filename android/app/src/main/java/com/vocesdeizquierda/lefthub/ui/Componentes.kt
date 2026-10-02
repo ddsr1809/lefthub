@@ -1,4 +1,4 @@
-package com.tuempresa.vocesleft.ui
+package com.vocesdeizquierda.lefthub.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,7 +17,7 @@ import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
-import com.tuempresa.vocesleft.data.Creador
+import com.vocesdeizquierda.lefthub.data.Creador
 
 enum class VarianteBoton { PRIMARIO, SECUNDARIO, PELIGRO }
 

@@ -1,9 +1,9 @@
-package com.tuempresa.vocesleft.data
+package com.vocesdeizquierda.lefthub.data
 
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import com.tuempresa.vocesleft.BuildConfig
+import com.vocesdeizquierda.lefthub.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType

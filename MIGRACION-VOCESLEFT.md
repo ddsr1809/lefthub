@@ -12,7 +12,7 @@ funcionando desde este repositorio.
 | Carpeta en el VPS | `/opt/tubehub` | `/opt/vocesleft` |
 | Proyectos de Compose | `relay-prod`, `relay-test` | `vocesleft-prod`, `vocesleft-test` |
 | Imagen | `ghcr.io/ddsr1809/tubehub-relay` | `ghcr.io/ddsr1809/vocesleft-relay` |
-| App Android | `com.tuempresa.creatorhub` | `com.tuempresa.vocesleft` |
+| App Android | `com.tuempresa.creatorhub` | `com.vocesdeizquierda.lefthub` |
 | Sabores Android | `dev`, `pruebas`, `prod` | `pruebas`, `prod` |
 
 Los puertos (8080 producción, 8081 pruebas), los nombres de las bases
@@ -34,12 +34,14 @@ del repositorio. **VPS** es `ssh root@216.238.70.157`.
 scp scripts/vps/*.sh root@216.238.70.157:/root/
 ```
 
-**VPS.** Cambia el correo por el tuyo; Let's Encrypt lo usa para avisarte si un
-certificado está por vencer:
+**VPS.**
 
 ```bash
-CORREO_CERTBOT=tu@correo.com bash /root/preparar-vps.sh
+bash /root/preparar-vps.sh
 ```
+
+Los certificados se piden a nombre de `tcs.md.soto@gmail.com`; Let's Encrypt
+usa ese correo para avisar si alguno está por vencer.
 
 Instala Docker, Apache y Certbot, clona el repositorio en `/opt/vocesleft`,
 crea `.env.prod` y `.env.test` con secretos nuevos, configura un vhost por
@@ -115,7 +117,7 @@ git -C /opt/vocesleft pull
 
 ## 6. Primer administrador
 
-Entra una vez con tu cuenta de Google a
+Entra una vez con la cuenta de Google `tcs.md.soto@gmail.com` a
 `https://leftapp.vocesdeizquierda.com/admin`. Luego, en el **VPS**:
 
 ```bash
@@ -123,7 +125,7 @@ cd /opt/vocesleft/runtime/prod
 docker compose --env-file /opt/vocesleft/relay-server/.env.prod --env-file .env.imagen \
   -p vocesleft-prod -f docker-compose.yml \
   exec db psql -U relay -d relay_prod \
-  -c "update usuarios set es_admin = true where email = 'tu-correo@gmail.com';"
+  -c "update usuarios set es_admin = true where email = 'tcs.md.soto@gmail.com';"
 ```
 
 Cierra sesión en el panel y vuelve a entrar. Para pruebas es igual, cambiando
@@ -136,8 +138,8 @@ hacer esto, la compilación falla con `No matching client found for package
 name`.
 
 1. En la [consola de Firebase](https://console.firebase.google.com), proyecto
-   `hub-11979`, agrega dos apps de Android: `com.tuempresa.vocesleft` y
-   `com.tuempresa.vocesleft.pruebas`. En cada una registra la huella SHA-1 de
+   `hub-11979`, agrega dos apps de Android: `com.vocesdeizquierda.lefthub` y
+   `com.vocesdeizquierda.lefthub.pruebas`. En cada una registra la huella SHA-1 de
    tu llave de firma (`./gradlew signingReport`, dentro de `android/`); sin
    ella no funciona entrar con Google.
 2. Descarga el `google-services.json` nuevo y reemplaza con él los dos que hay
@@ -147,10 +149,8 @@ name`.
 
 `WEB_CLIENT_ID` no cambia mientras sigas en el mismo proyecto de Firebase.
 
-**Antes de publicar en Play:** el `applicationId` no se puede cambiar una vez
-publicada la app. Hoy es `com.tuempresa.vocesleft`. Si prefieres otro prefijo,
-es el momento; son las líneas `namespace` y `applicationId` de
-`android/app/build.gradle.kts` más la carpeta de fuentes.
+**Antes de publicar en Play:** el `applicationId` (`com.vocesdeizquierda.lefthub`)
+no se puede cambiar una vez publicada la app.
 
 ---
 

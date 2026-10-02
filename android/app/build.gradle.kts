@@ -6,11 +6,11 @@ plugins {
 }
 
 android {
-    namespace = "com.tuempresa.vocesleft"
+    namespace = "com.vocesdeizquierda.lefthub"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.tuempresa.vocesleft"
+        applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
         versionCode = 1
@@ -40,8 +40,8 @@ android {
     // -------------------------------------------------------------------------
     // Solo hay dos sabores, uno por cada servidor del VPS:
     //
-    //   pruebas -> https://testapp.vocesdeizquierda.com   (com.tuempresa.vocesleft.pruebas)
-    //   prod    -> https://leftapp.vocesdeizquierda.com   (com.tuempresa.vocesleft)
+    //   pruebas -> https://testapp.vocesdeizquierda.com   (com.vocesdeizquierda.lefthub.pruebas)
+    //   prod    -> https://leftapp.vocesdeizquierda.com   (com.vocesdeizquierda.lefthub)
     //
     // Cada sabor instala una app distinta en el telefono, asi que puedes tener
     // las dos a la vez. Ambos hablan con el servidor por HTTPS: ya no existe

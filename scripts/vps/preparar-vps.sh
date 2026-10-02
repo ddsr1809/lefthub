@@ -6,7 +6,7 @@
 #
 #   scp scripts/vps/*.sh root@216.238.70.157:/root/
 #   ssh root@216.238.70.157
-#   CORREO_CERTBOT=tu@correo.com bash /root/preparar-vps.sh
+#   bash /root/preparar-vps.sh
 #
 # Que deja listo:
 #   - Docker, Apache, Certbot y Git.
@@ -28,7 +28,7 @@ PUERTO_PROD="${PUERTO_PROD:-8080}"
 PUERTO_TEST="${PUERTO_TEST:-8081}"
 IP_ESPERADA="${IP_ESPERADA:-216.238.70.157}"
 DIR_SECRETOS="${DIR_SECRETOS:-/root/.config/vocesleft}"
-CORREO_CERTBOT="${CORREO_CERTBOT:-}"
+CORREO_CERTBOT="${CORREO_CERTBOT:-tcs.md.soto@gmail.com}"
 
 pendientes=()
 paso()  { printf '\n==> %s\n' "$*"; }
@@ -244,7 +244,7 @@ certificar() {
     return
   fi
   if [[ -z "$CORREO_CERTBOT" ]]; then
-    falta "HTTPS de $dominio: repetir con CORREO_CERTBOT=tu@correo.com bash $0"
+    falta "HTTPS de $dominio: falta CORREO_CERTBOT; repetir con CORREO_CERTBOT=<correo> bash $0"
     return
   fi
   if certbot --apache -d "$dominio" --non-interactive --agree-tos \

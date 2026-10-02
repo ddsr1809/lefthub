@@ -1,4 +1,4 @@
-package com.tuempresa.vocesleft.data
+package com.vocesdeizquierda.lefthub.data
 
 import android.content.Context
 import android.util.Log
@@ -11,7 +11,7 @@ import androidx.credentials.exceptions.GetCredentialException
 import androidx.credentials.exceptions.NoCredentialException
 import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
-import com.tuempresa.vocesleft.BuildConfig
+import com.vocesdeizquierda.lefthub.BuildConfig
 
 /**
  * Identidad.

@@ -1,4 +1,4 @@
-package com.tuempresa.vocesleft.ui
+package com.vocesdeizquierda.lefthub.ui
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,8 +20,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.time.Instant
-import com.tuempresa.vocesleft.data.Publicacion
-import com.tuempresa.vocesleft.enlaces.Enrutador
+import com.vocesdeizquierda.lefthub.data.Publicacion
+import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import java.text.SimpleDateFormat
 import java.util.Locale
 

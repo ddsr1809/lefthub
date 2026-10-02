@@ -1,4 +1,4 @@
-package com.tuempresa.vocesleft.ui
+package com.vocesdeizquierda.lefthub.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -8,9 +8,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.tuempresa.vocesleft.BuildConfig
-import com.tuempresa.vocesleft.EstadoApp
-import com.tuempresa.vocesleft.data.PermisoYouTube
+import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.EstadoApp
+import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 
 @Composable
 fun AjustesPantalla(
