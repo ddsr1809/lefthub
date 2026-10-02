@@ -72,6 +72,33 @@ public class Usuario {
     @Column(name = "visto_en", nullable = false)
     private Instant vistoEn = Instant.now();
 
+    // --- Última conexión -----------------------------------------------------
+    // Los llena RegistroDeAcceso cada vez que la app abre sesión. Describen el
+    // acceso más reciente, no un historial.
+
+    private String ip;
+
+    /** Código ISO de dos letras: MX, US, ES... */
+    private String pais;
+
+    /** Número de sistema autónomo de la red desde la que se conecta. */
+    private Long asn;
+
+    /**
+     * Nombre de la compañía de internet. No es `proveedor`, que dice con qué
+     * entra la persona (anónimo, Google o Apple).
+     */
+    private String red;
+
+    /** Cabecera User-Agent: qué aplicación hizo la petición. */
+    private String agente;
+
+    @Column(name = "posible_bot", nullable = false)
+    private boolean posibleBot = false;
+
+    @Column(name = "motivo_bot")
+    private String motivoBot;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
@@ -112,6 +139,27 @@ public class Usuario {
 
     public Instant getVistoEn() { return vistoEn; }
     public void setVistoEn(Instant vistoEn) { this.vistoEn = vistoEn; }
+
+    public String getIp() { return ip; }
+    public void setIp(String ip) { this.ip = ip; }
+
+    public String getPais() { return pais; }
+    public void setPais(String pais) { this.pais = pais; }
+
+    public Long getAsn() { return asn; }
+    public void setAsn(Long asn) { this.asn = asn; }
+
+    public String getRed() { return red; }
+    public void setRed(String red) { this.red = red; }
+
+    public String getAgente() { return agente; }
+    public void setAgente(String agente) { this.agente = agente; }
+
+    public boolean isPosibleBot() { return posibleBot; }
+    public void setPosibleBot(boolean posibleBot) { this.posibleBot = posibleBot; }
+
+    public String getMotivoBot() { return motivoBot; }
+    public void setMotivoBot(String motivoBot) { this.motivoBot = motivoBot; }
 
     @Transient
     public boolean esAnonimo() { return ANONIMO.equals(proveedor); }

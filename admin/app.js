@@ -230,7 +230,7 @@
     filtroCreadores: { q: '', categoria: '' },
     publicaciones: null,
     usuarios: null,         // la página que está en pantalla
-    filtroUsuarios: { q: '', filtro: '', orden: 'vistos', pagina: 0 }
+    filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
   };
 
   const VISTAS = {
@@ -620,9 +620,10 @@
   // ---------------------------------------------------------------------------
   // Usuarios
   // ---------------------------------------------------------------------------
-  // Todo lo que se ve aquí ya lo guardaba el servidor: cuándo se creó la
-  // cuenta, cuándo abrió la app por última vez, a quién sigue y qué
-  // preferencias eligió. Esta vista no hace que se recoja nada nuevo.
+  // Esta vista solo lee. Las fechas, los seguimientos y las preferencias los
+  // guarda el servidor desde siempre; la IP, el país, la compañía de internet
+  // y el indicio de bot los anota en cada inicio de sesión, y describen la
+  // última conexión de la cuenta, no un historial.
   const PROVEEDORES = { anonimo: ['Invitado', 'b-mute'], google: ['Google', 'b-info'], apple: ['Apple', 'b-info'] };
   const ESCALAS = { normal: 'Normal', grande: 'Grande', muyGrande: 'Muy grande' };
   const TEMAS = { sistema: 'Como el teléfono', oscuro: 'Oscuro', claro: 'Claro' };
@@ -641,8 +642,30 @@
   };
   const badgeProveedor = (u) => {
     const [t, c] = PROVEEDORES[u.proveedor] || [u.proveedor, 'b-mute'];
-    return `<span class="badge ${c}">${esc(t)}</span>` + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '');
+    return `<span class="badge ${c}">${esc(t)}</span>`
+      + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '')
+      + (u.posibleBot ? ' <span class="badge b-bad">Posible bot</span>' : '');
   };
+
+  // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
+  let nombresDePais = null;
+  try { nombresDePais = new Intl.DisplayNames(['es'], { type: 'region' }); } catch (e) { nombresDePais = null; }
+  const nombrePais = (codigo) => {
+    if (!codigo) return '';
+    try { return (nombresDePais && nombresDePais.of(codigo)) || codigo; } catch (e) { return codigo; }
+  };
+
+  /** Los países con más cuentas y, en una sola fila, todos los demás. */
+  function repartoPaises(porPais) {
+    const filas = Object.entries(porPais || {}).sort((a, b) => b[1] - a[1]);
+    const total = filas.reduce((s, [, n]) => s + n, 0);
+    if (!total) return '<div class="empty">Todavía no hay cuentas con país. Se llena cuando cada persona vuelve a abrir la app.</div>';
+    const TOPE = 8;
+    const visibles = filas.slice(0, TOPE);
+    const resto = filas.slice(TOPE).reduce((s, [, n]) => s + n, 0);
+    const fila = (nombre, n) => `<span>${esc(nombre)}</span><span class="pista"><i style="width:${(n / total) * 100}%"></i></span><span class="cifra">${num(n)} · ${pct(n, total)}</span>`;
+    return `<div class="reparto">${visibles.map(([k, n]) => fila(nombrePais(k), n)).join('')}${resto ? fila('Otros ' + num(filas.length - TOPE) + ' países', resto) : ''}</div>`;
+  }
 
   function graficaAltas(altas) {
     if (!altas.length) return '<div class="empty">Sin datos.</div>';
@@ -670,7 +693,7 @@
   async function cargarUsuarios() {
     const f = estado.filtroUsuarios;
     const miPedido = ++pedidoUsuarios;
-    const p = new URLSearchParams({ q: f.q.trim(), filtro: f.filtro, orden: f.orden, pagina: String(f.pagina) });
+    const p = new URLSearchParams({ q: f.q.trim(), filtro: f.filtro, pais: f.pais, orden: f.orden, pagina: String(f.pagina) });
     const datos = await api('/api/admin/usuarios?' + p.toString());
     if (miPedido !== pedidoUsuarios) return false;
     estado.usuarios = datos;
@@ -681,11 +704,12 @@
     const pag = estado.usuarios;
     if (!pag || !pag.usuarios.length) {
       const f = estado.filtroUsuarios;
-      return `<tr><td colspan="6"><div class="empty">${f.q.trim() || f.filtro ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'}</div></td></tr>`;
+      return `<tr><td colspan="7"><div class="empty">${f.q.trim() || f.filtro || f.pais ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'}</div></td></tr>`;
     }
     return pag.usuarios.map((u) => `<tr>
       <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b></div><span class="mono muted">${esc(u.id)}</span></td>
       <td>${badgeProveedor(u)}</td>
+      <td>${u.pais || u.red ? `<div>${esc(nombrePais(u.pais) || '—')}</div><div class="muted clip" style="font-size:12.5px;max-width:220px" title="${esc(u.red || '')}">${esc(u.red || '')}</div>` : '<span class="muted">—</span>'}</td>
       <td class="num">${num(u.favoritos)}</td>
       <td class="num">${esc(fmtDia(u.creadoEn))}</td>
       <td class="num" title="${esc(fmtFecha(u.vistoEn))}">${esc(relativo(u.vistoEn))}</td>
@@ -715,6 +739,19 @@
     if (pie) pie.innerHTML = pieUsuarios();
   }
 
+  /** Cambia los filtros desde un botón y deja la tabla a la vista. */
+  async function filtrarUsuarios(cambios) {
+    const f = Object.assign(estado.filtroUsuarios, cambios, { pagina: 0 });
+    const tabla = $('#filasUsuarios');
+    if (estado.vista !== 'usuarios' || !tabla) { ir('usuarios'); return; }
+    $('#qUsuarios').value = f.q;
+    $('#filtroUsuarios').value = f.filtro;
+    $('#paisUsuarios').value = f.pais;
+    await repintarUsuarios();
+    const panel = tabla.closest('.panel');
+    if (panel && panel.scrollIntoView) panel.scrollIntoView({ block: 'start' });
+  }
+
   async function vistaUsuarios() {
     const f = estado.filtroUsuarios;
     let zona = 'UTC';
@@ -728,7 +765,7 @@
     const promedio = r.conFavoritos ? (r.seguimientos / r.conFavoritos) : 0;
 
     main.innerHTML = `
-      <div class="head"><div><h1>Usuarios</h1><p class="sub">Cada instalación crea una cuenta de invitado al abrir la app; pasa a tener correo cuando la persona la guarda con Google o Apple. "Activo" significa que abrió la app en ese periodo.</p></div></div>
+      <div class="head"><div><h1>Usuarios</h1><p class="sub">Cada instalación crea una cuenta de invitado al abrir la app; pasa a tener correo cuando la persona la guarda con Google o Apple. "Activo" significa que abrió la app en ese periodo. El país y la compañía de internet son los de la última vez que la abrió.</p></div></div>
       <div class="stack">
         <div class="stats tres">
           <div class="stat"><div class="k">Cuentas</div><div class="v">${num(r.total)}</div><div class="n">${num(r.invitados)} de invitado</div></div>
@@ -747,21 +784,36 @@
               <div>${reparto('Fondo', r.porTema, TEMAS, r.total)}</div>
             </div></section>
         </div>
+        <div class="dos">
+          <section class="panel"><div class="panel-head"><h2>Desde dónde se conectan</h2><span class="muted" style="font-size:13px">${plural(Object.keys(r.porPais || {}).length, 'país', 'países')}</span></div>
+            <div class="panel-body">${repartoPaises(r.porPais)}</div></section>
+          <section class="panel"><div class="panel-head"><h2>Posibles bots</h2></div>
+            <div class="panel-body">
+              <div class="stat" style="padding:0"><div class="v">${num(r.posiblesBots)}</div><div class="n">${pct(r.posiblesBots, r.total)} de las cuentas</div></div>
+              <p class="hint" style="margin:12px 0">Cuentas cuya última conexión no vino de la app, o vino de un centro de datos en lugar de una red de casa o de celular. Es un indicio: una persona con VPN también aparece aquí, igual que los teléfonos de prueba de Google Play.</p>
+              ${r.posiblesBots ? '<button class="btn" data-accion="ver-bots">Ver estas cuentas</button>' : ''}
+            </div></section>
+        </div>
         <section class="panel">
           <div class="panel-head"><div class="toolbar">
-            <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo o por ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
+            <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo, IP o ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
             <select class="input" id="filtroUsuarios" aria-label="Tipo de cuenta">
-              ${[['', 'Todas las cuentas'], ['anonimo', 'Invitados'], ['google', 'Con Google'], ['apple', 'Con Apple'], ['admin', 'Administradores']].map(([k, v]) => `<option value="${k}" ${f.filtro === k ? 'selected' : ''}>${v}</option>`).join('')}
+              ${[['', 'Todas las cuentas'], ['anonimo', 'Invitados'], ['google', 'Con Google'], ['apple', 'Con Apple'], ['admin', 'Administradores'], ['bot', 'Posibles bots']].map(([k, v]) => `<option value="${k}" ${f.filtro === k ? 'selected' : ''}>${v}</option>`).join('')}
+            </select>
+            <select class="input" id="paisUsuarios" aria-label="País">
+              <option value="">Todos los países</option>
+              ${Object.keys(r.porPais || {}).map((k) => [k, nombrePais(k)]).sort((a, b) => a[1].localeCompare(b[1], 'es')).map(([k, v]) => `<option value="${esc(k)}" ${f.pais === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}
             </select>
             <select class="input" id="ordenUsuarios" aria-label="Orden">
               <option value="vistos" ${f.orden === 'vistos' ? 'selected' : ''}>Últimos en abrir la app</option>
               <option value="nuevos" ${f.orden === 'nuevos' ? 'selected' : ''}>Cuentas más nuevas</option>
             </select>
           </div></div>
-          <div class="tablewrap"><table><thead><tr><th>Cuenta</th><th>Tipo</th><th>Sigue a</th><th>Alta</th><th>Abrió la app</th><th></th></tr></thead>
+          <div class="tablewrap"><table><thead><tr><th>Cuenta</th><th>Tipo</th><th>Conexión</th><th>Sigue a</th><th>Alta</th><th>Abrió la app</th><th></th></tr></thead>
           <tbody id="filasUsuarios">${filasUsuarios()}</tbody></table></div>
           <div class="paginas" id="pieUsuarios">${pieUsuarios()}</div>
         </section>
+        <p class="hint" style="margin:0">País y compañía de internet según las tablas gratuitas de DB-IP, que el servidor consulta en su propia memoria: <a href="https://db-ip.com" target="_blank" rel="noopener">IP Geolocation by DB-IP</a>.</p>
       </div>`;
 
     let espera;
@@ -771,6 +823,7 @@
       espera = setTimeout(repintarUsuarios, 300);
     });
     $('#filtroUsuarios').addEventListener('change', (e) => { f.filtro = e.target.value; f.pagina = 0; repintarUsuarios(); });
+    $('#paisUsuarios').addEventListener('change', (e) => { f.pais = e.target.value; f.pagina = 0; repintarUsuarios(); });
     $('#ordenUsuarios').addEventListener('change', (e) => { f.orden = e.target.value; f.pagina = 0; repintarUsuarios(); });
   }
 
@@ -791,11 +844,16 @@
 
     abrirModal(u.email || 'Cuenta de invitado', `
       <div class="stack" style="gap:16px">
+        ${u.posibleBot ? `<div class="aviso-mal"><b>Posible bot.</b> ${esc(u.motivoBot || '')}</div>` : ''}
         <dl class="ficha">
           <dt>Tipo</dt><dd>${badgeProveedor(u)}</dd>
           <dt>ID</dt><dd class="mono">${esc(u.id)}</dd>
           <dt>Alta</dt><dd>${esc(fmtDia(u.creadoEn))}</dd>
           <dt>Abrió la app</dt><dd>${esc(relativo(u.vistoEn))} <span class="muted">(${esc(fmtFecha(u.vistoEn))})</span></dd>
+          <dt>IP</dt><dd>${u.ip ? `<span class="mono">${esc(u.ip)}</span> <button class="link" data-accion="buscar-ip" data-ip="${esc(u.ip)}">Ver cuentas con esta IP</button>` : '<span class="muted">Sin dato: no ha abierto la app desde que se guarda.</span>'}</dd>
+          <dt>País</dt><dd>${u.pais ? esc(nombrePais(u.pais)) : '<span class="muted">—</span>'}</dd>
+          <dt>Compañía de internet</dt><dd>${u.red ? esc(u.red) + (u.asn ? ' <span class="muted mono">AS' + esc(u.asn) + '</span>' : '') : '<span class="muted">—</span>'}</dd>
+          <dt>Aplicación</dt><dd class="mono">${u.agente ? esc(u.agente) : '<span class="muted">—</span>'}</dd>
           <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
           <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
           <dt>Enlaces reportados</dt><dd>${num(d.reportes)}</dd>
@@ -908,8 +966,16 @@
         }
 
         case 'ver-admins': {
-          Object.assign(estado.filtroUsuarios, { q: '', filtro: 'admin', pagina: 0 });
+          Object.assign(estado.filtroUsuarios, { q: '', filtro: 'admin', pais: '', pagina: 0 });
           ir('usuarios');
+          break;
+        }
+
+        case 'ver-bots': await filtrarUsuarios({ q: '', filtro: 'bot', pais: '' }); break;
+
+        case 'buscar-ip': {
+          cerrarModal();
+          await filtrarUsuarios({ q: b.dataset.ip, filtro: '', pais: '' });
           break;
         }
 

@@ -81,7 +81,6 @@ public final class Repositorios {
         long cuantosSiguen(@Param("creador") UUID creador);
 
         // --- Panel: sección Usuarios -----------------------------------------
-        // Todo sale de columnas que ya existían; no se guarda nada nuevo.
 
         /** Abrió la app después de esa fecha: visto_en se toca en cada arranque. */
         long countByVistoEnAfter(Instant desde);
@@ -105,6 +104,17 @@ public final class Repositorios {
         @Query("select u.tema, count(u) from Usuario u group by u.tema")
         List<Object[]> porTema();
 
+        /** Cuentas por país de su última conexión, de más a menos. */
+        @Query("""
+                select u.pais, count(u) from Usuario u
+                where u.pais is not null
+                group by u.pais
+                order by count(u) desc
+                """)
+        List<Object[]> porPais();
+
+        long countByPosibleBotTrue();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
@@ -120,18 +130,24 @@ public final class Repositorios {
         @Query(value = """
                 select u from Usuario u
                 where (:proveedor = '' or u.proveedor = :proveedor)
-                  and (:texto = '' or lower(u.email) like :texto)
+                  and (:texto = '' or lower(u.email) like :texto or u.ip like :texto)
+                  and (:pais = '' or u.pais = :pais)
                   and (:soloAdmins = false or u.esAdmin = true)
+                  and (:soloBots = false or u.posibleBot = true)
                 """,
                countQuery = """
                 select count(u) from Usuario u
                 where (:proveedor = '' or u.proveedor = :proveedor)
-                  and (:texto = '' or lower(u.email) like :texto)
+                  and (:texto = '' or lower(u.email) like :texto or u.ip like :texto)
+                  and (:pais = '' or u.pais = :pais)
                   and (:soloAdmins = false or u.esAdmin = true)
+                  and (:soloBots = false or u.posibleBot = true)
                 """)
         Page<Usuario> buscar(@Param("proveedor") String proveedor,
                              @Param("texto") String texto,
+                             @Param("pais") String pais,
                              @Param("soloAdmins") boolean soloAdmins,
+                             @Param("soloBots") boolean soloBots,
                              Pageable pagina);
     }
 

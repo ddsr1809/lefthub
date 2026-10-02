@@ -29,9 +29,9 @@ import java.util.*;
  * administrador en cada llamada. Va en su propio controlador porque
  * AdminController trata del directorio y este de las personas que lo usan.
  *
- * Todo lo que se muestra sale de datos que el servidor ya guardaba: cuándo se
- * creó la cuenta, cuándo abrió la app por última vez, a quién sigue y sus
- * preferencias. Aquí no se recoge nada nuevo.
+ * Aquí solo se lee. Lo que se muestra lo guardan otros: las fechas y las
+ * preferencias, los controladores de la app; la IP, el país, la compañía de
+ * internet y el indicio de bot, RegistroDeAcceso en cada inicio de sesión.
  */
 @RestController
 @RequestMapping("/api/admin/usuarios")
@@ -85,8 +85,10 @@ public class UsuariosAdminController {
                 usuarios.countByCreadoEnAfter(ahora.minus(Duration.ofDays(30))),
                 usuarios.conFavoritos(),
                 usuarios.seguimientos(),
+                usuarios.countByPosibleBotTrue(),
                 aMapa(usuarios.porEscalaTexto()),
                 aMapa(usuarios.porTema()),
+                aMapa(usuarios.porPais()),
                 altasPorDia(zonaSegura(zona)));
     }
 
@@ -115,8 +117,9 @@ public class UsuariosAdminController {
     // -------------------------------------------------------------------------
 
     /**
-     * @param q         parte del correo, o el identificador completo de la cuenta
-     * @param filtro    anonimo | google | apple | admin, o vacío para todos
+     * @param q         parte del correo o de la IP, o el identificador completo de la cuenta
+     * @param filtro    anonimo | google | apple | admin | bot, o vacío para todos
+     * @param pais      código de dos letras, o vacío para todos
      * @param orden     "vistos" (última vez que abrió la app) o "nuevos"
      * @param pagina    empieza en 0
      */
@@ -124,6 +127,7 @@ public class UsuariosAdminController {
     @Transactional(readOnly = true)
     public Dtos.PaginaUsuarios listar(@RequestParam(defaultValue = "") String q,
                                       @RequestParam(defaultValue = "") String filtro,
+                                      @RequestParam(defaultValue = "") String pais,
                                       @RequestParam(defaultValue = "vistos") String orden,
                                       @RequestParam(defaultValue = "0") int pagina) {
 
@@ -140,6 +144,7 @@ public class UsuariosAdminController {
         }
 
         boolean soloAdmins = "admin".equals(filtro);
+        boolean soloBots = "bot".equals(filtro);
         String proveedor = Set.of(Usuario.ANONIMO, Usuario.GOOGLE, Usuario.APPLE).contains(filtro)
                 ? filtro : "";
 
@@ -152,7 +157,8 @@ public class UsuariosAdminController {
         Sort criterio = Sort.by(Sort.Direction.DESC, "nuevos".equals(orden) ? "creadoEn" : "vistoEn")
                 .and(Sort.by(Sort.Direction.ASC, "id"));
 
-        Page<Usuario> resultado = usuarios.buscar(proveedor, patron, soloAdmins,
+        Page<Usuario> resultado = usuarios.buscar(proveedor, patron,
+                pais.trim().toUpperCase(Locale.ROOT), soloAdmins, soloBots,
                 PageRequest.of(Math.max(pagina, 0), TAMANO_PAGINA, criterio));
 
         return new Dtos.PaginaUsuarios(

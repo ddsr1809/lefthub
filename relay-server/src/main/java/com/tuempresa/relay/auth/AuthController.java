@@ -1,9 +1,11 @@
 package com.tuempresa.relay.auth;
 
+import com.tuempresa.relay.acceso.RegistroDeAcceso;
 import com.tuempresa.relay.cuenta.AppleService;
 import com.tuempresa.relay.modelo.Dtos;
 import com.tuempresa.relay.modelo.Repositorios;
 import com.tuempresa.relay.modelo.Usuario;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,19 +46,23 @@ public class AuthController {
     private final ServicioJwt jwt;
     private final VerificadorIdentidad verificador;
     private final AppleService apple;
+    private final RegistroDeAcceso accesos;
 
     public AuthController(Repositorios.Usuarios usuarios, ServicioJwt jwt,
-                          VerificadorIdentidad verificador, AppleService apple) {
+                          VerificadorIdentidad verificador, AppleService apple,
+                          RegistroDeAcceso accesos) {
         this.usuarios = usuarios;
         this.jwt = jwt;
         this.verificador = verificador;
         this.apple = apple;
+        this.accesos = accesos;
     }
 
     /** Sesión invisible. Se llama al abrir la app, sin interfaz de por medio. */
     @PostMapping("/anonimo")
     @Transactional
-    public Dtos.Sesion anonimo(@Valid @RequestBody Dtos.EntrarAnonimo peticion) {
+    public Dtos.Sesion anonimo(@Valid @RequestBody Dtos.EntrarAnonimo peticion,
+                               HttpServletRequest http) {
         Usuario usuario = usuarios.findByDeviceId(peticion.deviceId())
                 .orElseGet(() -> {
                     Usuario nuevo = new Usuario();
@@ -66,22 +72,25 @@ public class AuthController {
                 });
 
         usuario.setVistoEn(Instant.now());
+        accesos.anotar(usuario, http);
         return sesionDe(usuario, false);
     }
 
     @PostMapping("/google")
     @Transactional
-    public Dtos.Sesion google(@Valid @RequestBody Dtos.EntrarConProveedor peticion) {
+    public Dtos.Sesion google(@Valid @RequestBody Dtos.EntrarConProveedor peticion,
+                              HttpServletRequest http) {
         VerificadorIdentidad.Identidad identidad = verificador.verificarGoogle(peticion.token())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "No pudimos verificar tu cuenta de Google. Inténtalo otra vez."));
 
-        return enlazar(identidad, peticion.deviceId(), null);
+        return enlazar(identidad, peticion.deviceId(), null, http);
     }
 
     @PostMapping("/apple")
     @Transactional
-    public Dtos.Sesion apple(@Valid @RequestBody Dtos.EntrarConProveedor peticion) {
+    public Dtos.Sesion apple(@Valid @RequestBody Dtos.EntrarConProveedor peticion,
+                             HttpServletRequest http) {
         VerificadorIdentidad.Identidad identidad = verificador.verificarApple(peticion.token())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "No pudimos verificar tu cuenta de Apple. Inténtalo otra vez."));
@@ -94,7 +103,7 @@ public class AuthController {
             refresh = apple.canjearCodigo(peticion.authorizationCode());
         }
 
-        return enlazar(identidad, peticion.deviceId(), refresh);
+        return enlazar(identidad, peticion.deviceId(), refresh, http);
     }
 
     /**
@@ -103,7 +112,8 @@ public class AuthController {
      */
     @PostMapping("/renovar")
     @Transactional
-    public Dtos.Sesion renovar(@RequestHeader("Authorization") String cabecera) {
+    public Dtos.Sesion renovar(@RequestHeader("Authorization") String cabecera,
+                               HttpServletRequest http) {
         String token = cabecera.startsWith("Bearer ") ? cabecera.substring(7).trim() : cabecera;
 
         ServicioJwt.Sesion sesion = jwt.verificar(token)
@@ -115,13 +125,15 @@ public class AuthController {
                         "Esa cuenta ya no existe."));
 
         usuario.setVistoEn(Instant.now());
+        accesos.anotar(usuario, http);
         return sesionDe(usuario, false);
     }
 
     // -------------------------------------------------------------------------
 
     private Dtos.Sesion enlazar(VerificadorIdentidad.Identidad identidad,
-                                String deviceId, String appleRefresh) {
+                                String deviceId, String appleRefresh,
+                                HttpServletRequest http) {
 
         Optional<Usuario> existente =
                 usuarios.findByProveedorAndProveedorSub(identidad.proveedor(), identidad.sub());
@@ -150,6 +162,7 @@ public class AuthController {
             }
 
             actualizarDatos(usuario, identidad, appleRefresh);
+            accesos.anotar(usuario, http);
             return sesionDe(usuario, fusionados);
         }
 
@@ -160,6 +173,7 @@ public class AuthController {
         usuario.setProveedor(identidad.proveedor());
         usuario.setProveedorSub(identidad.sub());
         actualizarDatos(usuario, identidad, appleRefresh);
+        accesos.anotar(usuario, http);
 
         return sesionDe(usuarios.save(usuario), false);
     }
