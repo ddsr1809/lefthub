@@ -1,9 +1,9 @@
-package com.tuempresa.creatorhub.data
+package com.tuempresa.vocesleft.data
 
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
-import com.tuempresa.creatorhub.BuildConfig
+import com.tuempresa.vocesleft.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType

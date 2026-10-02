@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.data
+package com.tuempresa.vocesleft.data
 
 import java.time.Instant
 

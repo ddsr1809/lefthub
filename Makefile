@@ -1,7 +1,7 @@
 SHELL := /usr/bin/env bash
 
 ENV_FILE ?= relay-server/.env.local
-PROJECT ?= relay-local
+PROJECT ?= vocesleft-local
 COMPOSE := docker compose --env-file $(ENV_FILE) -p $(PROJECT) -f relay-server/docker-compose.yml
 
 .PHONY: help test build ci local-up local-down local-restart local-logs local-status local-config
@@ -23,7 +23,7 @@ build:
 	cd relay-server && ./gradlew bootJar --no-daemon
 
 ci: test
-	docker build --tag tubehub-relay:local relay-server
+	docker build --tag vocesleft-relay:local relay-server
 
 local-config:
 	@test -f "$(ENV_FILE)" || (echo "Falta $(ENV_FILE). Copia relay-server/.env.local.example y rellena sus valores." >&2; exit 1)

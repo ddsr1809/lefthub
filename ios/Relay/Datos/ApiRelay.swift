@@ -18,7 +18,7 @@ enum ApiRelay {
     #if DEBUG
     static let base = "http://localhost:8080"
     #else
-    static let base = "https://TU-SERVIDOR"
+    static let base = "https://leftapp.vocesdeizquierda.com"
     #endif
 
     /// Error con un mensaje ya listo para enseñar al usuario.

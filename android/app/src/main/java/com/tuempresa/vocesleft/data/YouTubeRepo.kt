@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.data
+package com.tuempresa.vocesleft.data
 
 import android.accounts.Account
 import android.content.Context

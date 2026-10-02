@@ -76,7 +76,7 @@ targets:
 
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.tuempresa.creatorhub
+        PRODUCT_BUNDLE_IDENTIFIER: com.tuempresa.vocesleft
         SWIFT_VERSION: "5.10"
         DEVELOPMENT_TEAM: ABCDE12345
         TARGETED_DEVICE_FAMILY: "1,2"

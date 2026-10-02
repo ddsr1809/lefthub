@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub.ui
+package com.tuempresa.vocesleft.ui
 
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.Column
@@ -10,11 +10,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import java.time.Instant
-import com.tuempresa.creatorhub.EstadoApp
-import com.tuempresa.creatorhub.data.Conexion
-import com.tuempresa.creatorhub.data.Creador
-import com.tuempresa.creatorhub.data.Perfil
-import com.tuempresa.creatorhub.data.Publicacion
+import com.tuempresa.vocesleft.EstadoApp
+import com.tuempresa.vocesleft.data.Conexion
+import com.tuempresa.vocesleft.data.Creador
+import com.tuempresa.vocesleft.data.Perfil
+import com.tuempresa.vocesleft.data.Publicacion
 
 
 // Previews.

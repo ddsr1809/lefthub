@@ -1,11 +1,11 @@
-package com.tuempresa.creatorhub
+package com.tuempresa.vocesleft
 
 import android.content.Context
 import android.content.IntentSender
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.tuempresa.creatorhub.data.*
+import com.tuempresa.vocesleft.data.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay

@@ -1,4 +1,4 @@
-package com.tuempresa.creatorhub
+package com.tuempresa.vocesleft
 
 import android.Manifest
 import android.content.Intent
@@ -24,8 +24,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
-import com.tuempresa.creatorhub.enlaces.Enrutador
-import com.tuempresa.creatorhub.ui.*
+import com.tuempresa.vocesleft.enlaces.Enrutador
+import com.tuempresa.vocesleft.ui.*
 
 class MainActivity : ComponentActivity() {
 

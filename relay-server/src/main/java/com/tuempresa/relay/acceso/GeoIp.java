@@ -157,7 +157,7 @@ public class GeoIp {
 
         HttpRequest peticion = HttpRequest.newBuilder(URI.create(url))
                 .timeout(Duration.ofMinutes(5))
-                .header("User-Agent", "tubehub-relay")
+                .header("User-Agent", "vocesleft-relay")
                 .GET()
                 .build();
 

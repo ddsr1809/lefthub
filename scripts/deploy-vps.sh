@@ -29,7 +29,7 @@ destino="${VPS_USER}@${VPS_HOST}"
 directorio_config="${VPS_APP_DIR%/}/relay-server"
 directorio_runtime="${VPS_APP_DIR%/}/runtime/${ambiente}"
 archivo_env="${directorio_config}/.env.${ambiente}"
-proyecto="relay-${ambiente}"
+proyecto="vocesleft-${ambiente}"
 ssh_opciones=(-p "$puerto" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
 
 # Cada ambiente recibe su propio Compose fuera del clon Git. Los .env y los

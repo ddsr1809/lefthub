@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "Relay"
+rootProject.name = "vocesleft"
 include(":app")

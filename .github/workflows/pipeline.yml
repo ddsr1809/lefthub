@@ -1,4 +1,4 @@
-name: TubeHub CI/CD
+name: VocesLeft CI/CD
 
 on:
   pull_request:
@@ -31,12 +31,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: tubehub-${{ github.workflow }}-${{ github.ref }}
+  group: vocesleft-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ddsr1809/tubehub-relay
+  IMAGE_NAME: ddsr1809/vocesleft-relay
 
 jobs:
   verificar-backend:
@@ -129,7 +129,7 @@ jobs:
         (inputs.ambiente == 'prod' && github.ref_name == 'master')))
     runs-on: ubuntu-latest
     concurrency:
-      group: tubehub-vps-deploy
+      group: vocesleft-vps-deploy
       cancel-in-progress: false
     environment:
       name: ${{ github.event_name == 'workflow_dispatch' && inputs.ambiente || (github.ref_name == 'master' && 'prod' || 'test') }}
