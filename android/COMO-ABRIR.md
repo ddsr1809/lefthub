@@ -95,16 +95,19 @@ cp firma.properties.example firma.properties
 Edita `firma.properties` con la ruta del `.jks`, el alias (`voces`) y la clave.
 Ese archivo no se sube a git.
 
-**3. Registrar la huella en Firebase.** La variante de producción cambió de
+**3. Registrar la huella en Google Cloud.** La variante de producción cambió de
 llave, así que su huella SHA-1 también:
 
 ```bash
 ./gradlew signingReport
 ```
 
-Busca `Variant: produccionRelease` y copia su `SHA1`. En la consola de Firebase,
-en la app `com.vocesdeizquierda.lefthub`, agrégala como huella digital nueva.
-Sin esto, entrar con Google falla en producción.
+Busca `Variant: produccionRelease` y copia su `SHA1`. En Google Cloud, proyecto
+"Voces de Izquierda", *Google Auth Platform → Clientes*, crea un cliente de tipo
+Android con el paquete `com.vocesdeizquierda.lefthub` y esa huella. Sin esto,
+entrar con Google falla en producción con "Google no dejó entrar desde esta
+app". No va en Firebase: tiene que estar en el mismo proyecto que el cliente
+web (ver la sección 4 de `MIGRACION-VOCESLEFT.md`).
 
 **4. Generar el archivo para Play.**
 
@@ -118,8 +121,9 @@ sube a Play Console. Cada subida necesita un `versionCode` mayor que la anterior
 
 **5. Después de la primera subida.** Play vuelve a firmar la app con su propia
 llave antes de entregarla a los teléfonos. Copia de Play Console la huella
-SHA-1 del certificado de firma de la app y agrégala también en Firebase; si no,
-entrar con Google falla en las copias instaladas desde Play.
+SHA-1 del certificado de firma de la app y crea con ella otro cliente Android
+en el mismo proyecto de Google Cloud, con el mismo paquete; si no, entrar con
+Google falla en las copias instaladas desde Play.
 
 Si ya tenías `produccionRelease` instalada en tu teléfono con la llave de
 depuración, desinstálala antes de instalar la nueva: Android no deja actualizar
