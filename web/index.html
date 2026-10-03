@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Voces de Izquierda</title>
+<meta name="description" content="Sigue a los creadores que te interesan y recibe un aviso en tu teléfono cuando publican.">
+<meta name="theme-color" content="#15171B">
+<meta name="color-scheme" content="dark">
+<link rel="canonical" href="https://vocesdeizquierda.com/">
+<link rel="icon" type="image/svg+xml" href="logo.svg">
+<link rel="apple-touch-icon" href="icono-512.png">
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_MX">
+<meta property="og:url" content="https://vocesdeizquierda.com/">
+<meta property="og:title" content="Voces de Izquierda">
+<meta property="og:description" content="Sigue a los creadores que te interesan y recibe un aviso en tu teléfono cuando publican.">
+<meta property="og:image" content="https://vocesdeizquierda.com/icono-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;700;800&display=swap" rel="stylesheet">
+<style>
+/* Colores y tipografía salen del logo: carbón de fondo, el degradado del
+   megáfono y Montserrat ExtraBold, la letra del nombre. */
+:root {
+  --carbon: #15171B;
+  --grafito: #2B2F36;
+  --borde: #3A414B;
+  --texto: #F2F4F6;
+  --suave: #A8B0BA;
+  --calido: #FFE3DA;
+  --fuego: linear-gradient(45deg, #E02A3A, #F0502A 50%, #F8961E);
+  --ancho: min(1040px, 100% - 3rem);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--carbon);
+  color: var(--texto);
+  font-family: Montserrat, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+h1, h2, p, dl, dd { margin: 0; }
+
+/* --- Portada ------------------------------------------------------------ */
+.portada {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(50% 62% at 72% 46%, var(--grafito), var(--carbon));
+}
+.portada-caja {
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: clamp(5rem, 13vw, 9.5rem) clamp(3.5rem, 9vw, 6.5rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 2rem 3rem;
+  align-items: center;
+}
+h1 {
+  font-size: clamp(2.6rem, 7.2vw, 4.75rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.entrada {
+  margin-top: 1.5rem;
+  max-width: 30em;
+  font-size: clamp(1.15rem, 2.1vw, 1.35rem);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--suave);
+}
+.estado {
+  margin-top: 2.25rem;
+  font-weight: 700;
+  color: var(--calido);
+}
+/* La misma barra que el logo lleva bajo el nombre. */
+.estado::before {
+  content: "";
+  display: block;
+  width: 3.25rem;
+  height: 4px;
+  margin-bottom: 0.9rem;
+  border-radius: 2px;
+  background: var(--fuego);
+}
+
+/* El logo y las ondas comparten sistema de coordenadas: las ondas siguen a
+   las tres que ya salen del megáfono y continúan fuera del recuadro. */
+.emblema {
+  position: relative;
+  width: clamp(9.5rem, 21vw, 14.5rem);
+  aspect-ratio: 1;
+  justify-self: center;
+}
+.emblema img {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1.25rem 2.5rem rgba(8, 9, 11, 0.55));
+}
+.ondas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ondas path {
+  fill: none;
+  stroke: url(#onda);
+  stroke-width: 1.22;
+  stroke-linecap: round;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ondas path {
+    stroke-dasharray: 1;
+    animation: salir 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(0.25s + var(--i) * 0.09s);
+  }
+  @keyframes salir {
+    from { stroke-dashoffset: 1; opacity: 0; }
+    to { stroke-dashoffset: 0; }
+  }
+}
+
+/* --- Qué tiene ---------------------------------------------------------- */
+.contenido {
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: clamp(3rem, 7vw, 5rem);
+  border-top: 1px solid var(--borde);
+}
+h2 {
+  font-size: clamp(1.5rem, 3.2vw, 2rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.funciones {
+  margin-top: 2.25rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.25rem 3.5rem;
+}
+.funciones dt {
+  font-size: 1.1875rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.funciones dd {
+  margin-top: 0.4rem;
+  max-width: 34em;
+  color: var(--suave);
+}
+
+/* --- Pie ---------------------------------------------------------------- */
+.pie {
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: 2rem 3rem;
+  border-top: 1px solid var(--borde);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.75rem 2.5rem;
+  font-size: 0.9375rem;
+  color: var(--suave);
+}
+.pie p:first-child { max-width: 36em; }
+
+@media (max-width: 46rem) {
+  .portada { background: radial-gradient(110% 45% at 28% 22%, var(--grafito), var(--carbon)); }
+  .portada-caja { grid-template-columns: minmax(0, 1fr); padding-top: 4.5rem; }
+  .emblema { order: -1; justify-self: start; margin-bottom: 1rem; }
+  .funciones { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+}
+</style>
+</head>
+<body>
+
+<header class="portada">
+  <div class="portada-caja">
+    <div>
+      <h1>Voces de Izquierda</h1>
+      <p class="entrada">Sigue a los creadores que te interesan y recibe un aviso en tu teléfono cuando publican.</p>
+      <!-- Cuando la app esté publicada, cambia esta línea por los enlaces a las tiendas. -->
+      <p class="estado">Próximamente en Android y iPhone</p>
+    </div>
+    <div class="emblema">
+      <svg class="ondas" viewBox="15 15 78 78" aria-hidden="true" focusable="false">
+        <defs>
+          <linearGradient id="onda" gradientUnits="userSpaceOnUse" x1="62" y1="30" x2="150" y2="-50">
+            <stop offset="0" stop-color="#E02A3A"/>
+            <stop offset=".3" stop-color="#F0502A"/>
+            <stop offset="1" stop-color="#F8961E"/>
+          </linearGradient>
+        </defs>
+        <path pathLength="1" style="--i:0" opacity="0.85" d="M69.28 6.31A32 32 0 0 1 88.24 36.66"/>
+        <path pathLength="1" style="--i:1" opacity="0.7" d="M74.16 -4.66A44 44 0 0 1 100.23 37.08"/>
+        <path pathLength="1" style="--i:2" opacity="0.56" d="M79.85 -17.45A58 58 0 0 1 114.22 37.56"/>
+        <path pathLength="1" style="--i:3" opacity="0.43" d="M86.36 -32.06A74 74 0 0 1 130.21 38.12"/>
+        <path pathLength="1" style="--i:4" opacity="0.32" d="M93.68 -48.51A92 92 0 0 1 148.20 38.75"/>
+        <path pathLength="1" style="--i:5" opacity="0.23" d="M101.81 -66.78A112 112 0 0 1 168.19 39.45"/>
+        <path pathLength="1" style="--i:6" opacity="0.15" d="M110.76 -86.88A134 134 0 0 1 190.18 40.22"/>
+        <path pathLength="1" style="--i:7" opacity="0.09" d="M120.52 -108.80A158 158 0 0 1 214.16 41.05"/>
+      </svg>
+      <img src="logo.svg" width="232" height="232" alt="Logo de Voces de Izquierda Hub: un puño que sostiene un megáfono">
+    </div>
+  </div>
+</header>
+
+<main class="contenido">
+  <h2>Qué tiene la app</h2>
+  <dl class="funciones">
+    <div>
+      <dt>Directorio</dt>
+      <dd>Creadores ordenados por tema: política, noticias, música y más. Cada uno con los lugares donde publica.</dd>
+    </div>
+    <div>
+      <dt>Avisos</dt>
+      <dd>Toca «Avísame cuando publique» en un creador y te llega una notificación cada vez que sube algo nuevo.</dd>
+    </div>
+    <div>
+      <dt>Novedades</dt>
+      <dd>Lo último de quienes sigues, en un solo lugar. Un toque abre el video en YouTube, TikTok, Twitch o donde se haya publicado.</dd>
+    </div>
+    <div>
+      <dt>Fácil de leer</dt>
+      <dd>Letra más grande y fondo claro u oscuro, a tu gusto.</dd>
+    </div>
+  </dl>
+</main>
+
+<footer class="pie">
+  <p>La app no reproduce ni guarda videos. Te avisa y te lleva a la app oficial de cada plataforma.</p>
+  <p>© 2026 Voces de Izquierda</p>
+</footer>
+
+</body>
+</html>
