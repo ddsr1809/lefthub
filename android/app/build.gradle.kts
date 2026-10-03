@@ -1,9 +1,24 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.google.services)
 }
+
+// -----------------------------------------------------------------------------
+// Llave de firma de producción
+// -----------------------------------------------------------------------------
+// Vive fuera de git, en android/firma.properties (ver firma.properties.example
+// y la sección "Firmar para Google Play" de COMO-ABRIR.md). Sin ese archivo la
+// variante de producción se firma con la llave de depuración, como antes: sirve
+// para probar en tu teléfono, pero Google Play la rechaza.
+val firma = Properties().apply {
+    val archivo = rootProject.file("firma.properties")
+    if (archivo.exists()) archivo.inputStream().use { load(it) }
+}
+val hayFirma = !firma.getProperty("archivo").isNullOrBlank()
 
 android {
     namespace = "com.vocesdeizquierda.lefthub"
@@ -99,6 +114,20 @@ android {
         }
     }
 
+    signingConfigs {
+        if (hayFirma) {
+            create("produccion") {
+                // Ruta absoluta, o relativa a la carpeta android/.
+                storeFile = rootProject.file(firma.getProperty("archivo"))
+                storePassword = firma.getProperty("clave")
+                keyAlias = firma.getProperty("alias")
+                // keytool crea almacenes PKCS12, donde la llave y el almacén
+                // comparten clave.
+                keyPassword = firma.getProperty("clave")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
@@ -107,7 +136,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (hayFirma) "produccion" else "debug")
         }
         debug {
             // Ya NO lleva applicationIdSuffix = ".debug".
