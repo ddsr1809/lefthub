@@ -99,7 +99,14 @@ buscar_adb() {
   return 0
 }
 
-dispositivos() { "$1" devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }'; }
+# Solo se usa adb si su servidor ya está encendido (lo enciende Android Studio).
+# Cualquier comando de adb lo arranca si está apagado, y un servidor arrancado
+# desde aquí no queda configurado como Android Studio lo espera: por ejemplo,
+# deja de ofrecer el emparejamiento por Wi-Fi.
+dispositivos() {
+  pgrep -f 'adb .*fork-server' >/dev/null 2>&1 || return 0
+  "$1" devices 2>/dev/null | awk 'NR > 1 && $2 == "device" { print $1 }'
+}
 
 # El puente se pierde cada vez que se desconecta el cable, así que se repone
 # cada pocos segundos para todo lo que esté conectado.
