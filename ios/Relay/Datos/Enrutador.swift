@@ -81,6 +81,19 @@ enum Enrutador {
         abrirPrimeraQueFuncione(candidatas, plataforma: plataforma)
     }
 
+    /// Documentos legales, en el sitio web. Si el iPhone no está en español,
+    /// el sitio pasa solo a inglés.
+    static let urlPrivacidad = "https://vocesdeizquierda.com/privacidad/"
+    static let urlCondiciones = "https://vocesdeizquierda.com/condiciones/"
+
+    /// Abre una página nuestra en Safari. Va sin esquema propio y sin
+    /// etiquetas de atribución: no es contenido de un creador.
+    @MainActor
+    static func abrirPagina(_ url: String) {
+        guard let destino = URL(string: url) else { return }
+        UIApplication.shared.open(destino)
+    }
+
     @MainActor
     private static func abrirPrimeraQueFuncione(_ candidatas: [String], plataforma: String) {
         for texto in candidatas {

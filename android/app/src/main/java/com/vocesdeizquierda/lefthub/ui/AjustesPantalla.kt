@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.EstadoApp
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
+import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 @Composable
 fun AjustesPantalla(
@@ -23,6 +24,7 @@ fun AjustesPantalla(
     onDesconectarYouTube: () -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
+    val contexto = LocalContext.current
     var confirmandoBorrado by remember { mutableStateOf(false) }
 
     Column(
@@ -94,6 +96,12 @@ fun AjustesPantalla(
                     habilitado = !estado.ocupado,
                     onClick = onVincularGoogle
                 )
+                Text(
+                    "Al guardar tu cuenta aceptas la política de privacidad y las condiciones " +
+                        "de servicio. Las encuentras al final de esta pantalla.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = esquema.onSurfaceVariant
+                )
             } else {
                 Text(
                     "Tu cuenta está guardada" + (estado.correo?.let { " como $it" } ?: "") + ".",
@@ -162,6 +170,31 @@ fun AjustesPantalla(
                 variante = VarianteBoton.PELIGRO,
                 habilitado = !estado.ocupado,
                 onClick = { confirmandoBorrado = true }
+            )
+        }
+
+        // --- Privacidad y condiciones ---------------------------------------
+        // Las tiendas y las políticas de la API de YouTube piden que estos
+        // documentos se puedan abrir desde dentro de la app.
+        Seccion("Privacidad y condiciones") {
+            Text(
+                "Al usar la app aceptas nuestras condiciones de servicio y las Condiciones " +
+                    "del Servicio de YouTube.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = Espacio.md)
+            )
+            BotonGrande(
+                titulo = "Política de privacidad",
+                subtitulo = "Qué datos guardamos y cómo borrarlos",
+                variante = VarianteBoton.SECUNDARIO,
+                onClick = { Enrutador.abrirPagina(contexto, Enrutador.URL_PRIVACIDAD) }
+            )
+            BotonGrande(
+                titulo = "Condiciones de servicio",
+                subtitulo = "Se abren en el navegador",
+                variante = VarianteBoton.SECUNDARIO,
+                onClick = { Enrutador.abrirPagina(contexto, Enrutador.URL_CONDICIONES) }
             )
         }
 
