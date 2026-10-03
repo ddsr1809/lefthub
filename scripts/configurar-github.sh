@@ -116,6 +116,6 @@ cat <<RESUMEN
     Recomendado, a mano: en GitHub > Settings > Environments > prod activa
     "Required reviewers" para que produccion pida tu aprobacion.
 
-    Siguiente paso: git push a development (despliega test) y, cuando test
-    este sano, fusiona a master (despliega prod).
+    Siguiente paso: fusiona development en testing (despliega test) y,
+    cuando test este sano, fusiona testing en master (despliega prod).
 RESUMEN

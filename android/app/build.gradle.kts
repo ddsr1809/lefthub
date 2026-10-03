@@ -20,7 +20,7 @@ android {
         // Credential Manager lo necesita para que el servidor pueda validar el
         // token; con el ID de Android puesto aqui, el login falla en silencio.
         //
-        // OJO: si pruebas vive en OTRO proyecto de Firebase, este valor
+        // OJO: si developer o pruebas viven en OTRO proyecto de Firebase, este valor
         // cambia por sabor. En ese caso borra esta linea y pon un
         // buildConfigField("String", "WEB_CLIENT_ID", ...) dentro de cada uno.
         buildConfigField(
@@ -38,23 +38,39 @@ android {
     // -------------------------------------------------------------------------
     // Ambientes
     // -------------------------------------------------------------------------
-    // Solo hay dos sabores, uno por cada servidor del VPS:
+    // Tres sabores, uno por ambiente:
     //
-    //   pruebas -> https://testapp.vocesdeizquierda.com   (com.vocesdeizquierda.lefthub.pruebas)
-    //   prod    -> https://leftapp.vocesdeizquierda.com   (com.vocesdeizquierda.lefthub)
+    //   developer  -> servidor local en tu equipo          (...lefthub.developer)
+    //   pruebas    -> https://testapp.vocesdeizquierda.com  (...lefthub.pruebas)
+    //   produccion -> https://leftapp.vocesdeizquierda.com  (com.vocesdeizquierda.lefthub)
+    //
+    // "pruebas" es el ambiente de testing. No puede llamarse "testing": el AGP
+    // prohibe los sabores cuyo nombre empieza por "test", porque reserva ese
+    // prefijo para los conjuntos de fuentes de pruebas unitarias.
     //
     // Cada sabor instala una app distinta en el telefono, asi que puedes tener
-    // las dos a la vez. Ambos hablan con el servidor por HTTPS: ya no existe
-    // un sabor que permita trafico en claro hacia un servidor local.
+    // las tres a la vez. Los tres applicationId tienen que estar registrados en
+    // Firebase, y cada carpeta src/<sabor>/ necesita su google-services.json.
     //
-    // Los dos applicationId tienen que estar registrados en Firebase, y cada
-    // carpeta src/<sabor>/ necesita su google-services.json con ese paquete.
-    //
-    // No se puede llamar "test" a un sabor: el AGP reserva ese prefijo para los
-    // conjuntos de fuentes de pruebas unitarias y la sincronizacion falla.
+    // Al final de este archivo, androidComponents deja una sola variante por
+    // sabor: developerDebug, pruebasDebug y produccionRelease.
     flavorDimensions += "ambiente"
 
     productFlavors {
+        create("developer") {
+            dimension = "ambiente"
+            applicationIdSuffix = ".developer"
+            versionNameSuffix = "-developer"
+
+            // Dentro del emulador, localhost es el propio emulador; el equipo
+            // anfitrion se alcanza por 10.0.2.2. Con un telefono fisico por
+            // USB, cambia esto por la IP de tu computadora en la red local.
+            // Es el unico sabor que permite HTTP sin cifrar (ver
+            // src/developer/AndroidManifest.xml).
+            buildConfigField("String", "API_BASE", "\"http://10.0.2.2:8080\"")
+            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
+        }
+
         create("pruebas") {
             dimension = "ambiente"
             applicationIdSuffix = ".pruebas"
@@ -65,7 +81,7 @@ android {
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
         }
 
-        create("prod") {
+        create("produccion") {
             dimension = "ambiente"
             // Sin sufijo: este es el applicationId de verdad, el que va a Play.
             // Tiene que coincidir con RELAY_URL_PUBLICA de .env.prod en el VPS.
@@ -95,8 +111,8 @@ android {
         debug {
             // Ya NO lleva applicationIdSuffix = ".debug".
             // El sufijo lo pone el sabor. Si ambos pusieran el suyo saldrian
-            // cuatro paquetes distintos (...pruebas.debug, ...debug, etc.) y
-            // habria que registrar los cuatro en Firebase.
+            // mas paquetes distintos (...pruebas.debug, etc.) y habria que
+            // registrarlos todos en Firebase.
         }
     }
 
@@ -118,6 +134,20 @@ android {
         resources.excludes += "/META-INF/{AL2.0,LGPL2.1}"
     }
     buildToolsVersion = "34.0.0"
+}
+
+// Una sola variante por sabor. Sin este filtro saldrian seis (cada sabor en
+// debug y en release). developer y pruebas se compilan en debug, para poder
+// depurarlas; produccion solo en release, que es lo que se publica.
+androidComponents {
+    beforeVariants { variante ->
+        val tipoEsperado = if (variante.flavorName == "produccion") "release" else "debug"
+        variante.enable = variante.buildType == tipoEsperado
+
+        // No hay pruebas instrumentadas (src/androidTest). Sin esta linea,
+        // cada sabor en debug arrastra ademas una variante "...AndroidTest".
+        variante.enableAndroidTest = false
+    }
 }
 
 dependencies {
