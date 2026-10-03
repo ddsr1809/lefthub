@@ -14,7 +14,21 @@ struct RaizVista: View {
     @State private var listo = false
     @State private var pestana = 0
 
+    /// Fecha de las condiciones que esta persona aceptó; vacío si ninguna.
+    @AppStorage(Aceptacion.clave) private var versionAceptada = ""
+
     var body: some View {
+        if versionAceptada == Aceptacion.version {
+            principal
+        } else {
+            // Primera vez: la cuenta anónima se crea en el `.task` de
+            // `principal`, así que no existe hasta que la persona acepta.
+            BienvenidaVista { versionAceptada = Aceptacion.version }
+                .temaRelay(preferencia: "sistema", escala: .normal)
+        }
+    }
+
+    private var principal: some View {
         Group {
             if listo {
                 TabView(selection: $pestana) {
