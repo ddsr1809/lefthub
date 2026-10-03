@@ -168,9 +168,10 @@ El sabor de testing se llama `pruebas` porque Android no permite sabores cuyo
 nombre empiece por "test".
 
 `developerDebug` habla con un servidor local. Levántalo en tu equipo con
-`make local-up` (ver `PIPELINE.md`, "Uso local"). Desde el emulador funciona
-tal cual; con un teléfono físico, cambia `10.0.2.2` por la IP de tu
-computadora en `android/app/build.gradle.kts`.
+`./local.sh`, que además mantiene el puente por USB para que la app lo
+encuentre en `http://localhost:8080`, tanto en un teléfono físico como en el
+emulador. Si lo levantas con `make local-up`, crea el puente a mano:
+`adb reverse tcp:8080 tcp:8080`.
 
 `WEB_CLIENT_ID` no cambia mientras sigas en el mismo proyecto de Firebase.
 

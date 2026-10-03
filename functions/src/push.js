@@ -43,7 +43,7 @@ async function avisarPublicacion({ creador, video }) {
     android: {
       priority: 'high',
       notification: {
-        // El canal lo crea la app Android en RelayApp.onCreate().
+        // El canal lo crea la app Android en LeftVocesApp.onCreate().
         // Separarlo de 'avisos' deja que el usuario silencie las publicaciones
         // sin perder los avisos de contenido movido.
         channelId: 'publicaciones',

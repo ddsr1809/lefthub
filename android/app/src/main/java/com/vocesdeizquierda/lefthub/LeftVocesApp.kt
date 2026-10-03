@@ -22,7 +22,7 @@ import com.vocesdeizquierda.lefthub.data.ApiRelay
  * los videos nuevos durante unas vacaciones sin perderse que un video cambio
  * de plataforma. Un solo canal obligaria a elegir todo o nada.
  */
-class RelayApp : Application() {
+class LeftVocesApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
