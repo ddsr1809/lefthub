@@ -24,41 +24,60 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import com.vocesdeizquierda.lefthub.ui.*
 
 class MainActivity : ComponentActivity() {
 
-    // El permiso se pide en cuanto arranca la app porque sin él el producto no
-    // hace nada útil. Si el usuario dice que no, la app sigue funcionando como
-    // directorio; simplemente no avisa.
+    // El permiso se pide en cuanto la persona acepta las condiciones (o al
+    // arrancar, si ya las aceptó) porque sin él el producto no hace nada útil.
+    // Si dice que no, la app sigue funcionando como directorio; simplemente
+    // no avisa.
     private val pedirPermiso = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { /* concedido o no, seguimos igual */ }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        solicitarPermisoDeAvisos()
+        if (Aceptacion.vigente(this)) solicitarPermisoDeAvisos()
 
         setContent {
-            val modelo: AppViewModel = viewModel()
-            val estado by modelo.estado.collectAsState()
+            var aceptado by remember { mutableStateOf(Aceptacion.vigente(this@MainActivity)) }
 
-            TemaRelay(
-                preferencia = estado.perfil.tema,
-                escala = EscalaTexto.desde(estado.perfil.escalaTexto)
-            ) {
-                if (!estado.listo) {
-                    PantallaDeCarga()
-                } else {
-                    Navegacion(modelo, estado)
+            if (!aceptado) {
+                // Primera vez: nada sale hacia el servidor hasta que la persona
+                // acepta. Por eso el ViewModel, que crea la cuenta anónima al
+                // nacer, solo se pide en la otra rama.
+                TemaRelay {
+                    BienvenidaPantalla(
+                        onAceptar = {
+                            Aceptacion.registrar(this@MainActivity)
+                            aceptado = true
+                            solicitarPermisoDeAvisos()
+                        }
+                    )
                 }
-            }
+            } else {
+                val modelo: AppViewModel = viewModel()
+                val estado by modelo.estado.collectAsState()
 
-            // La notificación que abrió la app trae el destino en los extras.
-            // Lo procesamos una vez y lo limpiamos, o al girar la pantalla
-            // volvería a abrirse el video.
-            LaunchedEffect(Unit) { procesarIntent(intent) }
+                TemaRelay(
+                    preferencia = estado.perfil.tema,
+                    escala = EscalaTexto.desde(estado.perfil.escalaTexto)
+                ) {
+                    if (!estado.listo) {
+                        PantallaDeCarga()
+                    } else {
+                        Navegacion(modelo, estado)
+                    }
+                }
+
+                // La notificación que abrió la app trae el destino en los extras.
+                // Lo procesamos una vez y lo limpiamos, o al girar la pantalla
+                // volvería a abrirse el video.
+                LaunchedEffect(Unit) { procesarIntent(intent) }
+            }
         }
     }
 
@@ -73,6 +92,9 @@ class MainActivity : ComponentActivity() {
      */
     override fun onResume() {
         super.onResume()
+        // Pedir el ViewModel lo crea, y al crearse abre la cuenta anónima:
+        // antes de la aceptación no se toca.
+        if (!Aceptacion.vigente(this)) return
         ViewModelProvider(this)[AppViewModel::class.java].verificarYouTube(applicationContext)
     }
 

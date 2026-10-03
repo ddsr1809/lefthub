@@ -1,0 +1,14 @@
+# Copia este archivo como firma.properties (que NO se sube a git) y rellena los
+# tres valores. Con él, la variante produccionRelease se firma con tu llave de
+# Google Play. Cómo crear la llave: sección "Firmar para Google Play" de
+# COMO-ABRIR.md.
+
+# Ruta al almacén de llaves. Absoluta, o relativa a la carpeta android/.
+# Guárdalo fuera del repositorio y haz una copia de seguridad.
+archivo=/Users/TU_USUARIO/llaves/voces-izquierda.jks
+
+# El alias que le diste a la llave al crearla.
+alias=voces
+
+# La clave que escribiste al crearla.
+clave=

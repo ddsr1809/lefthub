@@ -10,6 +10,6 @@
 // abrirlo desde otro origen, pon aquí la URL del servidor y agrega ese origen
 // a CORS_ORIGENES en el .env.
 window.VOCESLEFT_CONFIG = {
-  googleClientId: '389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com',
+  googleClientId: '445243795956-jso91c84gsepuukis0h5dr91r9a0t4eu.apps.googleusercontent.com',
   apiBase: ''
 };
