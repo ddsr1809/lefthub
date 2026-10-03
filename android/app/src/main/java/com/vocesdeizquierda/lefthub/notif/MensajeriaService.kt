@@ -10,7 +10,7 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.vocesdeizquierda.lefthub.MainActivity
 import com.vocesdeizquierda.lefthub.R
-import com.vocesdeizquierda.lefthub.RelayApp
+import com.vocesdeizquierda.lefthub.LeftVocesApp
 import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.DirectorioRepo
 import kotlinx.coroutines.CoroutineScope
@@ -59,7 +59,7 @@ class MensajeriaService : FirebaseMessagingService() {
         )
 
         val notificacion = NotificationCompat.Builder(
-            this, aviso.channelId ?: RelayApp.CANAL_PUBLICACIONES
+            this, aviso.channelId ?: LeftVocesApp.CANAL_PUBLICACIONES
         )
             .setSmallIcon(R.drawable.ic_notificacion)
             .setContentTitle(aviso.title)
