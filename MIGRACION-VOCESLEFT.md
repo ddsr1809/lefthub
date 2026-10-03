@@ -89,10 +89,21 @@ del servidor, crea los Environments `test` y `prod` (este último solo acepta
 
 ## 4. Autorizar los dominios nuevos en Google
 
-En [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
-proyecto `hub-11979`:
+Hay dos proyectos de Google, cada uno con un papel:
 
-- **Cliente OAuth web** (`389825726990-b6ubrv9f…`): en *Orígenes autorizados de
+| Proyecto | Para qué | Dónde se usa |
+|---|---|---|
+| "Voces de Izquierda" (número `445243795956`) | Entrar con Google: pantalla de consentimiento, usuarios de prueba y clientes OAuth | `WEB_CLIENT_ID` de Android, `admin/config.js` y `GOOGLE_CLIENT_ID` del servidor |
+| `vocesdeizquierda-app` (Firebase) | Notificaciones | `google-services.json` de Android, y `FCM_PROYECTO_ID` y `fcm-*.json` del servidor |
+
+En [Google Cloud Console](https://console.cloud.google.com), proyecto
+"Voces de Izquierda", en *Google Auth Platform → Clientes*:
+
+- **Clientes Android**, uno por cada `applicationId`, con la huella SHA-1 de la
+  llave que firma esa variante (`./gradlew signingReport`). Google exige que
+  estén en el mismo proyecto que el cliente web; si no, entrar con Google falla
+  con "Google no dejó entrar desde esta app".
+- **Cliente OAuth web** (`445243795956-jso91c84…`): en *Orígenes autorizados de
   JavaScript* agrega `https://leftapp.vocesdeizquierda.com` y
   `https://testapp.vocesdeizquierda.com`. Sin esto, el botón de Google del
   panel `/admin` falla con `origin_mismatch`.
@@ -148,11 +159,10 @@ hacer esto, la compilación falla con `No matching client found for package
 name`.
 
 1. En la [consola de Firebase](https://console.firebase.google.com), proyecto
-   `hub-11979`, agrega tres apps de Android: `com.vocesdeizquierda.lefthub`,
-   `com.vocesdeizquierda.lefthub.pruebas` y
-   `com.vocesdeizquierda.lefthub.developer`. En cada una registra la huella
-   SHA-1 de tu llave de firma (`./gradlew signingReport`, dentro de
-   `android/`); sin ella no funciona entrar con Google.
+   `vocesdeizquierda-app`, agrega tres apps de Android:
+   `com.vocesdeizquierda.lefthub`, `com.vocesdeizquierda.lefthub.pruebas` y
+   `com.vocesdeizquierda.lefthub.developer`. Las huellas SHA-1 no van aquí
+   sino en el proyecto "Voces de Izquierda", como clientes Android (sección 4).
 2. Descarga el `google-services.json` nuevo (un solo archivo trae las tres
    apps) y cópialo a las tres carpetas de sabor:
 

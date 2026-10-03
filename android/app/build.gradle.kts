@@ -41,7 +41,7 @@ android {
         buildConfigField(
             "String",
             "WEB_CLIENT_ID",
-            "\"389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com\""
+            "\"445243795956-jso91c84gsepuukis0h5dr91r9a0t4eu.apps.googleusercontent.com\""
         )
 
         // API_BASE NO se define aqui a proposito. Vive solo en los sabores, de
