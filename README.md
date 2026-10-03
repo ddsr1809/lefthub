@@ -326,6 +326,14 @@ que hay que poner.
 
 ## Notas legales que no son código
 
-Necesitas política de privacidad y términos de uso publicados en una URL antes de subir a cualquier tienda. Ambas tiendas los piden y ambas los revisan.
+Necesitas política de privacidad y términos de uso publicados en una URL antes de subir a cualquier tienda. Ambas tiendas los piden y ambas los revisan. Están en la carpeta `web/`, en español y en inglés:
+
+| | Español | Inglés |
+|---|---|---|
+| Política de privacidad | `https://vocesdeizquierda.com/privacidad/` | `https://vocesdeizquierda.com/en/privacy/` |
+| Condiciones de servicio | `https://vocesdeizquierda.com/condiciones/` | `https://vocesdeizquierda.com/en/terms/` |
+| Cómo borrar la cuenta (lo pide Play) | `https://vocesdeizquierda.com/privacidad/#borrar-cuenta` | `https://vocesdeizquierda.com/en/privacy/#delete-account` |
+
+Las páginas en español mandan solas a la versión en inglés cuando el navegador no está en español (`web/idioma.js`). Si cambias lo que la app o el servidor guardan de las personas, actualiza la política en los dos idiomas.
 
 Este documento describe requisitos normativos de forma general; no es asesoría legal. Para AB 1757, la App Store Review y el manejo de datos personales, vale la pena una consulta con un abogado antes de publicar.

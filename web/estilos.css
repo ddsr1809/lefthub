@@ -1,0 +1,274 @@
+/* Colores y tipografía salen del logo: carbón de fondo, el degradado del
+   megáfono y Montserrat ExtraBold, la letra del nombre. */
+
+/* La fuente se sirve desde este mismo sitio para no llamar a terceros.
+   Licencia en fuentes/OFL.txt. */
+@font-face {
+  font-family: Montserrat;
+  src: url("/fuentes/montserrat.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --carbon: #15171B;
+  --grafito: #2B2F36;
+  --superficie: #1E2126;
+  --borde: #3A414B;
+  --texto: #F2F4F6;
+  --lectura: #D3D8DE;
+  --suave: #A8B0BA;
+  --calido: #FFE3DA;
+  --naranja: #F8961E;
+  --fuego: linear-gradient(45deg, #E02A3A, #F0502A 50%, #F8961E);
+  --ancho: min(1040px, 100% - 3rem);
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--carbon);
+  color: var(--texto);
+  font-family: Montserrat, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 1.0625rem;
+  line-height: 1.6;
+}
+h1, h2, h3, p, ul, dl, dd { margin: 0; }
+a { color: var(--calido); text-underline-offset: 0.18em; }
+a:focus-visible {
+  outline: 2px solid var(--naranja);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+/* --- Barra superior ----------------------------------------------------- */
+.barra {
+  position: relative;
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+}
+.marca {
+  margin-right: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--texto);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  text-decoration: none;
+}
+.marca img { display: block; width: 2.5rem; height: 2.5rem; }
+.idioma {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  text-decoration: none;
+  padding: 0.35rem 0;
+}
+.idioma:hover { text-decoration: underline; }
+.cabecera { border-bottom: 1px solid var(--borde); }
+
+/* --- Portada ------------------------------------------------------------ */
+.portada {
+  position: relative;
+  overflow: hidden;
+  background: radial-gradient(50% 62% at 72% 46%, var(--grafito), var(--carbon));
+}
+.portada-caja {
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: clamp(2.5rem, 9vw, 6.5rem) clamp(3.5rem, 9vw, 6.5rem);
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+  gap: 2rem 3rem;
+  align-items: center;
+}
+.portada h1 {
+  font-size: clamp(2.6rem, 7.2vw, 4.75rem);
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+}
+.entrada {
+  margin-top: 1.5rem;
+  max-width: 30em;
+  font-size: clamp(1.15rem, 2.1vw, 1.35rem);
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--suave);
+}
+.estado {
+  margin-top: 2.25rem;
+  font-weight: 700;
+  color: var(--calido);
+}
+/* La misma barra que el logo lleva bajo el nombre. */
+.estado::before {
+  content: "";
+  display: block;
+  width: 3.25rem;
+  height: 4px;
+  margin-bottom: 0.9rem;
+  border-radius: 2px;
+  background: var(--fuego);
+}
+.estado-nota {
+  margin-top: 0.3rem;
+  font-size: 0.9375rem;
+  color: var(--suave);
+}
+
+/* El logo y las ondas comparten sistema de coordenadas: las ondas siguen a
+   las tres que ya salen del megáfono y continúan fuera del recuadro. */
+.emblema {
+  position: relative;
+  width: clamp(9.5rem, 21vw, 14.5rem);
+  aspect-ratio: 1;
+  justify-self: center;
+}
+.emblema img {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 1.25rem 2.5rem rgba(8, 9, 11, 0.55));
+}
+.ondas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+.ondas path {
+  fill: none;
+  stroke: url(#onda);
+  stroke-width: 1.22;
+  stroke-linecap: round;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .ondas path {
+    stroke-dasharray: 1;
+    animation: salir 0.8s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+    animation-delay: calc(0.25s + var(--i) * 0.09s);
+  }
+  @keyframes salir {
+    from { stroke-dashoffset: 1; opacity: 0; }
+    to { stroke-dashoffset: 0; }
+  }
+}
+
+/* --- Qué tiene ---------------------------------------------------------- */
+.contenido {
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: clamp(3rem, 7vw, 5rem);
+  border-top: 1px solid var(--borde);
+}
+.contenido h2 {
+  font-size: clamp(1.5rem, 3.2vw, 2rem);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.015em;
+}
+.funciones {
+  margin-top: 2.25rem;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2.25rem 3.5rem;
+}
+.funciones dt {
+  font-size: 1.1875rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+.funciones dd {
+  margin-top: 0.4rem;
+  max-width: 34em;
+  color: var(--suave);
+}
+
+/* --- Privacidad y condiciones ------------------------------------------- */
+.legal {
+  width: min(43rem, 100% - 3rem);
+  margin-inline: auto;
+  padding-block: clamp(2.5rem, 7vw, 4.5rem) clamp(3rem, 8vw, 5.5rem);
+  color: var(--lectura);
+  line-height: 1.7;
+}
+.legal h1 {
+  font-size: clamp(2.1rem, 5.6vw, 3.25rem);
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--texto);
+  text-wrap: balance;
+}
+.legal .fecha {
+  margin-top: 1rem;
+  margin-bottom: 2rem;
+  font-size: 0.9375rem;
+  color: var(--suave);
+}
+.legal h2 {
+  margin-top: 3rem;
+  font-size: 1.4rem;
+  font-weight: 800;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  color: var(--texto);
+}
+.legal h3 {
+  margin-top: 2rem;
+  font-size: 1.0625rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--texto);
+  scroll-margin-top: 1.5rem;
+}
+.legal p { margin-top: 0.9rem; }
+.legal ul { margin-top: 0.9rem; padding-left: 1.3rem; }
+.legal li { margin-top: 0.45rem; }
+.legal li::marker { color: var(--suave); }
+.legal strong { color: var(--texto); font-weight: 700; }
+.legal a { overflow-wrap: anywhere; }
+.resumen {
+  margin-top: 2rem;
+  padding: 1.5rem 1.6rem 1.6rem;
+  border-radius: 0.75rem;
+  background: var(--superficie);
+  border: 1px solid var(--borde);
+}
+.legal .resumen h2 { margin-top: 0; font-size: 1.15rem; }
+
+/* --- Pie ---------------------------------------------------------------- */
+.pie {
+  width: var(--ancho);
+  margin-inline: auto;
+  padding-block: 2rem 3rem;
+  border-top: 1px solid var(--borde);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.75rem 2rem;
+  font-size: 0.9375rem;
+  color: var(--suave);
+}
+.pie-nota { flex: 1 1 22rem; max-width: 36em; }
+.pie nav { display: flex; gap: 1.5rem; }
+.pie > p:last-child { margin-left: auto; }
+.pie a { color: var(--texto); font-weight: 500; }
+
+@media (max-width: 46rem) {
+  .portada { background: radial-gradient(110% 45% at 28% 26%, var(--grafito), var(--carbon)); }
+  .portada-caja { grid-template-columns: minmax(0, 1fr); padding-top: 1.75rem; }
+  .emblema { order: -1; justify-self: start; margin-bottom: 1rem; }
+  .funciones { grid-template-columns: minmax(0, 1fr); gap: 1.75rem; }
+}
