@@ -397,6 +397,7 @@
       <td>${c.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculto</span>'}</td>
       <td class="acciones">
         <button class="btn sm" data-accion="editar-creador" data-id="${esc(c.id)}">Editar</button>
+        <button class="btn sm" data-accion="probar-aviso" data-id="${esc(c.id)}">Probar aviso</button>
         <button class="btn sm danger" data-accion="borrar-creador" data-id="${esc(c.id)}">Eliminar</button>
       </td></tr>`).join('');
   }
@@ -920,6 +921,22 @@
           toast(r.mensaje || 'Creador eliminado.');
           vistaCreadores();
           refrescarContadores();
+          break;
+        }
+
+        // Aviso de prueba: comprueba el tramo servidor → Firebase → teléfono
+        // sin esperar a que el creador publique. Le llega a quien lo sigue.
+        case 'probar-aviso': {
+          const c = (estado.creadores || []).find((x) => x.id === id);
+          if (!c) break;
+          const ok = await confirmar('¿Mandar un aviso de prueba de ' + c.nombre + '?',
+            'Le llega a ' + plural(c.seguidores, 'persona que lo sigue', 'personas que lo siguen') + '. Sirve para comprobar que las notificaciones funcionan.',
+            'Mandar aviso', config.ambiente === 'produccion');
+          if (!ok) break;
+          b.disabled = true;
+          const r = await api('/api/admin/creadores/' + id + '/aviso-de-prueba', { metodo: 'POST' });
+          toast(r.mensaje || 'Aviso enviado.');
+          b.disabled = false;
           break;
         }
 
