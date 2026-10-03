@@ -61,7 +61,7 @@ class MensajeriaService : FirebaseMessagingService() {
         val notificacion = NotificationCompat.Builder(
             this, aviso.channelId ?: RelayApp.CANAL_PUBLICACIONES
         )
-            .setSmallIcon(R.drawable.ic_launcher_foreground)
+            .setSmallIcon(R.drawable.ic_notificacion)
             .setContentTitle(aviso.title)
             .setContentText(aviso.body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(aviso.body))
