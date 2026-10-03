@@ -120,6 +120,28 @@ object Enrutador {
         }
     }
 
+    /** Documentos legales, en el sitio web. Si el teléfono no está en español, el sitio pasa solo a inglés. */
+    const val URL_PRIVACIDAD = "https://vocesdeizquierda.com/privacidad/"
+    const val URL_CONDICIONES = "https://vocesdeizquierda.com/condiciones/"
+
+    /**
+     * Abre una página nuestra en el navegador. Va sin app de destino y sin
+     * etiquetas de atribución: no es contenido de un creador.
+     */
+    fun abrirPagina(contexto: Context, url: String) {
+        try {
+            contexto.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        } catch (e: ActivityNotFoundException) {
+            Toast.makeText(
+                contexto,
+                "No se pudo abrir la página. Revisa que tengas un navegador instalado.",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
     private fun avisarSinDestino(contexto: Context) {
         Toast.makeText(
             contexto,
