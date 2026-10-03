@@ -108,6 +108,126 @@
           ]
         }
       }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:389825726990:android:50ee957f582026842d0a5f",
+        "android_client_info": {
+          "package_name": "com.vocesdeizquierda.lefthub"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "389825726990-4md4tt7fjae77t1p0sntamjmp8k4qkhi.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vocesdeizquierda.lefthub",
+            "certificate_hash": "c74a4658cbd81d8268ea0b75b0d4562508b40a3c"
+          }
+        },
+        {
+          "client_id": "389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHqme9c_qcBeTxYeC_RXbSBdoBXHTbJsc"
+        },
+        {
+          "current_key": "AIzaSyDgqSwdeLEpTlkaauEPymhxtdcG5iZxsaA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "389825726990-58olnf4lifms9nsjgbaa3uo20vuclkc1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:389825726990:android:7b6ae4fb62f12cb92d0a5f",
+        "android_client_info": {
+          "package_name": "com.vocesdeizquierda.lefthub.developer"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "389825726990-8cvfugciil2qi97dr52v4u0ciorjimqj.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vocesdeizquierda.lefthub.developer",
+            "certificate_hash": "c74a4658cbd81d8268ea0b75b0d4562508b40a3c"
+          }
+        },
+        {
+          "client_id": "389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHqme9c_qcBeTxYeC_RXbSBdoBXHTbJsc"
+        },
+        {
+          "current_key": "AIzaSyDgqSwdeLEpTlkaauEPymhxtdcG5iZxsaA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "389825726990-58olnf4lifms9nsjgbaa3uo20vuclkc1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:389825726990:android:7de186098dcefee02d0a5f",
+        "android_client_info": {
+          "package_name": "com.vocesdeizquierda.lefthub.pruebas"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "389825726990-6a95c531db4jfsn5egtngn995lf8daql.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vocesdeizquierda.lefthub.pruebas",
+            "certificate_hash": "c74a4658cbd81d8268ea0b75b0d4562508b40a3c"
+          }
+        },
+        {
+          "client_id": "389825726990-b6ubrv9f9fv2n2rn2r9dcbho9dnmdv8c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDHqme9c_qcBeTxYeC_RXbSBdoBXHTbJsc"
+        },
+        {
+          "current_key": "AIzaSyDgqSwdeLEpTlkaauEPymhxtdcG5iZxsaA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "389825726990-58olnf4lifms9nsjgbaa3uo20vuclkc1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
     }
   ],
   "configuration_version": "1"
