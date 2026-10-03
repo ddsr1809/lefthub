@@ -5,13 +5,26 @@ sus compilaciones independientes porque no se despliegan en el VPS.
 
 ## Flujo
 
+| Ambiente | Rama | Servidor | App Android |
+|---|---|---|---|
+| developer | `development` | Local, en tu equipo (`make local-up`) | `developerDebug` |
+| testing | `testing` | `testapp.vocesdeizquierda.com` | `pruebasDebug` |
+| produccion | `master` | `leftapp.vocesdeizquierda.com` | `produccionRelease` |
+
+El codigo sube en ese orden: se trabaja en `development`, se fusiona a
+`testing` para probar en el servidor y, cuando esta sano, se fusiona a `master`.
+
 | Evento | Resultado |
 |---|---|
-| Pull request a `development` o `master` | Pruebas Java y construccion de la imagen, sin desplegar |
-| Push a `development` | Publica la imagen y despliega `vocesleft-test` con `.env.test` |
+| Pull request a `development`, `testing` o `master` | Pruebas Java y construccion de la imagen, sin desplegar |
+| Push a `development` | Pruebas y publicacion de la imagen, sin desplegar |
+| Push a `testing` | Publica la imagen y despliega `vocesleft-test` con `.env.test` |
 | Push a `master` | Publica la imagen y despliega `vocesleft-prod` con `.env.prod` |
 | Ejecucion manual desde cualquier rama | Permite validar (`none`) o desplegar `test` |
 | Ejecucion manual desde `master` | Tambien permite desplegar `prod` |
+
+En el VPS y en GitHub los ambientes desplegados conservan sus nombres cortos:
+`test` y `prod` (Environments, archivos `.env` y carpetas `runtime`).
 
 Cada imagen queda identificada por el SHA completo del commit. El VPS conserva
 Postgres y sus volumenes; el pipeline solo reemplaza el contenedor `servidor`.
