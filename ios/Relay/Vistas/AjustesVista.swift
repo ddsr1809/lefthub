@@ -18,6 +18,7 @@ struct AjustesVista: View {
                 seccionColores
                 seccionCuenta
                 seccionBorrado
+                seccionLegal
 
                 TextoRelay(
                     "Esta app no reproduce videos. Solo te avisa cuando alguien publica y te lleva a la app oficial donde está el contenido.",
@@ -142,6 +143,11 @@ struct AjustesVista: View {
                         )
                     }
                 }
+
+                TextoRelay(
+                    "Al guardar tu cuenta aceptas la política de privacidad y las condiciones de servicio. Las encuentras al final de esta pantalla.",
+                    estilo: .secundario
+                )
             } else {
                 TextoRelay(
                     "Tu cuenta está guardada" + (autenticacion.correo.map { " como \($0)" } ?? "") + ".",
@@ -170,6 +176,34 @@ struct AjustesVista: View {
                 habilitado: !autenticacion.ocupado
             ) {
                 confirmandoBorrado = true
+            }
+        }
+    }
+
+    /// Las tiendas y las políticas de la API de YouTube piden que estos
+    /// documentos se puedan abrir desde dentro de la app.
+    private var seccionLegal: some View {
+        Seccion("Privacidad y condiciones") {
+            TextoRelay(
+                "Al usar la app aceptas nuestras condiciones de servicio y las Condiciones del Servicio de YouTube.",
+                estilo: .cuerpo
+            )
+            .padding(.bottom, Espacio.md)
+
+            BotonGrande(
+                titulo: "Política de privacidad",
+                subtitulo: "Qué datos guardamos y cómo borrarlos",
+                variante: .secundario
+            ) {
+                Enrutador.abrirPagina(Enrutador.urlPrivacidad)
+            }
+
+            BotonGrande(
+                titulo: "Condiciones de servicio",
+                subtitulo: "Se abren en Safari",
+                variante: .secundario
+            ) {
+                Enrutador.abrirPagina(Enrutador.urlCondiciones)
             }
         }
     }
