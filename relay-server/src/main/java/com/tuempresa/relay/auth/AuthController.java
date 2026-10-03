@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
+import java.util.HashSet;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -138,9 +139,12 @@ public class AuthController {
         Optional<Usuario> existente =
                 usuarios.findByProveedorAndProveedorSub(identidad.proveedor(), identidad.sub());
 
-        Optional<Usuario> anonimo = (deviceId != null && !deviceId.isBlank())
-                ? usuarios.findByDeviceId(deviceId).filter(Usuario::esAnonimo)
+        // Quién tiene hoy este dispositivo. device_id es único en la tabla:
+        // solo una cuenta puede llevarlo a la vez.
+        Optional<Usuario> dueno = (deviceId != null && !deviceId.isBlank())
+                ? usuarios.findByDeviceId(deviceId)
                 : Optional.empty();
+        Optional<Usuario> anonimo = dueno.filter(Usuario::esAnonimo);
 
         // Caso A: ya tenía cuenta con este proveedor, probablemente de otro
         // teléfono. Nos pasamos a ella y traemos los favoritos de la anónima.
@@ -149,15 +153,23 @@ public class AuthController {
             boolean fusionados = false;
 
             if (anonimo.isPresent() && !anonimo.get().getId().equals(usuario.getId())) {
-                Set<UUID> entrantes = anonimo.get().getFavoritos();
+                // Copia: el conjunto original es de una cuenta que se borra.
+                Set<UUID> entrantes = new HashSet<>(anonimo.get().getFavoritos());
                 if (!entrantes.isEmpty()) {
                     usuario.getFavoritos().addAll(entrantes);
                     fusionados = true;
                 }
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
-                usuario.setDeviceId(deviceId);
+                //
+                // El orden importa. Hibernate envía los UPDATE antes que los
+                // DELETE, así que sin este flush intentaba poner el device_id
+                // en la cuenta buena mientras la anónima todavía lo tenía, y
+                // la base lo rechazaba por duplicado: la persona veía "Algo
+                // falló de nuestro lado" justo al recuperar su cuenta.
                 usuarios.delete(anonimo.get());
+                usuarios.flush();
+                usuario.setDeviceId(deviceId);
                 log.info("Cuenta anónima fusionada en {}", usuario.getId());
             }
 
@@ -168,6 +180,14 @@ public class AuthController {
 
         // Caso B: primer inicio de sesión con este proveedor. Convertimos la
         // cuenta anónima en permanente, conservando todo lo que ya tenía.
+        //
+        // Si el dispositivo lo llevaba otra cuenta ya guardada (alguien entró
+        // antes en este teléfono con otra cuenta de Google o Apple), se le
+        // quita primero: dos cuentas no pueden compartir device_id.
+        if (dueno.isPresent() && !dueno.get().esAnonimo()) {
+            dueno.get().setDeviceId(null);
+            usuarios.flush();
+        }
         Usuario usuario = anonimo.orElseGet(Usuario::new);
         usuario.setDeviceId(deviceId);
         usuario.setProveedor(identidad.proveedor());
