@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Para distinguirla de la de producción cuando están las dos instaladas. -->
-    <string name="nombre_app">Relé testing</string>
+    <string name="nombre_app">Voces Izquierda testing</string>
 </resources>

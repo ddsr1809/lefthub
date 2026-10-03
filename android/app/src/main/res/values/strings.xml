@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="nombre_app">Relé</string>
+    <string name="nombre_app">Voces Izquierda</string>
 
     <!-- Nombres de los canales de notificación. Aparecen en los ajustes del
          sistema, así que se escriben para que un usuario los entienda sin

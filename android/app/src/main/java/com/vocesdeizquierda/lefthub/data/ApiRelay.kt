@@ -45,7 +45,7 @@ object ApiRelay {
 
     private lateinit var prefs: SharedPreferences
 
-    /** Se llama una vez desde RelayApp.onCreate(). */
+    /** Se llama una vez desde LeftVocesApp.onCreate(). */
     fun inicializar(contexto: Context) {
         prefs = contexto.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     }
