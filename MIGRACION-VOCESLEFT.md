@@ -178,6 +178,22 @@ emulador. Si lo levantas con `make local-up`, crea el puente a mano:
 **Antes de publicar en Play:** el `applicationId` (`com.vocesdeizquierda.lefthub`)
 no se puede cambiar una vez publicada la app.
 
+## 8. La página web
+
+`https://vocesdeizquierda.com` muestra la página de presentación de la app. Son
+los archivos estáticos de la carpeta `web/`, servidos por Apache desde el clon
+del repositorio, igual que el panel `/admin`.
+
+**VPS.** Después de fusionar a `master`, la primera vez:
+
+```bash
+git -C /opt/vocesleft pull
+bash /opt/vocesleft/scripts/vps/instalar-web.sh
+```
+
+Crea el vhost de `vocesdeizquierda.com` y `www.vocesdeizquierda.com` y pide el
+certificado. Para actualizar la página después basta el `git pull`.
+
 ---
 
 ## Opcional: traer los datos del servidor anterior
