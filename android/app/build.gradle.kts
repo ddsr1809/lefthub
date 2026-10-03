@@ -62,12 +62,13 @@ android {
             applicationIdSuffix = ".developer"
             versionNameSuffix = "-developer"
 
-            // Dentro del emulador, localhost es el propio emulador; el equipo
-            // anfitrion se alcanza por 10.0.2.2. Con un telefono fisico por
-            // USB, cambia esto por la IP de tu computadora en la red local.
+            // En el telefono (o el emulador) localhost es el propio aparato.
+            // ./local.sh mantiene un puente por USB (adb reverse) que lleva
+            // ese puerto 8080 al servidor de tu computadora, asi que la misma
+            // direccion sirve en un telefono fisico y en el emulador.
             // Es el unico sabor que permite HTTP sin cifrar (ver
             // src/developer/AndroidManifest.xml).
-            buildConfigField("String", "API_BASE", "\"http://10.0.2.2:8080\"")
+            buildConfigField("String", "API_BASE", "\"http://localhost:8080\"")
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
         }
 
