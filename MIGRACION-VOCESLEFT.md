@@ -13,11 +13,19 @@ funcionando desde este repositorio.
 | Proyectos de Compose | `relay-prod`, `relay-test` | `vocesleft-prod`, `vocesleft-test` |
 | Imagen | `ghcr.io/ddsr1809/tubehub-relay` | `ghcr.io/ddsr1809/vocesleft-relay` |
 | App Android | `com.tuempresa.creatorhub` | `com.vocesdeizquierda.lefthub` |
-| Sabores Android | `dev`, `pruebas`, `prod` | `pruebas`, `prod` |
+| Sabores Android | `dev`, `pruebas`, `prod` | `developer`, `pruebas`, `produccion` |
+| Rama que despliega pruebas | `development` | `testing` |
 
-Los puertos (8080 producción, 8081 pruebas), los nombres de las bases
-(`relay_prod`, `relay_test`) y las ramas (`development` despliega pruebas,
-`master` despliega producción) no cambian.
+Los puertos (8080 producción, 8081 pruebas) y los nombres de las bases
+(`relay_prod`, `relay_test`) no cambian.
+
+Hay tres ambientes, y el código sube en este orden:
+
+| Ambiente | Rama | Servidor | App Android |
+|---|---|---|---|
+| developer | `development` | Local, en tu equipo | `developerDebug` |
+| testing | `testing` | `testapp.vocesdeizquierda.com` | `pruebasDebug` |
+| producción | `master` | `leftapp.vocesdeizquierda.com` | `produccionRelease` |
 
 El DNS ya está listo: `leftapp` y `testapp` resuelven a 216.238.70.157.
 
@@ -99,14 +107,16 @@ proyecto `hub-11979`:
 git push origin development
 ```
 
-El pipeline prueba, construye la imagen y despliega pruebas. Cuando termine:
+Eso solo prueba y construye; `development` no despliega. Para desplegar
+pruebas, abre un pull request de `development` a `testing` y fusiónalo. Cuando
+el pipeline termine:
 
 ```bash
 curl https://testapp.vocesdeizquierda.com/actuator/health
 ```
 
-Debe responder `{"status":"UP"}`. Después abre un pull request de
-`development` a `master` y fusiónalo: eso despliega producción.
+Debe responder con `"status":"UP"`. Después abre un pull request de `testing`
+a `master` y fusiónalo: eso despliega producción.
 
 **VPS.** El panel `/admin` no viaja por el pipeline. Después de fusionar a
 `master`:
@@ -138,14 +148,29 @@ hacer esto, la compilación falla con `No matching client found for package
 name`.
 
 1. En la [consola de Firebase](https://console.firebase.google.com), proyecto
-   `hub-11979`, agrega dos apps de Android: `com.vocesdeizquierda.lefthub` y
-   `com.vocesdeizquierda.lefthub.pruebas`. En cada una registra la huella SHA-1 de
-   tu llave de firma (`./gradlew signingReport`, dentro de `android/`); sin
-   ella no funciona entrar con Google.
-2. Descarga el `google-services.json` nuevo y reemplaza con él los dos que hay
-   en `android/app/src/prod/` y `android/app/src/pruebas/`.
-3. En Android Studio, *Build Variants* ofrece ahora `pruebasDebug`,
-   `pruebasRelease`, `prodDebug` y `prodRelease`.
+   `hub-11979`, agrega tres apps de Android: `com.vocesdeizquierda.lefthub`,
+   `com.vocesdeizquierda.lefthub.pruebas` y
+   `com.vocesdeizquierda.lefthub.developer`. En cada una registra la huella
+   SHA-1 de tu llave de firma (`./gradlew signingReport`, dentro de
+   `android/`); sin ella no funciona entrar con Google.
+2. Descarga el `google-services.json` nuevo (un solo archivo trae las tres
+   apps) y cópialo a las tres carpetas de sabor:
+
+   ```bash
+   for sabor in developer pruebas produccion; do
+     cp ~/Downloads/google-services.json android/app/src/$sabor/
+   done
+   ```
+3. En Android Studio, *Build Variants* ofrece tres variantes:
+   `developerDebug`, `pruebasDebug` y `produccionRelease`.
+
+El sabor de testing se llama `pruebas` porque Android no permite sabores cuyo
+nombre empiece por "test".
+
+`developerDebug` habla con un servidor local. Levántalo en tu equipo con
+`make local-up` (ver `PIPELINE.md`, "Uso local"). Desde el emulador funciona
+tal cual; con un teléfono físico, cambia `10.0.2.2` por la IP de tu
+computadora en `android/app/build.gradle.kts`.
 
 `WEB_CLIENT_ID` no cambia mientras sigas en el mismo proyecto de Firebase.
 

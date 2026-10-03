@@ -2,14 +2,14 @@ name: VocesLeft CI/CD
 
 on:
   pull_request:
-    branches: [development, master]
+    branches: [development, testing, master]
     paths:
       - "relay-server/**"
       - "scripts/deploy-vps.sh"
       - "Makefile"
       - ".github/workflows/pipeline.yml"
   push:
-    branches: [development, master]
+    branches: [development, testing, master]
     paths:
       - "relay-server/**"
       - "scripts/deploy-vps.sh"
@@ -121,9 +121,11 @@ jobs:
   desplegar:
     name: Desplegar al VPS
     needs: construir-imagen
+    # development no despliega: es el ambiente developer, que corre en local.
+    # testing despliega al servidor de pruebas y master a produccion.
     if: >-
       (github.event_name == 'push' &&
-       (github.ref_name == 'development' || github.ref_name == 'master')) ||
+       (github.ref_name == 'testing' || github.ref_name == 'master')) ||
       (github.event_name == 'workflow_dispatch' &&
        (inputs.ambiente == 'test' ||
         (inputs.ambiente == 'prod' && github.ref_name == 'master')))
