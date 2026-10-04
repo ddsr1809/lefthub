@@ -313,7 +313,14 @@ public final class Dtos {
         }
     }
 
-    public record CreadorGuardado(UUID id, String avisoSuscripcion) {}
+    /**
+     * Los dos avisos vienen en null cuando todo salió bien. El creador queda
+     * guardado aunque traiga alguno: son fallos del hub de YouTube o de la
+     * copia a testing, no del guardado.
+     */
+    public record CreadorGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
+
+    public record ResultadoReplica(int total, int replicados, int fallidos, List<String> errores) {}
 
     public record DatosDeCanal(
             String channelId,
