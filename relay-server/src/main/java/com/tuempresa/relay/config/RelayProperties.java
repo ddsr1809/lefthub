@@ -18,7 +18,8 @@ public record RelayProperties(
         @DefaultValue Google google,
         @DefaultValue Apple apple,
         @DefaultValue Renovacion renovacion,
-        @DefaultValue Cors cors
+        @DefaultValue Cors cors,
+        @DefaultValue Replica replica
 ) {
 
     public record Jwt(
@@ -68,6 +69,22 @@ public record RelayProperties(
     ) {}
 
     public record Cors(@DefaultValue("") String origenes) {}
+
+    /**
+     * Copia de creadores de produccion a testing.
+     *
+     * Produccion lleva la URL de testing y el token; testing lleva solo el
+     * token. Un servidor que envia nunca recibe: asi el token compartido no
+     * sirve para escribir en produccion.
+     */
+    public record Replica(
+            @DefaultValue("") String url,
+            @DefaultValue("") String token
+    ) {
+        public boolean envia() { return !url.isBlank(); }
+
+        public boolean recibe() { return url.isBlank() && !token.isBlank(); }
+    }
 
     /** URL exacta que registramos como hub.callback. */
     public String urlWebhook() {

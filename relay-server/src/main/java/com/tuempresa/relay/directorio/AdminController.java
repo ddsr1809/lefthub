@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -41,13 +40,16 @@ public class AdminController {
     private final WebSubService websub;
     private final YouTubeClient youtube;
     private final PushService push;
+    private final CreadoresService servicio;
+    private final ReplicaService replica;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Publicaciones publicaciones,
                            Repositorios.Usuarios usuarios,
                            Repositorios.Suscripciones suscripciones,
                            Repositorios.Reportes reportes,
-                           WebSubService websub, YouTubeClient youtube, PushService push) {
+                           WebSubService websub, YouTubeClient youtube, PushService push,
+                           CreadoresService servicio, ReplicaService replica) {
         this.creadores = creadores;
         this.publicaciones = publicaciones;
         this.usuarios = usuarios;
@@ -56,6 +58,8 @@ public class AdminController {
         this.websub = websub;
         this.youtube = youtube;
         this.push = push;
+        this.servicio = servicio;
+        this.replica = replica;
     }
 
     // -------------------------------------------------------------------------
@@ -89,56 +93,28 @@ public class AdminController {
     @PostMapping("/creadores")
     @Transactional
     public Dtos.CreadorGuardado guardar(@Valid @RequestBody Dtos.GuardarCreador peticion) {
-        if (!Dtos.CATEGORIAS.contains(peticion.categoriaOtros())) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Categoría no válida: " + peticion.categoriaOtros());
-        }
-
         Creador creador = peticion.id() != null
                 ? creadores.findById(peticion.id()).orElseGet(Creador::new)
                 : new Creador();
 
-        String canalPrevio = creador.getCanalDeYouTube();
-
-        creador.setNombre(peticion.nombre().trim());
-        creador.setCategoria(peticion.categoriaOtros());
-        creador.setBio(recortar(peticion.bio(), 600));
-        creador.setFotoUrl(peticion.fotoUrl());
-        creador.setActivo(peticion.estaActivo());
-        creador.setActualizadoEn(Instant.now());
-
-        Map<String, Conexion> conexiones = new LinkedHashMap<>();
-        peticion.conexionesSeguras().forEach((plataforma, dto) -> {
-            if (!Dtos.PLATAFORMAS.contains(plataforma)) return;
-            if (dto == null || dto.url() == null || dto.url().isBlank()) return;
-
-            conexiones.put(plataforma, new Conexion(
-                    dto.url().trim(),
-                    dto.handle() != null ? dto.handle().trim() : null,
-                    dto.channelId() != null ? dto.channelId().trim() : null));
-        });
-        creador.setConexiones(conexiones);
-
-        creadores.saveAndFlush(creador);
+        String canalPrevio = servicio.aplicar(creador, peticion);
 
         // Sincronizar WebSub si el canal cambió o si se activó o desactivó.
-        String canalNuevo = creador.getCanalDeYouTube();
+        String avisoSuscripcion = null;
         try {
-            if (canalPrevio != null && !canalPrevio.equals(canalNuevo)) {
-                websub.desuscribir(canalPrevio);
-            }
-            if (canalNuevo != null && !canalNuevo.isBlank()) {
-                if (creador.isActivo()) websub.suscribir(canalNuevo);
-                else websub.desuscribir(canalNuevo);
-            }
-            return new Dtos.CreadorGuardado(creador.getId(), null);
-
+            servicio.sincronizarWebSub(canalPrevio, creador.getCanalDeYouTube(), creador.isActivo());
         } catch (Exception e) {
             // El creador queda guardado aunque el hub falle; la renovación
             // programada vuelve a intentarlo en el siguiente ciclo.
             log.error("No se pudo sincronizar la suscripción de {}", creador.getId(), e);
-            return new Dtos.CreadorGuardado(creador.getId(), e.getMessage());
+            avisoSuscripcion = e.getMessage();
         }
+
+        // En producción, copiar a testing. En los demás ambientes no hace
+        // nada. Tampoco lanza: si testing falla, el panel lo avisa y ya.
+        String avisoReplica = replica.enviar(creador);
+
+        return new Dtos.CreadorGuardado(creador.getId(), avisoSuscripcion, avisoReplica);
     }
 
     @DeleteMapping("/creadores/{id}")
@@ -303,10 +279,5 @@ public class AdminController {
 
         return Dtos.RespuestaSimple.de(
                 "Listo. Pide a esa persona que cierre sesión y vuelva a entrar.");
-    }
-
-    private String recortar(String texto, int maximo) {
-        if (texto == null) return null;
-        return texto.length() <= maximo ? texto : texto.substring(0, maximo);
     }
 }

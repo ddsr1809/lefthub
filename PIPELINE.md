@@ -85,6 +85,40 @@ los directorios `runtime`. El pipeline copia el Compose exclusivo del VPS y
 solo utiliza imagenes inmutables de GHCR. Los JSON de FCM permanecen en las
 rutas absolutas declaradas mediante `FCM_CREDENCIALES_HOST`.
 
+## Copia de creadores a testing
+
+Cada creador que se guarda en el panel de produccion (alta o cambio) se copia
+solo a testing. Produccion lo manda a `POST /internal/replica/creadores` de
+testing, con un token compartido; testing lo guarda y se suscribe por su
+cuenta al hub de YouTube.
+
+Se enciende una vez, en el **VPS**, cuando los dos ambientes ya tienen esta
+version desplegada. El mismo comando copia los creadores que ya existian:
+
+```bash
+git -C /opt/vocesleft pull
+bash /opt/vocesleft/scripts/vps/replicar-creadores.sh
+```
+
+La primera vez escribe `REPLICA_URL` y `REPLICA_TOKEN` en `.env.prod` y
+`REPLICA_TOKEN` en `.env.test`, y reinicia los dos servidores. Se puede repetir
+cuando se quiera: no duplica nada.
+
+Lo que conviene saber:
+
+- **La copia tiene otro id.** Los dos servidores comparten proyecto de Firebase
+  y el topic de los avisos sale del id del creador; con el mismo id, un aviso
+  de testing llegaria a la app de produccion. Testing guarda el id de
+  produccion en `creadores.origen_id` para reconocer al creador cuando cambia.
+- **Los borrados no se copian.** Retirar un creador en produccion lo deja como
+  esta en testing; alli se borra desde su propio panel.
+- **Produccion manda.** Un cambio hecho a mano en testing sobre un creador
+  copiado se pierde la siguiente vez que ese creador se guarde en produccion.
+- **Si testing no responde, produccion guarda igual** y el panel avisa de que
+  la copia fallo. Para ponerse al dia basta repetir el script.
+- Si en testing ya existia un creador con ese canal de YouTube, la copia lo
+  adopta en lugar de duplicarlo.
+
 ## Configurar SSH y GitHub
 
 Todo lo de esta seccion y la siguiente lo hace un solo comando desde tu laptop:

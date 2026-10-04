@@ -54,6 +54,13 @@ public class Creador {
     @Column(name = "actualizado_en", nullable = false)
     private Instant actualizadoEn = Instant.now();
 
+    /**
+     * Solo en testing: id que tiene este creador en produccion, cuando llego
+     * copiado desde alla. Ver V5__origen_de_replica.sql.
+     */
+    @Column(name = "origen_id")
+    private UUID origenId;
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
@@ -82,6 +89,9 @@ public class Creador {
 
     public Instant getActualizadoEn() { return actualizadoEn; }
     public void setActualizadoEn(Instant actualizadoEn) { this.actualizadoEn = actualizadoEn; }
+
+    public UUID getOrigenId() { return origenId; }
+    public void setOrigenId(UUID origenId) { this.origenId = origenId; }
 
     /** ID canonico del canal de YouTube, o null si el creador no tiene. */
     @Transient

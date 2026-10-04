@@ -497,6 +497,7 @@
           fotoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked, conexiones
         } });
         if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
+        else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica, true);
         else toast(c ? 'Cambios guardados.' : 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.');
         estado.creadores = null;
         if (estado.vista === 'creadores') vistaCreadores();
