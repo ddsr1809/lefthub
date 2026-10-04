@@ -113,3 +113,11 @@ relay:
 
   cors:
     origenes: ${CORS_ORIGENES:http://localhost:5000}
+
+  replica:
+    # Solo en producción: URL del servidor de testing. Cada creador que se
+    # guarda en el panel se copia allá. Vacío = no se copia nada.
+    url: ${REPLICA_URL:}
+    # El mismo valor en producción y en testing. Testing solo acepta copias
+    # que lo traigan; sin token, la ruta de entrada no existe.
+    token: ${REPLICA_TOKEN:}

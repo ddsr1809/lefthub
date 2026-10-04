@@ -46,6 +46,9 @@ public final class Repositorios {
 
         @Query("select c from Creador c join c.conexiones cx where key(cx) = 'youtube' and c.activo = true")
         List<Creador> activosConYouTube();
+
+        /** La copia en testing de un creador de produccion. */
+        Optional<Creador> findByOrigenId(UUID origenId);
     }
 
     public interface Publicaciones extends JpaRepository<Publicacion, UUID> {
