@@ -10,7 +10,7 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * Las dos rutas de la copia de creadores. Como el resto de /internal, quien
+ * Las rutas de la copia de creadores y productoras. Como el resto de /internal, quien
  * llama es una máquina sin cuenta de usuario y se identifica con una cabecera
  * compartida. Con el token equivocado o sin configurar, la ruta no existe.
  */
@@ -45,9 +45,27 @@ public class ReplicaController {
                 recibido.nuevo() ? "Creador creado." : "Creador actualizado."));
     }
 
+    /** Testing: recibe una productora de producción. */
+    @PostMapping(ReplicaService.RUTA_PRODUCTORAS)
+    public ResponseEntity<Dtos.RespuestaSimple> recibirProductora(
+            @RequestHeader(name = ReplicaService.CABECERA, required = false) String token,
+            @RequestBody Dtos.GuardarProductora peticion
+    ) {
+        if (!replica.autoriza(token)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
+        ReplicaService.Recibido recibido = replica.recibir(peticion);
+        replica.sincronizarDespues(recibido);
+
+        return ResponseEntity.ok(Dtos.RespuestaSimple.de(
+                recibido.nuevo() ? "Productora creada." : "Productora actualizada."));
+    }
+
     /**
-     * Producción: copia a testing todos los creadores que ya existen. Se puede
-     * repetir: los que ya están copiados se actualizan, no se duplican.
+     * Producción: copia a testing todas las productoras y todos los creadores
+     * que ya existen. Se puede repetir: los que ya están copiados se
+     * actualizan, no se duplican.
      */
     @PostMapping("/internal/replicar-creadores")
     public ResponseEntity<Dtos.ResultadoReplica> replicarTodos(

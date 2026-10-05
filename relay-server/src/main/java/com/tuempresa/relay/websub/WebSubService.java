@@ -2,6 +2,7 @@ package com.tuempresa.relay.websub;
 
 import com.tuempresa.relay.config.RelayProperties;
 import com.tuempresa.relay.modelo.*;
+import com.tuempresa.relay.push.Emisores;
 import com.tuempresa.relay.push.PushService;
 import com.tuempresa.relay.youtube.YouTubeClient;
 import org.slf4j.Logger;
@@ -32,13 +33,14 @@ public class WebSubService {
 
     private static final Logger log = LoggerFactory.getLogger(WebSubService.class);
 
-    private final Repositorios.Creadores creadores;
+    private final Repositorios.Canales canales;
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Suscripciones suscripciones;
     private final RestClient http;
     private final RelayProperties config;
     private final YouTubeClient youtube;
     private final PushService push;
+    private final Emisores emisores;
     private final LectorDeFeed lector;
     private final TransactionTemplate transaccionNueva;
 
@@ -46,19 +48,21 @@ public class WebSubService {
     // el cerrojo, solo uno manda el aviso de "está en vivo".
     private final ReentrantLock cerrojoDirectos = new ReentrantLock();
 
-    public WebSubService(Repositorios.Creadores creadores,
+    public WebSubService(Repositorios.Canales canales,
                          Repositorios.Publicaciones publicaciones,
                          Repositorios.Suscripciones suscripciones,
                          RestClient http, RelayProperties config,
-                         YouTubeClient youtube, PushService push, LectorDeFeed lector,
+                         YouTubeClient youtube, PushService push, Emisores emisores,
+                         LectorDeFeed lector,
                          PlatformTransactionManager gestorDeTransacciones) {
-        this.creadores = creadores;
+        this.canales = canales;
         this.publicaciones = publicaciones;
         this.suscripciones = suscripciones;
         this.http = http;
         this.config = config;
         this.youtube = youtube;
         this.push = push;
+        this.emisores = emisores;
         this.lector = lector;
 
         this.transaccionNueva = new TransactionTemplate(gestorDeTransacciones);
@@ -266,16 +270,20 @@ public class WebSubService {
 
     @Transactional
     public void procesarEntrada(LectorDeFeed.Entrada entrada) {
-        // 1. Encontrar al creador. Si el canal no está en el directorio curado
-        //    o está desactivado, no hay a quién avisar.
-        Optional<Creador> encontrado = creadores.porCanalDeYouTube(entrada.channelId());
+        // 1. Encontrar el canal y en nombre de quién se avisa: su creador, su
+        //    productora o los dos. Si el canal no está en el directorio curado
+        //    o su dueño está oculto, no hay a quién avisar.
+        Optional<Canal> encontrado = canales.porCanalDeYouTube(entrada.channelId());
         if (encontrado.isEmpty()) {
             log.debug("Canal {} fuera del directorio", entrada.channelId());
             return;
         }
 
-        Creador creador = encontrado.get();
-        if (!creador.isActivo()) return;
+        Canal canal = encontrado.get();
+        Optional<PushService.Emisor> quien = emisores.de(canal);
+        if (quien.isEmpty()) return;
+
+        PushService.Emisor emisor = quien.get();
 
         // 2. Idempotencia. El hub entrega "al menos una vez" y YouTube reenvía
         //    la entrada cada vez que el creador edita el título. El índice
@@ -307,7 +315,8 @@ public class WebSubService {
 
         Publicacion p = new Publicacion();
         p.setVideoId(entrada.videoId());
-        p.setCreadorId(creador.getId());
+        p.setCreadorId(canal.getCreadorId());
+        p.setCanalId(canal.getId());
         p.setPlataforma("youtube");
         p.setTitulo(detalle != null ? detalle.titulo()
                 : (entrada.titulo() != null ? entrada.titulo() : "Video nuevo"));
@@ -350,7 +359,7 @@ public class WebSubService {
         }
 
         // 5. Avisar.
-        boolean enviado = push.avisarPublicacion(creador, entrada.videoId(), p.getTitulo(),
+        boolean enviado = push.avisarPublicacion(emisor, entrada.videoId(), p.getTitulo(),
                 p.getMiniaturaUrl(), detalle);
 
         // Solo se marca si FCM aceptó el mensaje. Antes quedaba en true aunque
@@ -419,10 +428,10 @@ public class WebSubService {
         }
 
         if (faltaAvisar) {
-            Creador creador = creadores.findById(p.getCreadorId()).orElse(null);
+            Optional<PushService.Emisor> emisor = emisores.de(p);
 
-            if (creador != null && creador.isActivo()) {
-                boolean enviado = push.avisarDirecto(creador, p.getVideoId(),
+            if (emisor.isPresent()) {
+                boolean enviado = push.avisarDirecto(emisor.get(), p.getVideoId(),
                         p.getTitulo(), p.getMiniaturaUrl());
                 // Si FCM falló, queda sin marcar y se reintenta en la
                 // siguiente pasada, mientras el directo siga al aire.
@@ -441,14 +450,14 @@ public class WebSubService {
      * Lee el feed público de cada canal y procesa lo que el hub no entregó.
      *
      * Cubre tres huecos: lo que ya estaba publicado o programado cuando se dio
-     * de alta al creador, los avisos que el hub pierde, y los que entrega con
+     * de alta el canal, los avisos que el hub pierde, y los que entrega con
      * horas de retraso. Leer el feed no gasta cuota; solo los videos nuevos
      * cuestan 1 unidad al enriquecerlos.
      */
     public void sondearFeeds() {
-        for (Creador creador : creadores.activosConYouTube()) {
-            String canal = creador.getCanalDeYouTube();
-            if (canal == null || canal.isBlank()) continue;
+        for (Canal vigilado : canales.vivosDeYouTube()) {
+            String canal = vigilado.getCanalDeYouTube();
+            if (canal == null) continue;
 
             try {
                 byte[] xml = http.get()
@@ -490,15 +499,15 @@ public class WebSubService {
      * dos fallos seguidos no rompan el servicio.
      */
     public Dtos.ResultadoRenovacion renovarTodas() {
-        List<Creador> activos = creadores.activosConYouTube();
+        List<Canal> vigilados = canales.vivosDeYouTube();
 
         int renovados = 0;
         int fallidos = 0;
         List<String> errores = new ArrayList<>();
 
-        for (Creador creador : activos) {
-            String canal = creador.getCanalDeYouTube();
-            if (canal == null || canal.isBlank()) continue;
+        for (Canal vigilado : vigilados) {
+            String canal = vigilado.getCanalDeYouTube();
+            if (canal == null) continue;
 
             try {
                 // Reenviar el handshake es idempotente: si la suscripción sigue

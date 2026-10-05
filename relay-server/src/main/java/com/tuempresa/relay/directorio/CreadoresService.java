@@ -1,18 +1,20 @@
 package com.tuempresa.relay.directorio;
 
-import com.tuempresa.relay.modelo.Conexion;
+import com.tuempresa.relay.directorio.CanalesService.Cambio;
+import com.tuempresa.relay.modelo.Canal;
 import com.tuempresa.relay.modelo.Creador;
 import com.tuempresa.relay.modelo.Dtos;
 import com.tuempresa.relay.modelo.Repositorios;
-import com.tuempresa.relay.websub.WebSubService;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
 
 /**
  * Guardado de un creador, compartido por los dos caminos por los que entra:
@@ -23,27 +25,31 @@ import java.util.Map;
 public class CreadoresService {
 
     private final Repositorios.Creadores creadores;
-    private final WebSubService websub;
+    private final Repositorios.Canales canales;
+    private final Repositorios.Productoras productoras;
+    private final CanalesService canalesService;
 
-    public CreadoresService(Repositorios.Creadores creadores, WebSubService websub) {
+    public CreadoresService(Repositorios.Creadores creadores, Repositorios.Canales canales,
+                            Repositorios.Productoras productoras, CanalesService canalesService) {
         this.creadores = creadores;
-        this.websub = websub;
+        this.canales = canales;
+        this.productoras = productoras;
+        this.canalesService = canalesService;
     }
 
     /**
-     * Vuelca la petición sobre el creador y lo guarda.
+     * Vuelca la petición sobre el creador y lo guarda, con sus canales y las
+     * productoras en las que figura.
      *
-     * @return el canal de YouTube que tenía antes, o null. Hace falta para
-     *         darlo de baja en el hub si cambió.
+     * @return lo que hay que hacer en el hub de YouTube para que quede de
+     *         acuerdo con lo guardado.
      */
     @Transactional
-    public String aplicar(Creador creador, Dtos.GuardarCreador peticion) {
+    public Cambio aplicar(Creador creador, Dtos.GuardarCreador peticion) {
         if (!Dtos.CATEGORIAS.contains(peticion.categoriaOtros())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Categoría no válida: " + peticion.categoriaOtros());
         }
-
-        String canalPrevio = creador.getCanalDeYouTube();
 
         creador.setNombre(peticion.nombre().trim());
         creador.setCategoria(peticion.categoriaOtros());
@@ -52,37 +58,43 @@ public class CreadoresService {
         creador.setActivo(peticion.estaActivo());
         creador.setActualizadoEn(Instant.now());
 
-        Map<String, Conexion> conexiones = new LinkedHashMap<>();
-        peticion.conexionesSeguras().forEach((plataforma, dto) -> {
-            if (!Dtos.PLATAFORMAS.contains(plataforma)) return;
-            if (dto == null || dto.url() == null || dto.url().isBlank()) return;
+        if (peticion.productoras() != null) {
+            Set<UUID> pedidas = new LinkedHashSet<>(peticion.productoras());
+            pedidas.remove(null);
 
-            conexiones.put(plataforma, new Conexion(
-                    dto.url().trim(),
-                    dto.handle() != null ? dto.handle().trim() : null,
-                    dto.channelId() != null ? dto.channelId().trim() : null));
-        });
-        creador.setConexiones(conexiones);
+            if (productoras.findAllById(pedidas).size() != pedidas.size()) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Una de las productoras ya no existe.");
+            }
+            // Sobre el mismo conjunto: Hibernate vigila esa instancia.
+            creador.getProductoras().retainAll(pedidas);
+            creador.getProductoras().addAll(pedidas);
+        }
 
+        // Los canales llevan el id del creador: tiene que existir antes.
         creadores.saveAndFlush(creador);
-        return canalPrevio;
+
+        return canalesService.guardarDeCreador(creador.getId(), canalesPedidos(creador, peticion),
+                creador.isActivo());
     }
 
     /**
-     * Deja el hub de acuerdo con lo guardado: baja del canal anterior si
-     * cambió, y alta o baja del actual según el creador esté activo.
-     *
-     * Lanza si el hub falla. El creador ya quedó guardado; la renovación
-     * programada vuelve a intentarlo en el siguiente ciclo.
+     * La lista de canales que pide la petición. Quien todavía manda el formato
+     * anterior (`conexiones`, un enlace por plataforma) solo toca el canal
+     * principal de cada una.
      */
-    public void sincronizarWebSub(String canalPrevio, String canalNuevo, boolean activo) {
-        if (canalPrevio != null && !canalPrevio.equals(canalNuevo)) {
-            websub.desuscribir(canalPrevio);
-        }
-        if (canalNuevo != null && !canalNuevo.isBlank()) {
-            if (activo) websub.suscribir(canalNuevo);
-            else websub.desuscribir(canalNuevo);
-        }
+    private List<Dtos.GuardarCanal> canalesPedidos(Creador creador, Dtos.GuardarCreador peticion) {
+        if (peticion.canales() != null) return peticion.canales();
+
+        List<Canal> actuales = canales.deCreador(creador.getId());
+        return CanalesService.desdeConexiones(actuales, peticion.conexionesSeguras());
+    }
+
+    /** Lo que hay que dar de baja en el hub cuando el creador se va del directorio. */
+    @Transactional(readOnly = true)
+    public Cambio alRetirar(Creador creador) {
+        List<String> suyos = CanalesService.deYouTube(canales.deCreador(creador.getId()));
+        return Cambio.de(suyos, suyos, false);
     }
 
     private static String recortar(String texto, int maximo) {

@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.tuempresa.relay.config.RelayProperties;
 import com.tuempresa.relay.modelo.Creador;
+import com.tuempresa.relay.modelo.Productora;
 import com.tuempresa.relay.youtube.YouTubeClient;
 import jakarta.annotation.PostConstruct;
 import org.slf4j.Logger;
@@ -19,6 +20,7 @@ import java.io.FileInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Envío de notificaciones por FCM HTTP v1.
@@ -35,6 +37,11 @@ import java.util.List;
  * Usamos topics: un envío alcanza a toda la audiencia de un creador, sin
  * fan-out ni almacenar tokens de dispositivo. Eso último simplifica además el
  * borrado de cuenta.
+ *
+ * Las productoras tienen su propio topic. Cuando un video es a la vez de un
+ * creador y de una productora, no se mandan dos mensajes sino uno con una
+ * condición ("sigue al creador O a la productora"): FCM lo entrega una sola
+ * vez a cada teléfono, aunque siga a los dos.
  */
 @Service
 public class PushService {
@@ -95,6 +102,66 @@ public class PushService {
         return "creator_" + creadorId;
     }
 
+    public static String topicDeProductora(Object productoraId) {
+        return "productora_" + productoraId;
+    }
+
+    /**
+     * En nombre de quién sale un aviso y a quién le llega.
+     *
+     * Siempre hay creador, productora o los dos. El nombre que se lee en la
+     * notificación es el del creador; el de la productora solo cuando el canal
+     * es suyo y de nadie más.
+     */
+    public record Emisor(String nombre, UUID creadorId, UUID productoraId) {
+
+        public static Emisor de(Creador creador, Productora productora) {
+            if (creador == null && productora == null) {
+                throw new IllegalArgumentException("Un aviso necesita creador o productora.");
+            }
+            return new Emisor(
+                    creador != null ? creador.getNombre() : productora.getNombre(),
+                    creador != null ? creador.getId() : null,
+                    productora != null ? productora.getId() : null);
+        }
+
+        public static Emisor de(Creador creador) {
+            return de(creador, null);
+        }
+
+        /** El topic de siempre; también agrupa los avisos en el teléfono. */
+        public String topic() {
+            return creadorId != null ? topicDe(creadorId) : topicDeProductora(productoraId);
+        }
+
+        /**
+         * La condición de FCM cuando hay dos audiencias, o null si basta con
+         * el topic. Con condición, quien sigue al creador y a la productora
+         * recibe un solo aviso.
+         */
+        public String condicion() {
+            if (creadorId == null || productoraId == null) return null;
+            return "'" + topicDe(creadorId) + "' in topics || '"
+                    + topicDeProductora(productoraId) + "' in topics";
+        }
+
+        /** Pone el destinatario en el mensaje: `topic` o `condition`, nunca los dos. */
+        void dirigir(ObjectNode mensaje) {
+            String condicion = condicion();
+            if (condicion != null) mensaje.put("condition", condicion);
+            else mensaje.put("topic", topic());
+        }
+
+        /**
+         * Quién publicó, para que la app abra el perfil correcto. FCM exige
+         * que todos los valores sean cadenas, así que lo que no hay no se manda.
+         */
+        void identificar(ObjectNode datos) {
+            if (creadorId != null) datos.put("creatorId", String.valueOf(creadorId));
+            if (productoraId != null) datos.put("productoraId", String.valueOf(productoraId));
+        }
+    }
+
     public static String nombreDePlataforma(String plataforma) {
         if (plataforma == null) return "la plataforma del creador";
         return switch (plataforma) {
@@ -117,21 +184,20 @@ public class PushService {
      * El texto está escrito para entenderse de un vistazo: quién publicó, qué
      * publicó, y nada más. Sin emojis decorativos ni jerga de plataforma.
      */
-    public boolean avisarPublicacion(Creador creador, String videoId, String titulo,
+    public boolean avisarPublicacion(Emisor emisor, String videoId, String titulo,
                                      String miniatura, YouTubeClient.DetalleDeVideo detalle) {
 
         if (detalle != null && detalle.enVivo()) {
-            return avisarDirecto(creador, videoId, titulo, miniatura);
+            return avisarDirecto(emisor, videoId, titulo, miniatura);
         }
 
         String encabezado = (detalle != null && "short".equals(detalle.tipo()))
-                ? creador.getNombre() + " publicó un video corto"
-                : creador.getNombre() + " subió un video nuevo";
+                ? emisor.nombre() + " publicó un video corto"
+                : emisor.nombre() + " subió un video nuevo";
 
         // Un solo aviso por creador: si llegan tres videos seguidos, el último
         // reemplaza al anterior en vez de apilar tres tarjetas.
-        return enviarPublicacion(creador, videoId, titulo, miniatura, encabezado,
-                topicDe(creador.getId()));
+        return enviarPublicacion(emisor, videoId, titulo, miniatura, encabezado, emisor.topic());
     }
 
     /**
@@ -141,16 +207,16 @@ public class PushService {
      * siguiente clip que subiera el canal lo borraba de la pantalla, y el
      * directo es justo el aviso que caduca si no se ve a tiempo.
      */
-    public boolean avisarDirecto(Creador creador, String videoId, String titulo, String miniatura) {
-        return enviarPublicacion(creador, videoId, titulo, miniatura,
-                creador.getNombre() + " está en vivo ahora", "directo_" + videoId);
+    public boolean avisarDirecto(Emisor emisor, String videoId, String titulo, String miniatura) {
+        return enviarPublicacion(emisor, videoId, titulo, miniatura,
+                emisor.nombre() + " está en vivo ahora", "directo_" + videoId);
     }
 
-    private boolean enviarPublicacion(Creador creador, String videoId, String titulo,
+    private boolean enviarPublicacion(Emisor emisor, String videoId, String titulo,
                                       String miniatura, String encabezado, String etiqueta) {
 
         ObjectNode mensaje = json.createObjectNode();
-        mensaje.put("topic", topicDe(creador.getId()));
+        emisor.dirigir(mensaje);
 
         ObjectNode notificacion = mensaje.putObject("notification");
         notificacion.put("title", encabezado);
@@ -162,7 +228,7 @@ public class PushService {
         // al abrir la notificación, incluso si el destino cambió después.
         ObjectNode datos = mensaje.putObject("data");
         datos.put("tipo", "publicacion");
-        datos.put("creatorId", String.valueOf(creador.getId()));
+        emisor.identificar(datos);
         datos.put("videoId", videoId);
         datos.put("platform", "youtube");
         datos.put("url", "https://www.youtube.com/watch?v=" + videoId);
@@ -178,7 +244,7 @@ public class PushService {
         apns.putObject("headers").put("apns-priority", "10");
         ObjectNode aps = apns.putObject("payload").putObject("aps");
         aps.put("sound", "default");
-        aps.put("thread-id", topicDe(creador.getId()));
+        aps.put("thread-id", emisor.topic());
         aps.put("mutable-content", 1);
         if (miniatura != null) apns.putObject("fcm_options").put("image", miniatura);
 
@@ -193,7 +259,7 @@ public class PushService {
      * sin tener que buscar nada. Es la diferencia entre que un creador pierda
      * su audiencia y que solo pierda un video.
      */
-    public boolean avisarContenidoMovido(Creador creador, String videoId, String tituloVideo,
+    public boolean avisarContenidoMovido(Emisor emisor, String videoId, String tituloVideo,
                                          String destinoUrl, String destinoPlataforma) {
 
         String donde = nombreDePlataforma(destinoPlataforma);
@@ -202,15 +268,15 @@ public class PushService {
                 : "Ahora está en " + donde + ". Toca para verlo.";
 
         ObjectNode mensaje = json.createObjectNode();
-        mensaje.put("topic", topicDe(creador.getId()));
+        emisor.dirigir(mensaje);
 
         ObjectNode notificacion = mensaje.putObject("notification");
-        notificacion.put("title", "El video de " + creador.getNombre() + " cambió de lugar");
+        notificacion.put("title", "El video de " + emisor.nombre() + " cambió de lugar");
         notificacion.put("body", cuerpo);
 
         ObjectNode datos = mensaje.putObject("data");
         datos.put("tipo", "movido");
-        datos.put("creatorId", String.valueOf(creador.getId()));
+        emisor.identificar(datos);
         datos.put("videoId", videoId);
         // FCM exige que todos los valores de data sean cadenas: un null
         // devuelve 400 y el aviso se pierde entero.
@@ -225,7 +291,7 @@ public class PushService {
         apns.putObject("headers").put("apns-priority", "10");
         apns.putObject("payload").putObject("aps").put("sound", "default");
 
-        return enviar(mensaje, "contenido movido de " + creador.getNombre()) == null;
+        return enviar(mensaje, "contenido movido de " + emisor.nombre()) == null;
     }
 
     /**
@@ -279,8 +345,10 @@ public class PushService {
                     .retrieve()
                     .body(JsonNode.class);
 
-            log.info("Aviso enviado ({}) al topic {}: {}", descripcion,
-                    mensaje.path("topic").asText(),
+            log.info("Aviso enviado ({}) a {}: {}", descripcion,
+                    mensaje.has("condition")
+                            ? mensaje.path("condition").asText()
+                            : "topic " + mensaje.path("topic").asText(),
                     respuesta != null ? respuesta.path("name").asText() : "sin id");
             return null;
 

@@ -1,8 +1,9 @@
 package com.tuempresa.relay.directorio;
 
+import com.tuempresa.relay.directorio.CanalesService.Cambio;
 import com.tuempresa.relay.modelo.*;
+import com.tuempresa.relay.push.Emisores;
 import com.tuempresa.relay.push.PushService;
-import com.tuempresa.relay.websub.WebSubService;
 import com.tuempresa.relay.youtube.YouTubeClient;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -33,32 +34,43 @@ public class AdminController {
     private static final Pattern HANDLE = Pattern.compile("@([\\w.-]+)");
 
     private final Repositorios.Creadores creadores;
+    private final Repositorios.Productoras productoras;
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Usuarios usuarios;
     private final Repositorios.Suscripciones suscripciones;
     private final Repositorios.Reportes reportes;
-    private final WebSubService websub;
     private final YouTubeClient youtube;
     private final PushService push;
+    private final Emisores emisores;
     private final CreadoresService servicio;
+    private final ProductorasService servicioDeProductoras;
+    private final CanalesService canalesService;
+    private final Catalogo catalogo;
     private final ReplicaService replica;
 
     public AdminController(Repositorios.Creadores creadores,
+                           Repositorios.Productoras productoras,
                            Repositorios.Publicaciones publicaciones,
                            Repositorios.Usuarios usuarios,
                            Repositorios.Suscripciones suscripciones,
                            Repositorios.Reportes reportes,
-                           WebSubService websub, YouTubeClient youtube, PushService push,
-                           CreadoresService servicio, ReplicaService replica) {
+                           YouTubeClient youtube, PushService push, Emisores emisores,
+                           CreadoresService servicio, ProductorasService servicioDeProductoras,
+                           CanalesService canalesService, Catalogo catalogo,
+                           ReplicaService replica) {
         this.creadores = creadores;
+        this.productoras = productoras;
         this.publicaciones = publicaciones;
         this.usuarios = usuarios;
         this.suscripciones = suscripciones;
         this.reportes = reportes;
-        this.websub = websub;
         this.youtube = youtube;
         this.push = push;
+        this.emisores = emisores;
         this.servicio = servicio;
+        this.servicioDeProductoras = servicioDeProductoras;
+        this.canalesService = canalesService;
+        this.catalogo = catalogo;
         this.replica = replica;
     }
 
@@ -70,22 +82,24 @@ public class AdminController {
     @GetMapping("/creadores")
     @Transactional(readOnly = true)
     public List<Dtos.CreadorAdminDto> listar() {
-        Map<String, Suscripcion> estados = new HashMap<>();
-        suscripciones.findAll().forEach(s -> estados.put(s.getChannelId(), s));
+        Catalogo.Vista vista = catalogo.vista();
+        Map<String, Suscripcion> estados = estadosDelHub();
 
         return creadores.findAll().stream()
                 .sorted(Comparator.comparing(Creador::getNombre))
                 .map(c -> {
-                    Suscripcion s = c.getCanalDeYouTube() != null
-                            ? estados.get(c.getCanalDeYouTube()) : null;
+                    List<Canal> suyos = vista.canalesDe(c.getId());
+                    Suscripcion s = resumenDe(suyos, estados);
 
                     return new Dtos.CreadorAdminDto(
                             c.getId(), c.getNombre(), c.getCategoria(), c.getBio(),
                             c.getFotoUrl(), c.isActivo(),
-                            Dtos.CreadorDto.de(c).conexiones(),
+                            Dtos.ConexionDto.principales(suyos),
                             s != null ? s.getEstado() : null,
                             s != null ? s.getExpiraEn() : null,
-                            usuarios.cuantosSiguen(c.getId()));
+                            usuarios.cuantosSiguen(c.getId()),
+                            suyos.stream().map(k -> canalAdmin(k, c.getNombre(), estados)).toList(),
+                            List.copyOf(c.getProductoras()));
                 })
                 .toList();
     }
@@ -97,12 +111,13 @@ public class AdminController {
                 ? creadores.findById(peticion.id()).orElseGet(Creador::new)
                 : new Creador();
 
-        String canalPrevio = servicio.aplicar(creador, peticion);
+        Cambio cambio = servicio.aplicar(creador, peticion);
 
-        // Sincronizar WebSub si el canal cambió o si se activó o desactivó.
+        // Sincronizar WebSub: bajas de los canales que dejó, altas de los que
+        // tiene, o baja de todos si quedó oculto.
         String avisoSuscripcion = null;
         try {
-            servicio.sincronizarWebSub(canalPrevio, creador.getCanalDeYouTube(), creador.isActivo());
+            canalesService.sincronizarWebSub(cambio);
         } catch (Exception e) {
             // El creador queda guardado aunque el hub falle; la renovación
             // programada vuelve a intentarlo en el siguiente ciclo.
@@ -124,17 +139,139 @@ public class AdminController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Ese creador ya no existe."));
 
-        String canal = creador.getCanalDeYouTube();
-        if (canal != null && !canal.isBlank()) {
-            try {
-                websub.desuscribir(canal);
-            } catch (Exception e) {
-                log.error("Baja del hub fallida para {}", canal, e);
-            }
-        }
+        darDeBaja(servicio.alRetirar(creador));
 
+        // Sus canales, sus publicaciones y quién lo sigue se van en cascada
+        // por las claves foráneas.
         creadores.delete(creador);
         return Dtos.RespuestaSimple.de("Creador retirado del directorio.");
+    }
+
+    // -------------------------------------------------------------------------
+    // Productoras
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/productoras")
+    @Transactional(readOnly = true)
+    public List<Dtos.ProductoraAdminDto> listarProductoras() {
+        Catalogo.Vista vista = catalogo.vista();
+        Map<String, Suscripcion> estados = estadosDelHub();
+
+        List<Creador> todos = creadores.findAll();
+        Map<UUID, String> nombres = new HashMap<>();
+        todos.forEach(c -> nombres.put(c.getId(), c.getNombre()));
+
+        return productoras.findAll().stream()
+                .sorted(Comparator.comparing(Productora::getNombre, String.CASE_INSENSITIVE_ORDER))
+                .map(p -> new Dtos.ProductoraAdminDto(
+                        p.getId(), p.getNombre(), p.getDescripcion(), p.getLogoUrl(), p.isActivo(),
+                        vista.canalesDeProductora(p.getId()).stream()
+                                .map(k -> canalAdmin(k, nombres.get(k.getCreadorId()), estados))
+                                .toList(),
+                        todos.stream()
+                                .filter(c -> c.getProductoras().contains(p.getId()))
+                                .sorted(Comparator.comparing(Creador::getNombre, String.CASE_INSENSITIVE_ORDER))
+                                .map(Creador::getId)
+                                .toList(),
+                        usuarios.cuantosSiguenProductora(p.getId())))
+                .toList();
+    }
+
+    /**
+     * Alta o edición de una productora, con sus canales propios y, si vienen,
+     * los creadores que figuran en ella. Que un canal de un creador sea de la
+     * productora se marca al guardar ese creador.
+     */
+    @PostMapping("/productoras")
+    @Transactional
+    public Dtos.ProductoraGuardada guardarProductora(@Valid @RequestBody Dtos.GuardarProductora peticion) {
+        Productora productora = peticion.id() != null
+                ? productoras.findById(peticion.id()).orElseGet(Productora::new)
+                : new Productora();
+
+        Cambio cambio = servicioDeProductoras.aplicar(productora, peticion);
+
+        String avisoSuscripcion = null;
+        try {
+            canalesService.sincronizarWebSub(cambio);
+        } catch (Exception e) {
+            log.error("No se pudo sincronizar la suscripción de la productora {}", productora.getId(), e);
+            avisoSuscripcion = e.getMessage();
+        }
+
+        String avisoReplica = replica.enviar(productora);
+
+        return new Dtos.ProductoraGuardada(productora.getId(), avisoSuscripcion, avisoReplica);
+    }
+
+    @DeleteMapping("/productoras/{id}")
+    @Transactional
+    public Dtos.RespuestaSimple borrarProductora(@PathVariable UUID id) {
+        Productora productora = productoras.findById(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Esa productora ya no existe."));
+
+        darDeBaja(servicioDeProductoras.retirar(productora));
+        return Dtos.RespuestaSimple.de("Productora retirada del directorio.");
+    }
+
+    // -------------------------------------------------------------------------
+
+    /** Bajas del hub al retirar algo. Si fallan, lo retirado se retira igual. */
+    private void darDeBaja(Cambio cambio) {
+        try {
+            canalesService.sincronizarWebSub(cambio);
+        } catch (Exception e) {
+            log.error("Baja del hub fallida: {}", e.getMessage());
+        }
+    }
+
+    private Map<String, Suscripcion> estadosDelHub() {
+        Map<String, Suscripcion> estados = new HashMap<>();
+        suscripciones.findAll().forEach(s -> estados.put(s.getChannelId(), s));
+        return estados;
+    }
+
+    private static Dtos.CanalAdminDto canalAdmin(Canal k, String creadorNombre,
+                                                 Map<String, Suscripcion> estados) {
+        Suscripcion s = k.getCanalDeYouTube() != null ? estados.get(k.getCanalDeYouTube()) : null;
+
+        return new Dtos.CanalAdminDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
+                k.getHandle(), k.getChannelId(), k.getCreadorId(), creadorNombre,
+                k.getProductoraId(),
+                s != null ? s.getEstado() : null,
+                s != null ? s.getExpiraEn() : null);
+    }
+
+    /**
+     * Una sola suscripción que represente a todos los canales de YouTube del
+     * creador, para el testigo de la lista: si alguna no está activa, esa, que
+     * es la que hay que mirar; si todas lo están, la que vence antes.
+     */
+    static Suscripcion resumenDe(List<Canal> canales, Map<String, Suscripcion> estados) {
+        Suscripcion resumen = null;
+
+        for (Canal k : canales) {
+            String canal = k.getCanalDeYouTube();
+            Suscripcion s = canal != null ? estados.get(canal) : null;
+            if (s == null) continue;
+
+            if (resumen == null) {
+                resumen = s;
+                continue;
+            }
+
+            boolean activa = Suscripcion.ACTIVA.equals(s.getEstado());
+            boolean resumenActiva = Suscripcion.ACTIVA.equals(resumen.getEstado());
+
+            if (resumenActiva && !activa) {
+                resumen = s;
+            } else if (resumenActiva && activa && s.getExpiraEn() != null
+                    && (resumen.getExpiraEn() == null || s.getExpiraEn().isBefore(resumen.getExpiraEn()))) {
+                resumen = s;
+            }
+        }
+        return resumen;
     }
 
     /**
@@ -204,13 +341,7 @@ public class AdminController {
         List<Publicacion> lista = publicaciones.findAllByOrderByPublicadoEnDesc(
                 PageRequest.of(0, Math.min(limite, 200)));
 
-        Map<UUID, String> nombres = new HashMap<>();
-        creadores.findAllById(lista.stream().map(Publicacion::getCreadorId).distinct().toList())
-                 .forEach(c -> nombres.put(c.getId(), c.getNombre()));
-
-        return lista.stream()
-                .map(p -> Dtos.PublicacionDto.de(p, nombres.get(p.getCreadorId())))
-                .toList();
+        return DirectorioController.aDtos(lista, catalogo.vista(), creadores);
     }
 
     /**
@@ -234,8 +365,10 @@ public class AdminController {
         publicaciones.save(p);
 
         if (peticion.debeAvisar()) {
-            creadores.findById(p.getCreadorId()).ifPresent(creador ->
-                    push.avisarContenidoMovido(creador, videoId, p.getTitulo(),
+            // A quienes siguen a su creador y, si el canal es de una
+            // productora, también a quienes la siguen a ella.
+            emisores.paraAvisoManual(p).ifPresent(emisor ->
+                    push.avisarContenidoMovido(emisor, videoId, p.getTitulo(),
                             peticion.url(), peticion.plataformaDestino()));
         }
 

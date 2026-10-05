@@ -27,8 +27,16 @@ public class Publicacion {
     @Column(name = "video_id", nullable = false, unique = true)
     private String videoId;
 
-    @Column(name = "creador_id", nullable = false)
+    /** Vacío cuando el canal es de una productora y no tiene creador. */
+    @Column(name = "creador_id")
     private UUID creadorId;
+
+    /**
+     * De qué canal salió. Vacío si ese canal ya no está en el directorio: la
+     * publicación sigue siendo de su creador.
+     */
+    @Column(name = "canal_id")
+    private UUID canalId;
 
     @Column(nullable = false)
     private String plataforma = "youtube";
@@ -90,6 +98,9 @@ public class Publicacion {
 
     public UUID getCreadorId() { return creadorId; }
     public void setCreadorId(UUID creadorId) { this.creadorId = creadorId; }
+
+    public UUID getCanalId() { return canalId; }
+    public void setCanalId(UUID canalId) { this.canalId = canalId; }
 
     public String getPlataforma() { return plataforma; }
     public void setPlataforma(String plataforma) { this.plataforma = plataforma; }
