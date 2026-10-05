@@ -251,6 +251,41 @@ Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlis
 
 ---
 
+## Canales y productoras
+
+Un creador puede tener varios canales, también en la misma plataforma (el principal, el de clips, el de directos). Y existe la productora, la casa detrás de varios creadores, que se liga con el directorio de dos maneras independientes:
+
+- **Creador ↔ productora**, de muchos a muchos: una persona puede figurar en varias, o en ninguna.
+- **Canal → productora**, canal por canal: de los tres canales de un creador, uno puede ser de la productora y los otros dos suyos. Un canal también puede ser de la productora sin creador: su canal oficial.
+
+| Tabla | Qué guarda |
+|---|---|
+| `canales` | Cada canal, con su creador (`creador_id`), su productora (`productora_id`) o los dos. Un `channel_id` de YouTube es de un solo dueño. |
+| `productoras` | Nombre, descripción y logo. |
+| `creadores_productoras` | Qué creadores figuran en qué productoras. |
+| `favoritos_productoras` | Qué productoras sigue cada persona. |
+
+**Reglas**
+
+- El dueño de un canal es su creador; si no tiene, la productora. Con el dueño oculto, el canal no se vigila ni avisa a nadie.
+- Seguir a una productora avisa de lo que se publica en los canales que le pertenecen, no de todo lo de sus creadores. El topic de FCM es `productora_<id>`.
+- Un video de un canal que es de un creador y de una productora manda **un solo** aviso, con una condición de FCM (`creator_<id>` o `productora_<id>`): quien sigue a los dos lo recibe una vez.
+- Al retirar una productora se van sus canales propios y lo que publicaron. Los canales de sus creadores se quedan, sin la liga.
+
+**Rutas**
+
+| Ruta | Para qué |
+|---|---|
+| `GET /api/creadores` | Cada creador trae `canales` (todos) y `productoras`. `conexiones` sigue viniendo, con el primer canal de cada plataforma. |
+| `GET /api/productoras`, `GET /api/productoras/{id}` | Productoras visibles, con sus canales y los ids de sus creadores. |
+| `PUT` / `DELETE /api/favoritos/productoras/{id}` | Seguir y dejar de seguir. `GET /api/perfil` las devuelve en `productoras`. |
+| `GET` / `POST /api/admin/productoras`, `DELETE /api/admin/productoras/{id}` | Panel: listar, guardar (con sus canales propios y sus creadores) y retirar. |
+| `POST /api/admin/creadores` | Acepta `canales` (la lista completa, cada uno con su `productoraId` opcional) y `productoras`. |
+
+**Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
+
+---
+
 ## "¿Estoy suscrito en YouTube?"
 
 Seguir a un creador en la app y estar suscrito a su canal son cosas distintas. Con la cuenta guardada con Google, la app puede decirle a cada persona en cuáles sí lo está.
@@ -259,7 +294,7 @@ Seguir a un creador en la app y estar suscrito a su canal son cosas distintas. C
 
 1. En el perfil de un creador o en Ajustes, la persona toca **Conectar con YouTube**. Google muestra su pantalla de permiso (`youtube.readonly`, solo lectura).
 2. A partir de ahí, cada vez que la app pasa a primer plano le pide a Google un token de acceso sin mostrar nada y lo manda a `POST /api/youtube/suscripciones`.
-3. El servidor comprueba con Google que el token es de esta app y de esa cuenta, pregunta a YouTube solo por los canales del directorio y guarda el resultado en `youtube_suscripciones`.
+3. El servidor comprueba con Google que el token es de esta app y de esa cuenta, pregunta a YouTube solo por los canales del directorio y guarda el resultado, canal por canal, en `youtube_suscripciones_canales`.
 4. La app lo pinta en el directorio y en el perfil de cada creador.
 
 El servidor no guarda tokens de Google ni necesita `client secret`: el token dura una hora y se usa en el momento. No hay variables de entorno nuevas.

@@ -159,6 +159,12 @@ public class AuthController {
                     usuario.getFavoritos().addAll(entrantes);
                     fusionados = true;
                 }
+                // Lo mismo con las productoras que seguía.
+                Set<UUID> productoras = new HashSet<>(anonimo.get().getProductorasSeguidas());
+                if (!productoras.isEmpty()) {
+                    usuario.getProductorasSeguidas().addAll(productoras);
+                    fusionados = true;
+                }
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
                 //

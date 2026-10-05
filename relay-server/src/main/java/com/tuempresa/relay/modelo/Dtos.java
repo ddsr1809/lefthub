@@ -7,6 +7,7 @@ import jakarta.validation.constraints.Size;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -57,7 +58,48 @@ public final class Dtos {
     // Directorio (lo que leen las apps)
     // -------------------------------------------------------------------------
 
-    public record ConexionDto(String plataforma, String url, String handle, String channelId) {}
+    /**
+     * El formato anterior a los canales múltiples: un enlace por plataforma.
+     * Se sigue mandando (y aceptando) para las versiones de la app y del panel
+     * que todavía no conocen {@code canales}.
+     */
+    public record ConexionDto(String plataforma, String url, String handle, String channelId) {
+
+        /**
+         * El primer canal de cada plataforma, en el orden de siempre. Es lo
+         * que una app antigua entiende por "las conexiones del creador".
+         */
+        public static List<ConexionDto> principales(List<Canal> canales) {
+            return PLATAFORMAS.stream()
+                    .map(p -> canales.stream().filter(k -> p.equals(k.getPlataforma())).findFirst())
+                    .flatMap(Optional::stream)
+                    .map(k -> new ConexionDto(k.getPlataforma(), k.getUrl(), k.getHandle(), k.getChannelId()))
+                    .toList();
+        }
+    }
+
+    /**
+     * Un canal del directorio.
+     *
+     * {@code creadorId} falta en el canal propio de una productora;
+     * {@code productoraId} falta en el canal que es solo de su creador.
+     */
+    public record CanalDto(
+            UUID id,
+            String plataforma,
+            String nombre,
+            String url,
+            String handle,
+            String channelId,
+            UUID creadorId,
+            UUID productoraId
+    ) {
+        /** @param productoraId la del canal, o null si no hay que mostrarla. */
+        public static CanalDto de(Canal k, UUID productoraId) {
+            return new CanalDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
+                    k.getHandle(), k.getChannelId(), k.getCreadorId(), productoraId);
+        }
+    }
 
     public record CreadorDto(
             UUID id,
@@ -65,21 +107,24 @@ public final class Dtos {
             String categoria,
             String bio,
             String fotoUrl,
-            List<ConexionDto> conexiones
-    ) {
-        public static CreadorDto de(Creador c) {
-            List<ConexionDto> lista = PLATAFORMAS.stream()
-                    .filter(p -> c.getConexiones().containsKey(p))
-                    .map(p -> {
-                        Conexion cx = c.getConexiones().get(p);
-                        return new ConexionDto(p, cx.getUrl(), cx.getHandle(), cx.getChannelId());
-                    })
-                    .toList();
+            /** Un enlace por plataforma: lo que leen las apps anteriores. */
+            List<ConexionDto> conexiones,
+            /** Todos sus canales, en orden. */
+            List<CanalDto> canales,
+            /** Productoras visibles en las que figura. */
+            List<UUID> productoras
+    ) {}
 
-            return new CreadorDto(c.getId(), c.getNombre(), c.getCategoria(),
-                    c.getBio(), c.getFotoUrl(), lista);
-        }
-    }
+    public record ProductoraDto(
+            UUID id,
+            String nombre,
+            String descripcion,
+            String logoUrl,
+            /** Los canales que le pertenecen: los propios y los de sus creadores. */
+            List<CanalDto> canales,
+            /** Creadores visibles que figuran en ella. */
+            List<UUID> creadores
+    ) {}
 
     public record PublicacionDto(
             String videoId,
@@ -94,14 +139,25 @@ public final class Dtos {
             String estado,
             String destinoUrl,
             String destinoPlataforma,
-            Instant publicadoEn
+            Instant publicadoEn,
+            UUID canalId,
+            UUID productoraId,
+            String productoraNombre
     ) {
-        public static PublicacionDto de(Publicacion p, String nombreCreador) {
+        /**
+         * @param nombreCreador el del creador; en el canal propio de una
+         *                      productora, el de la productora, para que quien
+         *                      solo lee este campo tenga siempre a quién atribuir
+         *                      el video.
+         */
+        public static PublicacionDto de(Publicacion p, String nombreCreador, Productora productora) {
             return new PublicacionDto(
                     p.getVideoId(), p.getCreadorId(), nombreCreador, p.getPlataforma(),
                     p.getTitulo(), p.getMiniaturaUrl(), p.getUrl(), p.getTipo(),
                     p.isEnVivo(), p.getEstado(), p.getDestinoUrl(), p.getDestinoPlataforma(),
-                    p.getPublicadoEn());
+                    p.getPublicadoEn(), p.getCanalId(),
+                    productora != null ? productora.getId() : null,
+                    productora != null ? productora.getNombre() : null);
         }
     }
 
@@ -113,11 +169,14 @@ public final class Dtos {
             List<UUID> favoritos,
             String escalaTexto,
             String tema,
-            boolean avisos
+            boolean avisos,
+            /** Productoras que sigue. Los creadores van en {@code favoritos}. */
+            List<UUID> productoras
     ) {
         public static PerfilDto de(Usuario u) {
             return new PerfilDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
-                    List.copyOf(u.getFavoritos()), u.getEscalaTexto(), u.getTema(), u.isAvisos());
+                    List.copyOf(u.getFavoritos()), u.getEscalaTexto(), u.getTema(), u.isAvisos(),
+                    List.copyOf(u.getProductorasSeguidas()));
         }
     }
 
@@ -139,16 +198,22 @@ public final class Dtos {
     ) {}
 
     /**
-     * A qué creadores del directorio está suscrita la persona en YouTube.
+     * A qué canales del directorio está suscrita la persona en YouTube.
      *
      * Van los dos lados porque "no suscrito" y "no lo sabemos" no son lo
-     * mismo: un creador sin canal de YouTube no aparece en ninguna lista.
+     * mismo: lo que no tiene canal de YouTube no aparece en ninguna lista.
      * {@code verificadoEn} falta cuando nunca se ha comprobado.
+     *
+     * {@code suscritos} y {@code noSuscritos} son ids de CREADORES y hablan de
+     * su canal principal de YouTube: es lo que leen las apps anteriores a los
+     * canales múltiples. Las dos listas de canales son la respuesta completa.
      */
     public record SuscripcionesYouTube(
             Instant verificadoEn,
             List<UUID> suscritos,
-            List<UUID> noSuscritos
+            List<UUID> noSuscritos,
+            List<UUID> canalesSuscritos,
+            List<UUID> canalesNoSuscritos
     ) {}
 
     // -------------------------------------------------------------------------
@@ -168,8 +233,20 @@ public final class Dtos {
             String bio,
 
             String fotoUrl,
+
+            /**
+             * Formato anterior: un enlace por plataforma. Solo se lee si no
+             * viene {@code canales}, y entonces toca nada más el canal
+             * principal de cada plataforma.
+             */
             Map<String, ConexionDto> conexiones,
-            Boolean activo
+            Boolean activo,
+
+            /** La lista completa de canales, en orden. Sustituye a la que había. */
+            List<GuardarCanal> canales,
+
+            /** Productoras en las que figura. Si no viene, no se tocan. */
+            List<UUID> productoras
     ) {
         public String categoriaOtros() {
             return (categoria == null || categoria.isBlank()) ? "otros" : categoria;
@@ -180,6 +257,46 @@ public final class Dtos {
         public Map<String, ConexionDto> conexionesSeguras() {
             return conexiones != null ? conexiones : Map.of();
         }
+    }
+
+    /**
+     * Un canal tal como lo manda el panel.
+     *
+     * {@code id} es el del canal que se está editando; sin él (o si no es de
+     * ese dueño) se busca por channelId o por URL antes de dar uno de alta.
+     * {@code productoraId} solo cuenta en los canales de un creador: los de
+     * una productora son siempre suyos.
+     */
+    public record GuardarCanal(
+            UUID id,
+            String plataforma,
+            String nombre,
+            String url,
+            String handle,
+            String channelId,
+            UUID productoraId
+    ) {}
+
+    public record GuardarProductora(
+            UUID id,
+
+            @NotBlank(message = "La productora necesita un nombre.")
+            @Size(min = 2, max = 60, message = "El nombre debe tener entre 2 y 60 caracteres.")
+            String nombre,
+
+            @Size(max = 600, message = "La descripción no puede pasar de 600 caracteres.")
+            String descripcion,
+
+            String logoUrl,
+            Boolean activo,
+
+            /** Sus canales propios, los que no tienen creador. Si no viene, no se tocan. */
+            List<GuardarCanal> canales,
+
+            /** Creadores que figuran en ella. Si no viene, no se tocan. */
+            List<UUID> creadores
+    ) {
+        public boolean estaActivo() { return activo == null || activo; }
     }
 
     public record MoverContenido(
@@ -197,6 +314,26 @@ public final class Dtos {
         public boolean debeAvisar() { return avisar == null || avisar; }
     }
 
+    /** Un canal con el estado de su suscripción al hub, que es lo que pinta el testigo. */
+    public record CanalAdminDto(
+            UUID id,
+            String plataforma,
+            String nombre,
+            String url,
+            String handle,
+            String channelId,
+            UUID creadorId,
+            String creadorNombre,
+            UUID productoraId,
+            String estadoSuscripcion,
+            Instant expiraEn
+    ) {}
+
+    /**
+     * {@code estadoSuscripcion} y {@code expiraEn} resumen todos sus canales
+     * de YouTube: si alguno no está activo, se ve ese; si todos lo están, el
+     * que vence antes. El detalle por canal va en {@code canales}.
+     */
     public record CreadorAdminDto(
             UUID id,
             String nombre,
@@ -207,6 +344,20 @@ public final class Dtos {
             List<ConexionDto> conexiones,
             String estadoSuscripcion,
             Instant expiraEn,
+            long seguidores,
+            List<CanalAdminDto> canales,
+            List<UUID> productoras
+    ) {}
+
+    public record ProductoraAdminDto(
+            UUID id,
+            String nombre,
+            String descripcion,
+            String logoUrl,
+            boolean activo,
+            /** Todos los canales que le pertenecen; los propios vienen sin creadorId. */
+            List<CanalAdminDto> canales,
+            List<UUID> creadores,
             long seguidores
     ) {}
 
@@ -319,6 +470,9 @@ public final class Dtos {
      * copia a testing, no del guardado.
      */
     public record CreadorGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
+
+    /** Igual que {@link CreadorGuardado}, para una productora. */
+    public record ProductoraGuardada(UUID id, String avisoSuscripcion, String avisoReplica) {}
 
     public record ResultadoReplica(int total, int replicados, int fallidos, List<String> errores) {}
 

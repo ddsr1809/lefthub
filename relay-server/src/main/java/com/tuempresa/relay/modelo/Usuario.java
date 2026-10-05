@@ -66,6 +66,12 @@ public class Usuario {
     @Column(name = "creador_id")
     private Set<UUID> favoritos = new LinkedHashSet<>();
 
+    /** Productoras que sigue. Aparte de los creadores: son dos listas. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "favoritos_productoras", joinColumns = @JoinColumn(name = "usuario_id"))
+    @Column(name = "productora_id")
+    private Set<UUID> productorasSeguidas = new LinkedHashSet<>();
+
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn = Instant.now();
 
@@ -132,6 +138,11 @@ public class Usuario {
     public Set<UUID> getFavoritos() { return favoritos; }
     public void setFavoritos(Set<UUID> favoritos) {
         this.favoritos = favoritos != null ? favoritos : new LinkedHashSet<>();
+    }
+
+    public Set<UUID> getProductorasSeguidas() { return productorasSeguidas; }
+    public void setProductorasSeguidas(Set<UUID> productorasSeguidas) {
+        this.productorasSeguidas = productorasSeguidas != null ? productorasSeguidas : new LinkedHashSet<>();
     }
 
     public Instant getCreadoEn() { return creadoEn; }

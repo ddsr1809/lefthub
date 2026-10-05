@@ -3,8 +3,8 @@ package com.tuempresa.relay.modelo;
 import jakarta.persistence.*;
 
 import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -14,6 +14,9 @@ import java.util.UUID;
  * sitios. Esa decision de modelado permite agrupar YouTube, TikTok y Twitch
  * bajo un solo perfil, y hace que el directorio sobreviva si a alguien le
  * cierran una cuenta.
+ *
+ * Sus canales viven en su propia tabla (ver Canal) y se buscan por
+ * creador_id: puede tener varios, tambien en la misma plataforma.
  */
 @Entity
 @Table(name = "creadores")
@@ -39,14 +42,13 @@ public class Creador {
     private boolean activo = true;
 
     /**
-     * Las conexiones se cargan siempre con el creador porque la interfaz las
-     * necesita en cuanto muestra un perfil. Con LAZY tendriamos una consulta
-     * extra por cada fila del directorio.
+     * Productoras en las que figura. Es independiente de a quien pertenece
+     * cada uno de sus canales: ver Productora.
      */
     @ElementCollection(fetch = FetchType.EAGER)
-    @CollectionTable(name = "conexiones", joinColumns = @JoinColumn(name = "creador_id"))
-    @MapKeyColumn(name = "plataforma")
-    private Map<String, Conexion> conexiones = new LinkedHashMap<>();
+    @CollectionTable(name = "creadores_productoras", joinColumns = @JoinColumn(name = "creador_id"))
+    @Column(name = "productora_id")
+    private Set<UUID> productoras = new LinkedHashSet<>();
 
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn = Instant.now();
@@ -79,9 +81,9 @@ public class Creador {
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
 
-    public Map<String, Conexion> getConexiones() { return conexiones; }
-    public void setConexiones(Map<String, Conexion> conexiones) {
-        this.conexiones = conexiones != null ? conexiones : new LinkedHashMap<>();
+    public Set<UUID> getProductoras() { return productoras; }
+    public void setProductoras(Set<UUID> productoras) {
+        this.productoras = productoras != null ? productoras : new LinkedHashSet<>();
     }
 
     public Instant getCreadoEn() { return creadoEn; }
@@ -92,11 +94,4 @@ public class Creador {
 
     public UUID getOrigenId() { return origenId; }
     public void setOrigenId(UUID origenId) { this.origenId = origenId; }
-
-    /** ID canonico del canal de YouTube, o null si el creador no tiene. */
-    @Transient
-    public String getCanalDeYouTube() {
-        Conexion youtube = conexiones.get("youtube");
-        return youtube != null ? youtube.getChannelId() : null;
-    }
 }
