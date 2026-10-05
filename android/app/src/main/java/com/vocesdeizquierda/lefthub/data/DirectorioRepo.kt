@@ -33,6 +33,11 @@ class DirectorioRepo(
         ApiRelay.creadores()
     }
 
+    /** Las productoras. Mismo ritmo que el directorio: también se editan a mano. */
+    fun productoras(): Flow<List<Productora>> = sondear(intervaloMs = 5 * 60_000L) {
+        ApiRelay.productoras()
+    }
+
     /**
      * El perfil tal como está en el servidor, una sola lectura.
      *
@@ -43,12 +48,12 @@ class DirectorioRepo(
     suspend fun perfil(): Perfil = ApiRelay.perfil()
 
     /**
-     * El parámetro `favoritos` ya no se usa para filtrar: el servidor sabe a
-     * quién sigue el usuario por el token. Se mantiene en la firma porque
-     * AppViewModel lo usa como disparador para reemitir cuando cambian.
+     * Los parámetros ya no se usan para filtrar: el servidor sabe a quién
+     * sigue el usuario por el token. Se mantienen en la firma porque
+     * AppViewModel los usa como disparador para reemitir cuando cambian.
      */
-    fun publicaciones(favoritos: List<String>): Flow<List<Publicacion>> =
-        if (favoritos.isEmpty()) flow { emit(emptyList()) }
+    fun publicaciones(favoritos: List<String>, productoras: List<String> = emptyList()): Flow<List<Publicacion>> =
+        if (favoritos.isEmpty() && productoras.isEmpty()) flow { emit(emptyList()) }
         else sondear(intervaloMs = 2 * 60_000L) { ApiRelay.publicaciones() }
 
     /**
@@ -70,18 +75,36 @@ class DirectorioRepo(
     }
 
     /**
+     * Seguir o dejar de seguir a una productora. Igual que con un creador:
+     * el servidor guarda a quién se sigue y el topic hace llegar los avisos
+     * de sus canales a este aparato.
+     */
+    suspend fun alternarProductora(productoraId: String, siguiendoAhora: Boolean) {
+        val topic = topicDeProductora(productoraId)
+        if (siguiendoAhora) {
+            ApiRelay.dejarDeSeguirProductora(productoraId)
+            runCatching { mensajeria.unsubscribeFromTopic(topic).await() }
+        } else {
+            ApiRelay.seguirProductora(productoraId)
+            runCatching { mensajeria.subscribeToTopic(topic).await() }
+        }
+    }
+
+    /**
      * Vuelve a alinear los topics tras iniciar sesión en otro teléfono.
      * Los favoritos viven en la cuenta, pero los topics son por dispositivo:
      * un teléfono nuevo no está suscrito a nada aunque la cuenta sí lo esté.
      */
-    suspend fun sincronizarTopics(favoritos: List<String>) {
-        favoritos.forEach { id ->
-            runCatching { mensajeria.subscribeToTopic(topicDe(id)).await() }
+    suspend fun sincronizarTopics(favoritos: List<String>, productoras: List<String> = emptyList()) {
+        val topics = favoritos.map { topicDe(it) } + productoras.map { topicDeProductora(it) }
+
+        topics.forEach { topic ->
+            runCatching { mensajeria.subscribeToTopic(topic).await() }
                 // Sin este registro, un teléfono que no logra suscribirse
                 // (sin Play Services, google-services.json de otro proyecto)
                 // es indistinguible de uno que sí.
-                .onSuccess { Log.d(TAG, "Suscrito a ${topicDe(id)}") }
-                .onFailure { Log.w(TAG, "No se pudo suscribir a ${topicDe(id)}", it) }
+                .onSuccess { Log.d(TAG, "Suscrito a $topic") }
+                .onFailure { Log.w(TAG, "No se pudo suscribir a $topic", it) }
         }
     }
 
@@ -117,5 +140,8 @@ class DirectorioRepo(
     companion object {
         private const val TAG = "DirectorioRepo"
         fun topicDe(creatorId: String) = "creator_$creatorId"
+
+        /** El mismo nombre que arma el servidor en PushService. */
+        fun topicDeProductora(productoraId: String) = "productora_$productoraId"
     }
 }

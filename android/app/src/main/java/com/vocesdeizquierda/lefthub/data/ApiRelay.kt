@@ -14,7 +14,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -145,18 +144,22 @@ object ApiRelay {
         return getArray(ruta).mapJson { creadorDe(it) }
     }
 
+    /**
+     * Las productoras visibles, con sus canales y los ids de sus creadores.
+     *
+     * Un servidor anterior a las productoras no tiene la ruta y contesta 404:
+     * para la app eso es "no hay ninguna", no un error.
+     */
+    suspend fun productoras(): List<Productora> = try {
+        getArray("/api/productoras").mapJson { productoraDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
     suspend fun publicaciones(limite: Int = 50): List<Publicacion> =
         getArray("/api/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
 
-    suspend fun perfil(): Perfil {
-        val json = getObject("/api/perfil")
-        return Perfil(
-            favoritos = json.optJSONArray("favoritos").mapJsonStrings(),
-            escalaTexto = json.optString("escalaTexto", "normal"),
-            tema = json.optString("tema", "sistema"),
-            avisos = json.optBoolean("avisos", true)
-        )
-    }
+    suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
 
     suspend fun seguir(creadorId: String) {
         ejecutar(Request.Builder()
@@ -167,6 +170,18 @@ object ApiRelay {
     suspend fun dejarDeSeguir(creadorId: String) {
         ejecutar(Request.Builder()
             .url(BuildConfig.API_BASE + "/api/favoritos/$creadorId")
+            .delete())
+    }
+
+    suspend fun seguirProductora(productoraId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/productoras/$productoraId")
+            .put(vacio()))
+    }
+
+    suspend fun dejarDeSeguirProductora(productoraId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/productoras/$productoraId")
             .delete())
     }
 
@@ -211,66 +226,7 @@ object ApiRelay {
             .delete())
     }
 
-    private fun suscripcionesDe(json: JSONObject) = SuscripcionesYouTube(
-        suscritos = json.optJSONArray("suscritos").mapJsonStrings().toSet(),
-        noSuscritos = json.optJSONArray("noSuscritos").mapJsonStrings().toSet(),
-        verificadoEn = json.optStringONull("verificadoEn")?.let {
-            runCatching { Instant.parse(it) }.getOrNull()
-        }
-    )
-
-    // -------------------------------------------------------------------------
-    // Mapeo
-    // -------------------------------------------------------------------------
-    // El servidor usa nombres en español; los modelos de la app conservan los
-    // suyos para no tocar ni una línea de la interfaz. La traducción vive aquí,
-    // en un solo sitio.
-
-    private fun creadorDe(json: JSONObject): Creador {
-        val conexiones = mutableMapOf<String, Conexion>()
-        json.optJSONArray("conexiones")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val c = arr.getJSONObject(i)
-                conexiones[c.getString("plataforma")] = Conexion(
-                    url = c.optString("url", ""),
-                    handle = c.optStringONull("handle"),
-                    channelId = c.optStringONull("channelId")
-                )
-            }
-        }
-
-        return Creador(
-            id = json.getString("id"),
-            name = json.optString("nombre", ""),
-            category = json.optString("categoria", "otros"),
-            bio = json.optStringONull("bio"),
-            photoUrl = json.optStringONull("fotoUrl"),
-            platforms = conexiones,
-            active = true
-        )
-    }
-
-    private fun publicacionDe(json: JSONObject): Publicacion {
-        val videoId = json.optString("videoId", "")
-        return Publicacion(
-            id = videoId,
-            videoId = videoId,
-            creatorId = json.optString("creadorId", ""),
-            creatorName = json.optStringONull("creadorNombre"),
-            platform = json.optString("plataforma", "youtube"),
-            title = json.optString("titulo", "Video nuevo"),
-            thumbnailUrl = json.optStringONull("miniaturaUrl"),
-            url = json.optStringONull("url"),
-            publishedAt = json.optStringONull("publicadoEn")?.let {
-                runCatching { Instant.parse(it) }.getOrNull()
-            },
-            status = json.optString("estado", "ok"),
-            overrideUrl = json.optStringONull("destinoUrl"),
-            overridePlatform = json.optStringONull("destinoPlataforma"),
-            esEnVivo = json.optBoolean("enVivo", false),
-            tipo = json.optString("tipo", "video")
-        )
-    }
+    // El paso del JSON del servidor a los modelos de la app está en Mapeo.kt.
 
     // -------------------------------------------------------------------------
     // HTTP
@@ -326,16 +282,3 @@ object ApiRelay {
             }
         }
 }
-
-// --- Utilidades de JSON ------------------------------------------------------
-// org.json devuelve la cadena "null" en vez de null cuando el campo viene nulo,
-// que es una fuente clásica de textos con "null" impreso en la pantalla.
-
-internal fun JSONObject.optStringONull(clave: String): String? =
-    if (isNull(clave)) null else optString(clave).takeIf { it.isNotBlank() }
-
-internal fun <T> JSONArray.mapJson(transformar: (JSONObject) -> T): List<T> =
-    (0 until length()).map { transformar(getJSONObject(it)) }
-
-internal fun JSONArray?.mapJsonStrings(): List<String> =
-    this?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: emptyList()

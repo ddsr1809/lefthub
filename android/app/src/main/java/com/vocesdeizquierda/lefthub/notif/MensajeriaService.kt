@@ -5,7 +5,6 @@ import android.app.PendingIntent
 import android.content.Intent
 import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.google.firebase.messaging.FirebaseMessaging
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.vocesdeizquierda.lefthub.MainActivity
@@ -17,7 +16,6 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 
 /**
  * Servicio encargado de recibir mensajes de Firebase Cloud Messaging.
@@ -71,13 +69,17 @@ class MensajeriaService : FirebaseMessagingService() {
             .build()
 
         // Mismo tag que usa el servidor: un aviso por creador, el último
-        // reemplaza al anterior.
-        gestor.notify(aviso.tag ?: mensaje.data["creatorId"], 0, notificacion)
+        // reemplaza al anterior. El canal propio de una productora no trae
+        // creador; ahí agrupa la productora.
+        gestor.notify(
+            aviso.tag ?: mensaje.data["creatorId"] ?: mensaje.data["productoraId"],
+            0, notificacion
+        )
     }
 
     /**
-     * Cuando FCM renueva el token, se reconstruyen las suscripciones
-     * a los creadores favoritos de la cuenta actual.
+     * Cuando FCM renueva el token, se reconstruyen las suscripciones a los
+     * creadores y a las productoras que sigue la cuenta actual.
      */
     override fun onNewToken(token: String) {
         Log.d(TAG, "Token de FCM renovado")
@@ -92,17 +94,11 @@ class MensajeriaService : FirebaseMessagingService() {
                     return@runCatching
                 }
 
-                val favoritos = ApiRelay.perfil().favoritos
+                // Creadores y productoras: cada uno tiene su topic.
+                val perfil = ApiRelay.perfil()
+                DirectorioRepo().sincronizarTopics(perfil.favoritos, perfil.productoras)
 
-                favoritos.forEach { creatorId ->
-                    FirebaseMessaging.getInstance()
-                        .subscribeToTopic(
-                            DirectorioRepo.topicDe(creatorId)
-                        )
-                        .await()
-                }
-
-                Log.d(TAG, "Suscripciones rehechas: ${favoritos.size}")
+                Log.d(TAG, "Suscripciones rehechas: ${perfil.favoritos.size + perfil.productoras.size}")
             }.onFailure { error ->
                 Log.w(
                     TAG,

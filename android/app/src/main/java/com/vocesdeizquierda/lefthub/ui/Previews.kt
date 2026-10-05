@@ -11,9 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import java.time.Instant
 import com.vocesdeizquierda.lefthub.EstadoApp
+import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Conexion
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.Perfil
+import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.Publicacion
 
 
@@ -67,7 +69,37 @@ private val juan = Creador(
         "youtube" to Conexion(url = "https://www.youtube.com/channel/UC123", channelId = "UC123"),
         "tiktok" to Conexion(url = "https://www.tiktok.com/@juanperez", handle = "juanperez"),
         "instagram" to Conexion(url = "https://www.instagram.com/juanperez")
-    )
+    ),
+    // Tres canales de YouTube: el suyo, el de clips y uno que es de la productora.
+    canales = listOf(
+        Canal(id = "c1", plataforma = "youtube", url = "https://www.youtube.com/channel/UC123",
+            channelId = "UC123", creadorId = "juan"),
+        Canal(id = "c2", plataforma = "youtube", nombre = "Clips",
+            url = "https://www.youtube.com/channel/UC124", channelId = "UC124", creadorId = "juan"),
+        Canal(id = "c3", plataforma = "youtube", nombre = "Cocina con Juan",
+            url = "https://www.youtube.com/channel/UC125", channelId = "UC125",
+            creadorId = "juan", productoraId = "estudio"),
+        Canal(id = "c4", plataforma = "tiktok", url = "https://www.tiktok.com/@juanperez",
+            handle = "juanperez", creadorId = "juan"),
+        Canal(id = "c5", plataforma = "instagram", url = "https://www.instagram.com/juanperez",
+            creadorId = "juan")
+    ),
+    productoras = listOf("estudio")
+)
+
+private val estudio = Productora(
+    id = "estudio",
+    nombre = "Estudio X",
+    descripcion = "La casa de varios creadores de cocina y cine.",
+    canales = listOf(
+        Canal(id = "c9", plataforma = "youtube", nombre = "Oficial",
+            url = "https://www.youtube.com/channel/UC900", channelId = "UC900",
+            productoraId = "estudio"),
+        Canal(id = "c3", plataforma = "youtube", nombre = "Cocina con Juan",
+            url = "https://www.youtube.com/channel/UC125", channelId = "UC125",
+            creadorId = "juan", productoraId = "estudio")
+    ),
+    creadores = listOf("juan", "ana")
 )
 
 private val ana = Creador(
@@ -223,7 +255,8 @@ private fun PreviaDirectorio() {
             creadores = creadores,
             favoritos = listOf("juan"),
             onSeguir = {},
-            onAbrirCreador = {}
+            onAbrirCreador = {},
+            productoras = listOf(estudio)
         )
     }
 }
@@ -236,7 +269,23 @@ private fun PreviaPerfilDeCreador() {
             creador = juan,
             siguiendo = false,
             onSeguir = {},
-            onVolver = {}
+            onVolver = {},
+            productoras = listOf(estudio)
+        )
+    }
+}
+
+@VistaPreviaAccesible
+@Composable
+private fun PreviaFichaDeProductora() {
+    Marco {
+        ProductoraPantalla(
+            productora = estudio,
+            siguiendo = true,
+            onSeguir = {},
+            onVolver = {},
+            creadores = creadores,
+            favoritos = listOf("juan")
         )
     }
 }

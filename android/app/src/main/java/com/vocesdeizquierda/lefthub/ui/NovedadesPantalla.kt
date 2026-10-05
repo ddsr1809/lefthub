@@ -35,14 +35,15 @@ fun NovedadesPantalla(
     hayFavoritos: Boolean,
     cuantosFavoritos: Int,
     onIrAlDirectorio: () -> Unit,
-    onReportar: (Publicacion) -> Unit
+    onReportar: (Publicacion) -> Unit,
+    cuantasProductoras: Int = 0
 ) {
     val contexto = LocalContext.current
 
     if (!hayFavoritos) {
         Vacio(
             titulo = "Todavía no sigues a nadie",
-            mensaje = "Elige a los creadores que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
+            mensaje = "Elige a los creadores y productoras que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
             accion = { BotonGrande("Ver el directorio", onClick = onIrAlDirectorio) }
         )
         return
@@ -65,9 +66,8 @@ fun NovedadesPantalla(
             item {
                 Vacio(
                     titulo = "Sin novedades por ahora",
-                    mensaje = "Sigues a $cuantosFavoritos " +
-                        (if (cuantosFavoritos == 1) "creador" else "creadores") +
-                        ". En cuanto alguno publique, el aviso llega a este teléfono."
+                    mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras)}. " +
+                        "En cuanto publiquen algo, el aviso llega a este teléfono."
                 )
             }
         }
@@ -113,7 +113,7 @@ private fun TarjetaPublicacion(
                 .clickable(onClick = onAbrir)
                 .semantics {
                     contentDescription =
-                        "Abrir el video ${publicacion.title} de ${publicacion.creatorName ?: ""}"
+                        "Abrir el video ${publicacion.title} de ${publicacion.firma}"
                 }
         ) {
             if (!publicacion.thumbnailUrl.isNullOrBlank()) {
@@ -130,7 +130,10 @@ private fun TarjetaPublicacion(
 
             Column(Modifier.padding(Espacio.md)) {
                 Text(
-                    "${publicacion.creatorName ?: ""} · ${tiempoRelativo(publicacion.publishedAt)}",
+                    // Quién lo publicó y, si su canal es de una productora, cuál.
+                    listOf(publicacion.firma, tiempoRelativo(publicacion.publishedAt))
+                        .filter { it.isNotBlank() }
+                        .joinToString(" · "),
                     style = MaterialTheme.typography.bodySmall,
                     color = esquema.onSurfaceVariant
                 )
@@ -176,6 +179,12 @@ private fun TarjetaPublicacion(
         }
     }
 }
+
+/** "2 creadores", "1 productora" o "2 creadores y 1 productora". */
+private fun aQuienSigue(creadores: Int, productoras: Int): String = listOfNotNull(
+    "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 },
+    "$productoras ${if (productoras == 1) "productora" else "productoras"}".takeIf { productoras > 0 }
+).joinToString(" y ")
 
 /**
  * Fechas en palabras. "hace 2 horas" se entiende de un vistazo; una marca

@@ -18,9 +18,11 @@ import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
+import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 // El directorio es cerrado: solo aparecen los creadores que el equipo aprobó.
@@ -40,6 +42,10 @@ private val TEMAS = listOf(
     "otros" to "Otros"
 )
 
+// No es un tema: es la otra mitad del directorio. Va como una pestaña más, al
+// final, para no añadir una pantalla que haya que descubrir.
+private const val PRODUCTORAS = "productoras"
+
 @Composable
 fun DirectorioPantalla(
     creadores: List<Creador>,
@@ -49,10 +55,18 @@ fun DirectorioPantalla(
     favoritos: List<String>,
     onSeguir: (String) -> Unit,
     onAbrirCreador: (String) -> Unit,
-    youtube: EstadoYouTube = EstadoYouTube()
+    youtube: EstadoYouTube = EstadoYouTube(),
+    productoras: List<Productora> = emptyList(),
+    productorasSeguidas: List<String> = emptyList(),
+    onSeguirProductora: (String) -> Unit = {},
+    onAbrirProductora: (String) -> Unit = {}
 ) {
-    var tema by remember { mutableStateOf("todos") }
+    var elegido by remember { mutableStateOf("todos") }
     val esquema = MaterialTheme.colorScheme
+
+    // Si la última productora se retira mientras su pestaña está abierta, la
+    // pestaña desaparece y la lista vuelve a "Todos".
+    val tema = if (elegido == PRODUCTORAS && productoras.isEmpty()) "todos" else elegido
 
     val visibles = remember(creadores, tema) {
         if (tema == "todos") creadores else creadores.filter { it.category == tema }
@@ -60,9 +74,10 @@ fun DirectorioPantalla(
 
     // Solo mostramos los temas que de verdad tienen a alguien dentro. Una
     // pestaña vacía es una promesa incumplida.
-    val temasConGente = remember(creadores) {
+    val temasConGente = remember(creadores, productoras) {
         val usados = creadores.map { it.category }.toSet()
-        TEMAS.filter { it.first == "todos" || it.first in usados }
+        TEMAS.filter { it.first == "todos" || it.first in usados } +
+            (if (productoras.isNotEmpty()) listOf(PRODUCTORAS to "Productoras") else emptyList())
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -82,7 +97,7 @@ fun DirectorioPantalla(
             temasConGente.forEach { (clave, nombre) ->
                 val activo = clave == tema
                 OutlinedButton(
-                    onClick = { tema = clave },
+                    onClick = { elegido = clave },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = if (activo) esquema.primary else Color.Transparent,
@@ -100,7 +115,21 @@ fun DirectorioPantalla(
             }
         }
 
-        if (visibles.isEmpty()) {
+        if (tema == PRODUCTORAS) {
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = Espacio.md),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(productoras, key = { it.id }) { productora ->
+                    FilaProductora(
+                        productora = productora,
+                        siguiendo = productora.id in productorasSeguidas,
+                        onAbrir = { onAbrirProductora(productora.id) },
+                        onSeguir = { onSeguirProductora(productora.id) }
+                    )
+                }
+            }
+        } else if (visibles.isEmpty()) {
             Vacio(
                 titulo = "Nada en este tema todavía",
                 mensaje = "Estamos sumando creadores poco a poco. Prueba con otro tema."
@@ -139,9 +168,10 @@ fun CreadorPantalla(
     onVolver: () -> Unit,
     youtube: EstadoYouTube = EstadoYouTube(),
     esAnonimo: Boolean = true,
-    onConectarYouTube: () -> Unit = {}
+    onConectarYouTube: () -> Unit = {},
+    productoras: List<Productora> = emptyList(),
+    onAbrirProductora: (String) -> Unit = {}
 ) {
-    val contexto = LocalContext.current
     val esquema = MaterialTheme.colorScheme
 
     if (creador == null) {
@@ -200,8 +230,8 @@ fun CreadorPantalla(
             modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
         )
 
-        val conexiones = creador.conexionesOrdenadas
-        if (conexiones.isEmpty()) {
+        val canales = creador.canalesVisibles
+        if (canales.isEmpty()) {
             Text(
                 "Todavía no hemos agregado sus enlaces.",
                 style = MaterialTheme.typography.bodyLarge,
@@ -209,31 +239,55 @@ fun CreadorPantalla(
             )
         }
 
-        val suscrito = youtube.suscritoA(creador.id)
+        // Con varios canales de YouTube, el botón para dar el permiso y las
+        // frases de "todavía no se sabe" salen una sola vez, en el primero.
+        val primeroDeYouTube = canales.firstOrNull { it.esDeYouTube }
 
-        conexiones.forEach { (plataforma, conexion) ->
-            if (BuildConfig.SUSCRIPCIONES_YOUTUBE &&
-                plataforma == "youtube" && !conexion.channelId.isNullOrBlank()
-            ) {
+        canales.forEach { canal ->
+            val suscrito = youtube.suscritoAlCanal(canal)
+            val productora = productoras.firstOrNull { it.id == canal.productoraId }
+
+            if (BuildConfig.SUSCRIPCIONES_YOUTUBE && canal.esDeYouTube) {
                 SuscripcionEnYouTube(
                     suscrito = suscrito,
                     youtube = youtube,
                     esAnonimo = esAnonimo,
-                    onConectar = onConectarYouTube
+                    onConectar = onConectarYouTube,
+                    etiqueta = canal.nombre,
+                    soloSiSeSabe = canal !== primeroDeYouTube
                 )
             }
 
-            BotonGrande(
-                titulo = Enrutador.accionDe(plataforma),
-                subtitulo = if (plataforma == "youtube" && suscrito == false)
-                    "Se abre YouTube; ahí puedes suscribirte"
-                else
-                    "Se abre la app de ${Enrutador.nombreDe(plataforma)}",
-                variante = VarianteBoton.SECUNDARIO,
-                onClick = {
-                    Enrutador.abrirCanal(contexto, plataforma, conexion.url, campana = "perfil_creador")
-                }
+            BotonCanal(
+                canal = canal,
+                // En su propio perfil no hace falta decir de quién es el canal,
+                // pero sí si además es de una productora.
+                dueno = productora?.let { "De ${it.nombre}" },
+                suscrito = suscrito,
+                campana = "perfil_creador"
             )
+        }
+
+        // Las casas con las que trabaja: donde figura y las dueñas de alguno
+        // de sus canales. Las que el servidor no manda (ocultas) no salen.
+        val susProductoras = productoras.filter { p ->
+            p.id in creador.productoras || canales.any { it.productoraId == p.id }
+        }
+        if (susProductoras.isNotEmpty()) {
+            Text(
+                if (susProductoras.size == 1) "Su productora" else "Sus productoras",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            susProductoras.forEach { p ->
+                BotonGrande(
+                    titulo = p.nombre,
+                    subtitulo = "Ver sus canales y creadores",
+                    variante = VarianteBoton.SECUNDARIO,
+                    onClick = { onAbrirProductora(p.id) }
+                )
+            }
         }
 
         Text(
@@ -254,20 +308,28 @@ fun CreadorPantalla(
  * cuando tocarlo sirve de algo.
  */
 @Composable
-private fun SuscripcionEnYouTube(
+internal fun SuscripcionEnYouTube(
     suscrito: Boolean?,
     youtube: EstadoYouTube,
     esAnonimo: Boolean,
-    onConectar: () -> Unit
+    onConectar: () -> Unit,
+    // "Clips", "Directos"… para decir de cuál canal se habla cuando hay varios.
+    etiqueta: String? = null,
+    // En el segundo canal y siguientes: solo la frase cuando ya se sabe la
+    // respuesta, sin repetir el botón ni las explicaciones.
+    soloSiSeSabe: Boolean = false
 ) {
     val esquema = MaterialTheme.colorScheme
+    if (soloSiSeSabe && suscrito == null) return
+
+    val canal = if (etiqueta.isNullOrBlank()) "su canal de YouTube" else "su canal $etiqueta de YouTube"
 
     val frase = when {
-        suscrito == true -> "Estás suscrito a su canal de YouTube."
-        suscrito == false -> "No estás suscrito a su canal de YouTube."
-        esAnonimo -> "Para ver aquí si estás suscrito a su canal de YouTube, " +
+        suscrito == true -> "Estás suscrito a $canal."
+        suscrito == false -> "No estás suscrito a $canal."
+        esAnonimo -> "Para ver aquí si estás suscrito a $canal, " +
             "guarda tu cuenta con Google en Ajustes."
-        youtube.verificando -> "Comprobando si estás suscrito a su canal de YouTube…"
+        youtube.verificando -> "Comprobando si estás suscrito a $canal…"
         else -> null
     }
 
@@ -286,4 +348,38 @@ private fun SuscripcionEnYouTube(
             onClick = onConectar
         )
     }
+}
+
+/**
+ * El botón que lleva a un canal. Lo comparten el perfil del creador y la
+ * ficha de la productora.
+ *
+ * @param dueno una frase corta sobre de quién es el canal ("De Estudio X",
+ *              "Canal de Juan Pérez"), o null si no hace falta decirlo.
+ */
+@Composable
+internal fun BotonCanal(
+    canal: Canal,
+    dueno: String?,
+    suscrito: Boolean?,
+    campana: String
+) {
+    val contexto = LocalContext.current
+
+    val destino = if (canal.plataforma == "youtube" && suscrito == false)
+        "Se abre YouTube; ahí puedes suscribirte"
+    else
+        "Se abre la app de ${Enrutador.nombreDe(canal.plataforma)}"
+
+    BotonGrande(
+        // Con dos canales en la misma plataforma, la etiqueta es lo único que
+        // los distingue: "Ver videos largos · Clips".
+        titulo = Enrutador.accionDe(canal.plataforma) +
+            (canal.nombre?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+        subtitulo = if (dueno != null) "$dueno. $destino" else destino,
+        variante = VarianteBoton.SECUNDARIO,
+        onClick = {
+            Enrutador.abrirCanal(contexto, canal.plataforma, canal.url, campana = campana)
+        }
+    )
 }

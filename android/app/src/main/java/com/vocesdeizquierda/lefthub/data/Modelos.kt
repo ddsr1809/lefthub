@@ -12,24 +12,83 @@ data class Conexion(
     val channelId: String? = null
 )
 
+/**
+ * Un canal del directorio: el YouTube de alguien, su TikTok, su página.
+ *
+ * Un creador puede tener varios, también en la misma plataforma, y cada uno
+ * puede pertenecer a una productora. `creadorId` falta en el canal propio de
+ * una productora; `productoraId` falta en el canal que es solo de su creador.
+ */
+data class Canal(
+    val id: String = "",
+    val plataforma: String = "youtube",
+    /** Cómo se distingue de los otros del mismo dueño: "Clips", "Directos". */
+    val nombre: String? = null,
+    val url: String = "",
+    val handle: String? = null,
+    val channelId: String? = null,
+    val creadorId: String? = null,
+    val productoraId: String? = null
+) {
+    val esDeYouTube: Boolean get() = plataforma == "youtube" && !channelId.isNullOrBlank()
+}
+
 data class Creador(
     val id: String = "",
     val name: String = "",
     val category: String = "otros",
     val bio: String? = null,
     val photoUrl: String? = null,
+    /** Un enlace por plataforma: el canal principal de cada una. */
     val platforms: Map<String, Conexion> = emptyMap(),
-    val active: Boolean = true
+    val active: Boolean = true,
+    /** Todos sus canales, en el orden en que se muestran. */
+    val canales: List<Canal> = emptyList(),
+    /** Productoras en las que figura. */
+    val productoras: List<String> = emptyList()
 ) {
     /** Plataformas en el orden en que se muestran, filtrando las vacías. */
     val conexionesOrdenadas: List<Pair<String, Conexion>>
         get() = ORDEN_PLATAFORMAS.mapNotNull { p -> platforms[p]?.let { p to it } }
+
+    /**
+     * Los canales que se pintan en su perfil.
+     *
+     * Un servidor anterior a los canales múltiples no manda `canales`: ahí se
+     * arman a partir del enlace por plataforma, que es lo que hay.
+     */
+    val canalesVisibles: List<Canal>
+        get() = canales.ifEmpty {
+            conexionesOrdenadas.map { (plataforma, c) ->
+                Canal(plataforma = plataforma, url = c.url, handle = c.handle,
+                    channelId = c.channelId, creadorId = id)
+            }
+        }
 
     companion object {
         val ORDEN_PLATAFORMAS = listOf(
             "youtube", "tiktok", "twitch", "instagram", "spotify", "patreon", "web"
         )
     }
+}
+
+/**
+ * La casa detrás de varios creadores.
+ *
+ * `canales` son los que le pertenecen: los propios (sin creador) y los de
+ * creadores que se le asignaron. `creadores` son los que figuran en ella, que
+ * no tienen por qué coincidir con los dueños de esos canales.
+ */
+data class Productora(
+    val id: String = "",
+    val nombre: String = "",
+    val descripcion: String? = null,
+    val logoUrl: String? = null,
+    val canales: List<Canal> = emptyList(),
+    val creadores: List<String> = emptyList()
+) {
+    /** Los que no son de ningún creador: el canal oficial de la casa. */
+    val canalesPropios: List<Canal> get() = canales.filter { it.creadorId == null }
 }
 
 data class Publicacion(
@@ -49,9 +108,23 @@ data class Publicacion(
     val overrideUrl: String? = null,
     val overridePlatform: String? = null,
     val esEnVivo: Boolean = false,
-    val tipo: String = "video"
+    val tipo: String = "video",
+    /** La productora del canal donde salió, si tiene. */
+    val productoraId: String? = null,
+    val productoraNombre: String? = null
 ) {
     val fueMovido: Boolean get() = status == "moved" && !overrideUrl.isNullOrBlank()
+
+    /**
+     * A nombre de quién se muestra: "Juan Pérez · Estudio X" cuando su canal
+     * es de una productora, y solo la productora en su canal propio (ahí el
+     * servidor ya manda su nombre como autor).
+     */
+    val firma: String
+        get() = listOfNotNull(
+            creatorName?.takeIf { it.isNotBlank() },
+            productoraNombre?.takeIf { it.isNotBlank() && it != creatorName }
+        ).joinToString(" · ")
 
     /**
      * A dónde lleva realmente el botón. Si el equipo redirigió el contenido
@@ -75,16 +148,29 @@ data class Perfil(
     val favoritos: List<String> = emptyList(),
     val escalaTexto: String = "normal",
     val tema: String = "sistema",
-    val avisos: Boolean = true
-)
+    val avisos: Boolean = true,
+    /** Productoras que sigue. Los creadores van en `favoritos`. */
+    val productoras: List<String> = emptyList()
+) {
+    /** Sigue a alguien, sea creador o productora. */
+    val sigueAAlguien: Boolean get() = favoritos.isNotEmpty() || productoras.isNotEmpty()
+}
 
 // --- Suscripciones de YouTube ------------------------------------------------
 
-/** Lo que contesta el servidor: IDs de creadores, no de canales. */
+/**
+ * Lo que contesta el servidor.
+ *
+ * `suscritos` y `noSuscritos` son IDs de creadores y hablan de su canal
+ * principal de YouTube. Las dos listas de canales son la respuesta completa,
+ * canal por canal; un servidor anterior no las manda y llegan vacías.
+ */
 data class SuscripcionesYouTube(
     val suscritos: Set<String> = emptySet(),
     val noSuscritos: Set<String> = emptySet(),
-    val verificadoEn: Instant? = null
+    val verificadoEn: Instant? = null,
+    val canalesSuscritos: Set<String> = emptySet(),
+    val canalesNoSuscritos: Set<String> = emptySet()
 )
 
 enum class PermisoYouTube {
@@ -108,6 +194,18 @@ data class EstadoYouTube(
     fun suscritoA(creadorId: String): Boolean? = when (creadorId) {
         in suscripciones.suscritos -> true
         in suscripciones.noSuscritos -> false
+        else -> null
+    }
+
+    /**
+     * Lo mismo, para un canal concreto. Con un servidor anterior, que solo
+     * sabe de creadores, se contesta con lo que se sepa del creador.
+     */
+    fun suscritoAlCanal(canal: Canal): Boolean? = when {
+        !canal.esDeYouTube -> null
+        canal.id in suscripciones.canalesSuscritos -> true
+        canal.id in suscripciones.canalesNoSuscritos -> false
+        canal.id.isBlank() && canal.creadorId != null -> suscritoA(canal.creadorId)
         else -> null
     }
 }

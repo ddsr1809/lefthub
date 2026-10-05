@@ -17,6 +17,7 @@ import kotlinx.coroutines.sync.withLock
 data class EstadoApp(
     val listo: Boolean = false,
     val creadores: List<Creador> = emptyList(),
+    val productoras: List<Productora> = emptyList(),
     val publicaciones: List<Publicacion> = emptyList(),
     val perfil: Perfil = Perfil(),
     val esAnonimo: Boolean = true,
@@ -83,6 +84,12 @@ class AppViewModel(
         }
 
         viewModelScope.launch {
+            directorio.productoras().collect { lista ->
+                _estado.update { it.copy(productoras = lista) }
+            }
+        }
+
+        viewModelScope.launch {
             while (true) {
                 refrescarPerfil()
                 delay(INTERVALO_PERFIL_MS)
@@ -91,16 +98,21 @@ class AppViewModel(
 
         viewModelScope.launch {
             perfilFlow
-                .map { it.favoritos }
+                // Seguir a una productora también cambia lo que sale en Novedades.
+                .map { it.favoritos to it.productoras }
                 .distinctUntilChanged()
-                .flatMapLatest { directorio.publicaciones(it) }
+                .flatMapLatest { (favoritos, productoras) -> directorio.publicaciones(favoritos, productoras) }
                 .collect { lista -> _estado.update { it.copy(publicaciones = lista) } }
         }
     }
 
     fun creador(id: String) = _estado.value.creadores.firstOrNull { it.id == id }
 
+    fun productora(id: String) = _estado.value.productoras.firstOrNull { it.id == id }
+
     fun sigue(id: String) = _estado.value.perfil.favoritos.contains(id)
+
+    fun sigueProductora(id: String) = _estado.value.perfil.productoras.contains(id)
 
     /**
      * Trae el perfil del servidor y lo pone en pantalla.
@@ -119,7 +131,7 @@ class AppViewModel(
         _estado.update { it.copy(perfil = p) }
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
-        directorio.sincronizarTopics(p.favoritos)
+        directorio.sincronizarTopics(p.favoritos, p.productoras)
     }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
@@ -149,6 +161,26 @@ class AppViewModel(
             .onSuccess { perfilFlow.update { p -> p.conFavorito(id, !siguiendo) } }
             .onFailure {
                 _estado.update { e -> e.copy(perfil = e.perfil.conFavorito(id, siguiendo)) }
+                avisar("No se pudo guardar el cambio. Revisa tu conexión.")
+            }
+    }
+
+    /** Seguir o dejar de seguir a una productora: mismo trato que un creador. */
+    fun alternarProductora(id: String) = viewModelScope.launch {
+        val siguiendo = sigueProductora(id)
+
+        versionPerfil++
+        _estado.update { it.copy(perfil = it.perfil.conProductora(id, !siguiendo)) }
+
+        val resultado = escrituras.withLock {
+            runCatching { directorio.alternarProductora(id, siguiendo) }
+        }
+        versionPerfil++
+
+        resultado
+            .onSuccess { perfilFlow.update { p -> p.conProductora(id, !siguiendo) } }
+            .onFailure {
+                _estado.update { e -> e.copy(perfil = e.perfil.conProductora(id, siguiendo)) }
                 avisar("No se pudo guardar el cambio. Revisa tu conexión.")
             }
     }
@@ -405,6 +437,10 @@ class AppViewModel(
 
 private fun Perfil.conFavorito(id: String, siguiendo: Boolean): Perfil = copy(
     favoritos = if (siguiendo) (favoritos + id).distinct() else favoritos - id
+)
+
+private fun Perfil.conProductora(id: String, siguiendo: Boolean): Perfil = copy(
+    productoras = if (siguiendo) (productoras + id).distinct() else productoras - id
 )
 
 private fun Perfil.preferencia(clave: String): Any? = when (clave) {

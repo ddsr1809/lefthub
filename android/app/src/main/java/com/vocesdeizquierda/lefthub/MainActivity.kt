@@ -239,10 +239,12 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             composable("novedades") {
                 NovedadesPantalla(
                     publicaciones = estado.publicaciones,
-                    hayFavoritos = estado.perfil.favoritos.isNotEmpty(),
+                    hayFavoritos = estado.perfil.sigueAAlguien,
                     cuantosFavoritos = estado.perfil.favoritos.size,
+                    cuantasProductoras = estado.perfil.productoras.size,
                     onIrAlDirectorio = { nav.navigate("directorio") },
-                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId) }
+                    // El canal propio de una productora no tiene creador.
+                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
                 )
             }
 
@@ -252,7 +254,11 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     favoritos = estado.perfil.favoritos,
                     youtube = estado.youtube,
                     onSeguir = { modelo.alternarFavorito(it) },
-                    onAbrirCreador = { nav.navigate("creador/$it") }
+                    onAbrirCreador = { nav.navigate("creador/$it") },
+                    productoras = estado.productoras,
+                    productorasSeguidas = estado.perfil.productoras,
+                    onSeguirProductora = { modelo.alternarProductora(it) },
+                    onAbrirProductora = { nav.navigate("productora/$it") }
                 )
             }
 
@@ -268,6 +274,28 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     esAnonimo = estado.esAnonimo,
                     onSeguir = { modelo.alternarFavorito(id) },
                     onConectarYouTube = { modelo.conectarYouTube(contexto) },
+                    onVolver = { nav.popBackStack() },
+                    productoras = estado.productoras,
+                    onAbrirProductora = { nav.navigate("productora/$it") }
+                )
+            }
+
+            composable(
+                "productora/{productoraId}",
+                arguments = listOf(navArgument("productoraId") { type = NavType.StringType })
+            ) { entrada ->
+                val id = entrada.arguments?.getString("productoraId").orEmpty()
+                ProductoraPantalla(
+                    // De la lista del estado y no del modelo: así la ficha se
+                    // repinta cuando llegan las productoras del servidor.
+                    productora = estado.productoras.firstOrNull { it.id == id },
+                    siguiendo = id in estado.perfil.productoras,
+                    creadores = estado.creadores,
+                    favoritos = estado.perfil.favoritos,
+                    youtube = estado.youtube,
+                    onSeguir = { modelo.alternarProductora(id) },
+                    onSeguirCreador = { modelo.alternarFavorito(it) },
+                    onAbrirCreador = { nav.navigate("creador/$it") },
                     onVolver = { nav.popBackStack() }
                 )
             }

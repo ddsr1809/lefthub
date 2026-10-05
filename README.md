@@ -286,6 +286,8 @@ Un creador puede tener varios canales, también en la misma plataforma (el princ
 
 El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mismo para testing y producción: se actualiza con `git -C /opt/vocesleft pull`, no con el pipeline.
 
+**En la app de Android.** El perfil de un creador lista todos sus canales, con su etiqueta y, si lo es, de qué productora. El directorio tiene una pestaña **Productoras** (solo si hay alguna); cada una abre su ficha, con sus canales, sus creadores y el botón para seguirla. En Novedades, un video de un canal de productora se firma "Creador · Productora". "¿Estoy suscrito en YouTube?" se contesta canal por canal. La app nueva también funciona contra un servidor anterior: sin `canales` usa `conexiones`, y sin la ruta de productoras no muestra la pestaña.
+
 **Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
 
 ---
