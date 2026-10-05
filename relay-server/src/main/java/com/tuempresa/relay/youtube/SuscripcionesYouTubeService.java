@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -31,7 +32,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * "¿Estoy suscrito en YouTube a este creador?"
+ * "¿Estoy suscrito en YouTube a este canal?"
  *
  * Seguir a alguien aquí y estar suscrito a su canal son cosas distintas, y la
  * gente no siempre sabe cuál de las dos tiene. Esto lo contesta.
@@ -53,6 +54,11 @@ import java.util.concurrent.ConcurrentHashMap;
  * La tabla se maneja con JdbcTemplate y no con una entidad: son tres consultas
  * y una clave compuesta, y una entidad JPA con @IdClass ocuparía más que todo
  * este archivo.
+ *
+ * Se guarda por canal (youtube_suscripciones_canales): un creador puede tener
+ * varios canales de YouTube y la persona estar suscrita a unos sí y a otros
+ * no. La respuesta trae además el resumen por creador que leen las apps
+ * anteriores, sacado de su canal principal.
  */
 @Service
 public class SuscripcionesYouTubeService {
@@ -97,36 +103,63 @@ public class SuscripcionesYouTubeService {
     // Lo que consume la app
     // -------------------------------------------------------------------------
 
+    /**
+     * Qué canales cuentan: los de YouTube de creadores visibles y, donde no
+     * hay creador, los de productoras visibles. La misma regla con la que se
+     * decide qué canales se vigilan (Repositorios.Canales.vivosDeYouTube).
+     */
+    private static final String CANAL_VISIBLE = """
+            (
+                (k.creador_id is not null and exists (
+                    select 1 from creadores c where c.id = k.creador_id and c.activo))
+             or (k.creador_id is null and exists (
+                    select 1 from productoras p where p.id = k.productora_id and p.activo))
+            )
+            """;
+
     /** Lo último que se comprobó, sin llamar a nadie. Para pintar al instante. */
     public Dtos.SuscripcionesYouTube guardadas(UUID usuarioId) {
-        record Fila(UUID creador, boolean suscrito, Instant cuando) {}
+        record Fila(UUID canal, UUID creador, boolean suscrito, Instant cuando) {}
 
-        // El join descarta a los creadores que salieron del directorio después
-        // de la última comprobación.
+        // La condición descarta lo que salió del directorio después de la
+        // última comprobación. El orden es el del perfil: el primer canal de
+        // YouTube de cada creador es su canal principal.
         List<Fila> filas = jdbc.query("""
-                select y.creador_id, y.suscrito, y.verificado_en
-                from youtube_suscripciones y
-                join creadores c on c.id = y.creador_id
-                where y.usuario_id = ? and c.activo
+                select y.canal_id, k.creador_id, y.suscrito, y.verificado_en
+                from youtube_suscripciones_canales y
+                join canales k on k.id = y.canal_id
+                where y.usuario_id = ? and k.plataforma = 'youtube' and
+                """ + CANAL_VISIBLE + """
+                order by k.orden, k.creado_en, k.id
                 """,
                 (rs, n) -> new Fila(
+                        rs.getObject("canal_id", UUID.class),
                         rs.getObject("creador_id", UUID.class),
                         rs.getBoolean("suscrito"),
                         rs.getTimestamp("verificado_en").toInstant()),
                 usuarioId);
 
+        List<UUID> canalesSuscritos = new ArrayList<>();
+        List<UUID> canalesNoSuscritos = new ArrayList<>();
         List<UUID> suscritos = new ArrayList<>();
         List<UUID> noSuscritos = new ArrayList<>();
+        Set<UUID> creadoresVistos = new HashSet<>();
         Instant verificadoEn = null;
 
         for (Fila fila : filas) {
-            (fila.suscrito() ? suscritos : noSuscritos).add(fila.creador());
+            (fila.suscrito() ? canalesSuscritos : canalesNoSuscritos).add(fila.canal());
+
+            // Para quien solo sabe de creadores: cuenta su canal principal.
+            if (fila.creador() != null && creadoresVistos.add(fila.creador())) {
+                (fila.suscrito() ? suscritos : noSuscritos).add(fila.creador());
+            }
             if (verificadoEn == null || fila.cuando().isAfter(verificadoEn)) {
                 verificadoEn = fila.cuando();
             }
         }
 
-        return new Dtos.SuscripcionesYouTube(verificadoEn, suscritos, noSuscritos);
+        return new Dtos.SuscripcionesYouTube(verificadoEn, suscritos, noSuscritos,
+                canalesSuscritos, canalesNoSuscritos);
     }
 
     /**
@@ -162,15 +195,14 @@ public class SuscripcionesYouTubeService {
 
         comprobarToken(tokenDeAcceso, usuario);
 
-        record Canal(UUID creador, String channelId) {}
+        record Canal(UUID id, String channelId) {}
 
         List<Canal> canales = jdbc.query("""
-                select c.id, cx.channel_id
-                from creadores c
-                join conexiones cx on cx.creador_id = c.id
-                where c.activo and cx.plataforma = 'youtube'
-                  and cx.channel_id is not null and cx.channel_id <> ''
-                """,
+                select k.id, k.channel_id
+                from canales k
+                where k.plataforma = 'youtube'
+                  and k.channel_id is not null and k.channel_id <> '' and
+                """ + CANAL_VISIBLE,
                 (rs, n) -> new Canal(rs.getObject("id", UUID.class), rs.getString("channel_id")));
 
         Set<String> suscritos;
@@ -187,19 +219,25 @@ public class SuscripcionesYouTubeService {
         }
 
         List<Object[]> filas = canales.stream()
-                .map(c -> new Object[] { usuarioId, c.creador(), suscritos.contains(c.channelId()) })
+                .map(c -> new Object[] { usuarioId, c.id(), suscritos.contains(c.channelId()) })
                 .toList();
 
         // Las llamadas a Google quedaron fuera de la transacción a propósito:
         // no se retiene una conexión de la base mientras se espera a la red.
-        // Borrar y reinsertar también limpia a los creadores que ya no están.
+        // Borrar y reinsertar también limpia los canales que ya no están.
+        //
+        // on conflict: entre la lectura de arriba y este insert pasó una
+        // llamada a YouTube, y otra comprobación de la misma cuenta pudo
+        // adelantarse.
         transaccion.executeWithoutResult(estado -> {
-            jdbc.update("delete from youtube_suscripciones where usuario_id = ?", usuarioId);
+            jdbc.update("delete from youtube_suscripciones_canales where usuario_id = ?", usuarioId);
             if (!filas.isEmpty()) {
                 jdbc.batchUpdate("""
-                        insert into youtube_suscripciones (usuario_id, creador_id, suscrito)
-                        values (?, ?, ?)
-                        """, filas);
+                        insert into youtube_suscripciones_canales (usuario_id, canal_id, suscrito)
+                        select ?::uuid, k.id, ?::boolean from canales k where k.id = ?::uuid
+                        on conflict (usuario_id, canal_id) do update
+                            set suscrito = excluded.suscrito, verificado_en = now()
+                        """, filas.stream().map(f -> new Object[] { f[0], f[2], f[1] }).toList());
             }
         });
 
@@ -214,7 +252,11 @@ public class SuscripcionesYouTubeService {
      * o cuando descubre que retiró el permiso desde su cuenta de Google.
      */
     public void olvidar(UUID usuarioId) {
-        int borradas = jdbc.update("delete from youtube_suscripciones where usuario_id = ?", usuarioId);
+        int borradas = jdbc.update(
+                "delete from youtube_suscripciones_canales where usuario_id = ?", usuarioId);
+        // La tabla anterior ya no se escribe, pero sigue ahí hasta que una
+        // migración la retire: que tampoco quede nada de esta persona.
+        borradas += jdbc.update("delete from youtube_suscripciones where usuario_id = ?", usuarioId);
         if (borradas > 0) {
             log.info("Suscripciones de YouTube de {} olvidadas", usuarioId);
         }
@@ -232,6 +274,11 @@ public class SuscripcionesYouTubeService {
     @Scheduled(cron = "0 30 3 * * *", zone = "${relay.renovacion.zona}")
     public void purgarAntiguas() {
         int borradas = jdbc.update(
+                "delete from youtube_suscripciones_canales where verificado_en < now() - make_interval(days => ?)",
+                DIAS_DE_RETENCION);
+        // La tabla anterior: solo tendría filas si un despliegue se revirtió
+        // un tiempo a la versión que todavía la usaba.
+        borradas += jdbc.update(
                 "delete from youtube_suscripciones where verificado_en < now() - make_interval(days => ?)",
                 DIAS_DE_RETENCION);
         if (borradas > 0) {

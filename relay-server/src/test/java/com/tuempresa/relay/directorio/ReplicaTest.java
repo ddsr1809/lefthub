@@ -1,26 +1,30 @@
 package com.tuempresa.relay.directorio;
 
 import com.tuempresa.relay.config.RelayProperties;
-import com.tuempresa.relay.modelo.Conexion;
+import com.tuempresa.relay.modelo.Canal;
 import com.tuempresa.relay.modelo.Creador;
 import com.tuempresa.relay.modelo.Dtos;
+import com.tuempresa.relay.modelo.Productora;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
- * Las decisiones de la copia de creadores de producción a testing: quién
- * envía y quién recibe, con qué token, y sobre qué fila se guarda cada copia.
+ * Las decisiones de la copia de creadores y productoras de producción a
+ * testing: quién envía y quién recibe, con qué token, qué viaja y sobre qué
+ * fila se guarda cada copia.
  * Lógica pura, sin red ni base de datos.
  */
 class ReplicaTest {
 
     private static final String CANAL = "UCabcdefghijklmnopqrstuv";
+    private static final String CLIPS = "UCzyxwvutsrqponmlkjihgfe";
 
     private static Creador creador(String nombre, UUID origen) {
         Creador c = new Creador();
@@ -30,9 +34,24 @@ class ReplicaTest {
         return c;
     }
 
+    private static Canal canal(String plataforma, String url, String channelId) {
+        Canal k = new Canal();
+        k.setId(UUID.randomUUID());
+        k.setPlataforma(plataforma);
+        k.setUrl(url);
+        k.setChannelId(channelId);
+        return k;
+    }
+
+    /** Como lo manda una producción anterior a los canales múltiples. */
     private static Dtos.GuardarCreador peticion(Map<String, Dtos.ConexionDto> conexiones) {
         return new Dtos.GuardarCreador(UUID.randomUUID(), "Canal Once", "noticias",
-                null, null, conexiones, true);
+                null, null, conexiones, true, null, null);
+    }
+
+    private static Dtos.GuardarCreador peticionConCanales(Dtos.GuardarCanal... canales) {
+        return new Dtos.GuardarCreador(UUID.randomUUID(), "Canal Once", "noticias",
+                null, null, null, true, List.of(canales), null);
     }
 
     // -------------------------------------------------------------------------
@@ -71,6 +90,9 @@ class ReplicaTest {
         String esperado = "https://testapp.example/internal/replica/creadores";
         assertEquals(esperado, ReplicaService.destino("https://testapp.example"));
         assertEquals(esperado, ReplicaService.destino("https://testapp.example/ "));
+
+        assertEquals("https://testapp.example/internal/replica/productoras",
+                ReplicaService.destino("https://testapp.example/", ReplicaService.RUTA_PRODUCTORAS));
     }
 
     // -------------------------------------------------------------------------
@@ -78,32 +100,93 @@ class ReplicaTest {
     // -------------------------------------------------------------------------
 
     @Test
-    @DisplayName("Lo que se envía lleva el id de producción y todas las conexiones")
+    @DisplayName("Lo que se envía lleva el id de producción, todos los canales y sus productoras")
     void cuerpo() {
+        UUID productora = UUID.randomUUID();
+
         Creador c = creador("Canal Once", null);
         c.setCategoria("noticias");
         c.setActivo(false);
-        c.setConexiones(Map.of("youtube",
-                new Conexion("https://www.youtube.com/@CanalOnceIPN", "CanalOnceIPN", CANAL)));
+        c.getProductoras().add(productora);
 
-        Dtos.GuardarCreador cuerpo = ReplicaService.cuerpoDe(c);
+        Canal principal = canal("youtube", "https://www.youtube.com/@CanalOnceIPN", CANAL);
+        principal.setHandle("CanalOnceIPN");
+        Canal clips = canal("youtube", "https://www.youtube.com/@OnceClips", CLIPS);
+        clips.setNombre("Clips");
+        clips.setProductoraId(productora);
+
+        Dtos.GuardarCreador cuerpo = ReplicaService.cuerpoDe(c, List.of(principal, clips));
 
         assertEquals(c.getId(), cuerpo.id());
         assertEquals("Canal Once", cuerpo.nombre());
         assertEquals("noticias", cuerpo.categoria());
         assertFalse(cuerpo.estaActivo());
+        assertEquals(List.of(productora), cuerpo.productoras());
+
+        assertEquals(2, cuerpo.canales().size());
+        assertEquals("Clips", cuerpo.canales().get(1).nombre());
+        assertEquals(productora, cuerpo.canales().get(1).productoraId());
+        assertEquals(List.of(CANAL, CLIPS), ReplicaService.canalesDe(cuerpo));
+    }
+
+    @Test
+    @DisplayName("Para un testing con la versión anterior, viaja también el canal principal de cada plataforma")
+    void cuerpoCompatible() {
+        Creador c = creador("Canal Once", null);
+
+        Dtos.GuardarCreador cuerpo = ReplicaService.cuerpoDe(c, List.of(
+                canal("youtube", "https://www.youtube.com/@CanalOnceIPN", CANAL),
+                canal("youtube", "https://www.youtube.com/@OnceClips", CLIPS),
+                canal("tiktok", "https://tiktok.com/@once", null)));
+
+        assertEquals(2, cuerpo.conexiones().size());
         assertEquals(CANAL, cuerpo.conexiones().get("youtube").channelId());
-        assertEquals(CANAL, ReplicaService.canalDe(cuerpo));
+        assertEquals("https://tiktok.com/@once", cuerpo.conexiones().get("tiktok").url());
+    }
+
+    @Test
+    @DisplayName("La productora viaja con sus canales propios y sin lista de creadores")
+    void cuerpoDeProductora() {
+        Productora p = new Productora();
+        p.setId(UUID.randomUUID());
+        p.setNombre("Estudio X");
+
+        Canal oficial = canal("youtube", "https://www.youtube.com/@EstudioX", CANAL);
+        oficial.setProductoraId(p.getId());
+
+        Dtos.GuardarProductora cuerpo = ReplicaService.cuerpoDe(p, List.of(oficial));
+
+        assertEquals(p.getId(), cuerpo.id());
+        assertEquals("Estudio X", cuerpo.nombre());
+        assertEquals(CANAL, cuerpo.canales().get(0).channelId());
+        assertNull(cuerpo.creadores(), "quién figura en ella viaja con cada creador");
     }
 
     @Test
     @DisplayName("Un creador sin YouTube, o con el canal en blanco, no tiene canal que buscar")
     void sinCanal() {
-        assertNull(ReplicaService.canalDe(peticion(null)));
-        assertNull(ReplicaService.canalDe(peticion(Map.of("tiktok",
-                new Dtos.ConexionDto("tiktok", "https://tiktok.com/@x", null, null)))));
-        assertNull(ReplicaService.canalDe(peticion(Map.of("youtube",
-                new Dtos.ConexionDto("youtube", "https://youtube.com/@x", "x", " ")))));
+        assertTrue(ReplicaService.canalesDe(peticion(null)).isEmpty());
+        assertTrue(ReplicaService.canalesDe(peticion(Map.of("tiktok",
+                new Dtos.ConexionDto("tiktok", "https://tiktok.com/@x", null, null)))).isEmpty());
+        assertTrue(ReplicaService.canalesDe(peticion(Map.of("youtube",
+                new Dtos.ConexionDto("youtube", "https://youtube.com/@x", "x", " ")))).isEmpty());
+
+        assertTrue(ReplicaService.canalesDe(peticionConCanales(
+                new Dtos.GuardarCanal(null, "tiktok", null, "https://tiktok.com/@x", null, null, null),
+                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@x", "x", " ", null)
+        )).isEmpty());
+    }
+
+    @Test
+    @DisplayName("Los canales de YouTube se leen de cualquiera de los dos formatos")
+    void canalesQueBuscar() {
+        assertEquals(List.of(CANAL), ReplicaService.canalesDe(peticion(Map.of("youtube",
+                new Dtos.ConexionDto("youtube", "https://youtube.com/@x", "x", CANAL)))));
+
+        assertEquals(List.of(CANAL, CLIPS), ReplicaService.canalesDe(peticionConCanales(
+                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@x", "x", CANAL, null),
+                new Dtos.GuardarCanal(null, "youtube", "Clips", "https://youtube.com/@y", "y", CLIPS, null),
+                new Dtos.GuardarCanal(null, "web", null, "https://ejemplo.mx", null, null, null))));
     }
 
     // -------------------------------------------------------------------------
