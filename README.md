@@ -282,6 +282,10 @@ Un creador puede tener varios canales, también en la misma plataforma (el princ
 | `GET` / `POST /api/admin/productoras`, `DELETE /api/admin/productoras/{id}` | Panel: listar, guardar (con sus canales propios y sus creadores) y retirar. |
 | `POST /api/admin/creadores` | Acepta `canales` (la lista completa, cada uno con su `productoraId` opcional) y `productoras`. |
 
+**En el panel.** La sección **Productoras** las da de alta, con sus canales propios y los creadores que figuran en ellas. En el formulario de un creador, **Canales** es una lista: se agregan con el buscador de YouTube o con un enlace de otra plataforma, cada uno con su etiqueta ("Clips", "Directos") y, si corresponde, su productora. El primero de cada plataforma es el principal. **Suscripciones** tiene una fila por canal de YouTube.
+
+El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mismo para testing y producción: se actualiza con `git -C /opt/vocesleft pull`, no con el pipeline.
+
 **Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
 
 ---

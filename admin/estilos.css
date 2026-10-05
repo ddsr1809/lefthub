@@ -136,6 +136,30 @@ td.acciones .btn{margin-left:4px}
 .canal{display:flex;gap:12px;align-items:center;padding:10px 12px;background:var(--surface-2);border-radius:var(--radius);border:1px solid var(--line)}
 .canal img{width:44px;height:44px;border-radius:50%}
 
+/* Lista de canales en los formularios de creador y de productora */
+.canales{display:flex;flex-direction:column;gap:8px}
+.canal-fila{display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius)}
+.canal-quien{display:flex;align-items:center;gap:8px;min-width:0}
+.canal-quien .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.canal-datos{display:flex;align-items:center;gap:8px}
+.canal-datos .input{flex:1 1 0}
+.canal-datos .btn{flex:none}
+.agregar{display:flex;align-items:center;gap:8px}
+.agregar .input{flex:1 1 0}
+.agregar select.input{flex:0 0 auto;width:auto}
+.agregar .btn{flex:none}
+.canal-fila .input,.agregar .input{font-size:14px}
+.casillas{display:grid;grid-template-columns:1fr 1fr;gap:8px 14px;max-height:190px;overflow:auto}
+.casillas .check{font-weight:500}
+/* Un fieldset no encoge por debajo de su contenido si no se le dice. */
+.m-body fieldset{min-width:0}
+@media (max-width:560px){
+  .canal-datos,.agregar{flex-wrap:wrap}
+  .canal-datos .input,.agregar .input,.agregar select.input{flex:1 1 100%}
+  .agregar .btn{margin-left:auto}
+  .casillas{grid-template-columns:1fr}
+}
+
 .push{display:grid;grid-template-columns:minmax(0,1fr) 290px;gap:22px;align-items:start}
 .alcance{padding:11px 14px;border-radius:var(--radius);background:var(--accent-soft);color:var(--accent);font-weight:700;font-size:14px}
 .telefono{border-radius:32px;padding:10px;background:#1b1f1d;position:sticky;top:20px}

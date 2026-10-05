@@ -92,6 +92,10 @@ solo a testing. Produccion lo manda a `POST /internal/replica/creadores` de
 testing, con un token compartido; testing lo guarda y se suscribe por su
 cuenta al hub de YouTube.
 
+Las productoras se copian igual, por `POST /internal/replica/productoras`. Un
+creador solo queda ligado en testing a las productoras que testing ya conoce,
+asi que el script de abajo las manda primero.
+
 Se enciende una vez, en el **VPS**, cuando los dos ambientes ya tienen esta
 version desplegada. El mismo comando copia los creadores que ya existian:
 
