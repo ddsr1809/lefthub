@@ -127,6 +127,8 @@ td.acciones .btn{margin-left:4px}
 .b-bad{background:var(--danger-soft);color:var(--danger)}
 .b-info{background:var(--info-soft);color:var(--info)}
 .b-mute{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+/* Un canal de otro en el que también aparece el creador */
+.b-comp{background:transparent;color:var(--muted);border:1px dashed var(--muted)}
 .chips{display:flex;gap:4px;flex-wrap:wrap}
 
 .empty{padding:28px 18px;text-align:center;color:var(--muted);font-size:14px}
@@ -141,9 +143,11 @@ td.acciones .btn{margin-left:4px}
 .canal-fila{display:flex;flex-direction:column;gap:8px;padding:10px 12px;background:var(--surface-2);border:1px solid var(--line);border-radius:var(--radius)}
 .canal-quien{display:flex;align-items:center;gap:8px;min-width:0}
 .canal-quien .mono{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.canal-fila .hint{margin:-2px 0 0}
 .canal-datos{display:flex;align-items:center;gap:8px}
 .canal-datos .input{flex:1 1 0}
 .canal-datos .btn{flex:none}
+.canal-datos .badge{flex:none}
 .agregar{display:flex;align-items:center;gap:8px}
 .agregar .input{flex:1 1 0}
 .agregar select.input{flex:0 0 auto;width:auto}

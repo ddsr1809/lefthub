@@ -227,7 +227,7 @@
   const estado = {
     vista: (location.hash || '#resumen').slice(1),
     creadores: null,        // caché compartida: formularios, nombres en reportes, avisos
-    productoras: null,      // igual: las usan el formulario de creador y las suscripciones
+    productoras: null,      // igual: las usan el formulario de creador y los canales
     filtroCreadores: { q: '', categoria: '' },
     publicaciones: null,
     usuarios: null,         // la página que está en pantalla
@@ -238,14 +238,18 @@
     resumen: vistaResumen,
     creadores: vistaCreadores,
     productoras: vistaProductoras,
-    suscripciones: vistaSuscripciones,
+    canales: vistaCanales,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
     usuarios: vistaUsuarios,
     administradores: vistaAdministradores
   };
 
+  // La sección se llamaba Suscripciones: los enlaces guardados siguen valiendo.
+  const ALIAS = { suscripciones: 'canales' };
+
   function ir(vista) {
+    vista = ALIAS[vista] || vista;
     if (!VISTAS[vista]) vista = 'resumen';
     estado.vista = vista;
     if (location.hash !== '#' + vista) history.replaceState(null, '', '#' + vista);
@@ -318,6 +322,17 @@
   const conProblema = (v) => v.dueno.activo && v.canal.estadoSuscripcion !== 'ACTIVA';
   const vencePronto = (k) => k.estadoSuscripcion === 'ACTIVA' && k.expiraEn && (new Date(k.expiraEn) - Date.now()) < 2 * 864e5;
   const nombreProductora = (id) => { const p = (estado.productoras || []).find((x) => x.id === id); return p ? p.nombre : null; };
+  const nombreCreador = (id) => { const c = (estado.creadores || []).find((x) => x.id === id); return c ? c.nombre : null; };
+  const nombresDe = (ids) => (ids || []).map(nombreCreador).filter(Boolean);
+
+  // ¿El servidor ya tiene fichas de canal y productoras en el directorio? Un
+  // servidor anterior no manda esos campos, y entonces el panel no los ofrece.
+  function servidorConFichas() {
+    const c = (estado.creadores || [])[0], p = (estado.productoras || [])[0];
+    if (c) return c.canalesCompartidos !== undefined;
+    if (p) return p.enDirectorio !== undefined;
+    return !estado.sinProductoras;
+  }
 
   // ---------------------------------------------------------------------------
   // Modal
@@ -383,8 +398,8 @@
     const movidos = pubs.filter((p) => p.estado === 'moved').length;
 
     const alertas = [];
-    if (problemas) alertas.push(['b-warn', (problemas === 1 ? '1 canal visible no tiene la suscripción de YouTube activa, así que no genera avisos.' : num(problemas) + ' canales visibles no tienen la suscripción de YouTube activa, así que no generan avisos.'), 'suscripciones']);
-    if (porVencer) alertas.push(['b-warn', (porVencer === 1 ? '1 suscripción vence' : num(porVencer) + ' suscripciones vencen') + ' en menos de 2 días. El servidor las renueva solo cada 4 días; si no se renuevan, revisa los registros.', 'suscripciones']);
+    if (problemas) alertas.push(['b-warn', (problemas === 1 ? '1 canal visible no tiene la suscripción de YouTube activa, así que no genera avisos.' : num(problemas) + ' canales visibles no tienen la suscripción de YouTube activa, así que no generan avisos.'), 'canales']);
+    if (porVencer) alertas.push(['b-warn', (porVencer === 1 ? '1 suscripción vence' : num(porVencer) + ' suscripciones vencen') + ' en menos de 2 días. El servidor las renueva solo cada 4 días; si no se renuevan, revisa los registros.', 'canales']);
     if (reportes.length) alertas.push(['b-info', plural(reportes.length, 'reporte pendiente', 'reportes pendientes') + ' de enlaces rotos.', 'reportes']);
 
     main.innerHTML = `
@@ -426,19 +441,29 @@
     return `<a class="badge ${productora && !conDueno ? 'b-info' : 'b-mute'}" href="${esc(k.url)}" target="_blank" rel="noopener"${productora && !conDueno ? ` title="De ${esc(productora)}"` : ''}>${esc(texto)}</a>`;
   }
 
+  // De quién es un canal: su creador o, si no tiene, su productora.
+  const duenoDe = (k) => k.creadorNombre || nombreCreador(k.creadorId) || nombreProductora(k.productoraId) || 'otro';
+
+  // Un canal de otro en el que también aparece este creador.
+  function chipCompartido(k) {
+    const texto = duenoDe(k) + ' · ' + (PLATAFORMAS[k.plataforma] || k.plataforma) + (k.nombre ? ' · ' + k.nombre : '');
+    return `<a class="badge b-comp" href="${esc(k.url)}" target="_blank" rel="noopener" title="Canal de ${esc(duenoDe(k))} en el que también aparece">${esc(texto)}</a>`;
+  }
+
   function filasCreadores() {
     const { q, categoria } = estado.filtroCreadores;
     const t = q.trim().toLowerCase();
     const lista = (estado.creadores || []).filter((c) =>
       (!t || c.nombre.toLowerCase().includes(t)) && (!categoria || c.categoria === categoria));
     if (!lista.length) {
-      return `<tr><td colspan="6"><div class="empty">${estado.creadores && estado.creadores.length ? 'Ningún creador coincide.' : 'Todavía no hay creadores. Agrega el primero con su canal de YouTube.'}</div></td></tr>`;
+      return `<tr><td colspan="6"><div class="empty">${estado.creadores && estado.creadores.length ? 'Ningún creador coincide.' : 'Todavía no hay creadores. Agrega el primero con su canal de YouTube o sus redes.'}</div></td></tr>`;
     }
     return lista.map((c) => {
       const casas = (c.productoras || []).map(nombreProductora).filter(Boolean);
+      const chips = canalesDe(c).map((k) => chipCanal(k)).concat((c.canalesCompartidos || []).map(chipCompartido));
       return `<tr>
       <td><div class="who">${avatar(c.fotoUrl)}<div><b>${esc(c.nombre)}</b><span>${esc(CATEGORIAS[c.categoria] || c.categoria)}${casas.length ? ' · ' + esc(casas.join(', ')) : ''}</span></div></div></td>
-      <td><div class="chips">${canalesDe(c).map((k) => chipCanal(k)).join('') || '<span class="muted">—</span>'}</div></td>
+      <td><div class="chips">${chips.join('') || '<span class="muted">—</span>'}</div></td>
       <td>${badgeSusc(c.estadoSuscripcion)}${c.expiraEn ? `<div class="muted" style="font-size:12.5px">vence ${esc(relativo(c.expiraEn))}</div>` : ''}</td>
       <td class="num">${num(c.seguidores)}</td>
       <td>${c.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculto</span>'}</td>
@@ -454,14 +479,14 @@
     await Promise.all([cargarCreadores(true), cargarProductoras(false)]);
     const f = estado.filtroCreadores;
     main.innerHTML = `
-      <div class="head"><div><h1>Creadores</h1><p class="sub">El directorio que ven las apps. Un creador puede tener varios canales; al guardarlo, el servidor suscribe al hub cada canal de YouTube para recibir sus videos nuevos.</p></div>
+      <div class="head"><div><h1>Creadores</h1><p class="sub">El directorio que ven las apps. Un creador puede figurar en varias productoras y tener varios canales de YouTube, varias redes sociales, o solo redes. Al guardarlo, el servidor suscribe al hub cada canal de YouTube para recibir sus videos nuevos.</p></div>
         <button class="btn primary" data-accion="nuevo-creador">Nuevo creador</button></div>
       <section class="panel">
         <div class="panel-head"><div class="toolbar">
           <input class="input buscar" id="qCreadores" type="search" placeholder="Buscar por nombre" value="${esc(f.q)}" aria-label="Buscar creadores">
           <select class="input" id="catCreadores" aria-label="Categoría"><option value="">Todas las categorías</option>${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${f.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
         </div><span class="muted" style="font-size:13px">${estado.creadores.length} en total</span></div>
-        <div class="tablewrap"><table><thead><tr><th>Creador</th><th>Canales</th><th>Suscripción</th><th>Seguidores</th><th>En la app</th><th></th></tr></thead>
+        <div class="tablewrap"><table><thead><tr><th>Creador</th><th>Canales y redes</th><th>Suscripción</th><th>Seguidores</th><th>En la app</th><th></th></tr></thead>
         <tbody id="filasCreadores">${filasCreadores()}</tbody></table></div>
       </section>`;
     $('#qCreadores').addEventListener('input', (e) => { f.q = e.target.value; $('#filasCreadores').innerHTML = filasCreadores(); });
@@ -469,59 +494,86 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Editor de canales (lo comparten el creador y la productora)
+  // Editor de canales y redes (lo comparten el creador y la productora)
   // ---------------------------------------------------------------------------
-  // La lista vive en memoria mientras el formulario está abierto; el orden de
-  // la lista es el orden en que se guarda. El primer canal de cada plataforma
-  // es el principal: el que ven las versiones de la app anteriores a los
-  // canales múltiples.
-  function controlesDeCanales(conProductora) {
+  // Dos listas en pantalla, canales de YouTube y redes sociales, sobre una sola
+  // lista en memoria. Dentro de cada una, el orden en pantalla es el orden en
+  // que se guarda, y el primero de cada plataforma es el principal: el que ven
+  // las versiones de la app anteriores a los canales múltiples.
+  function seccionesDeCanales(conProductora) {
     const otras = Object.keys(PLATAFORMAS).filter((p) => p !== 'youtube');
     return `
-      <div class="canales" id="fCanales"></div>
-      <div class="agregar" style="margin-top:10px">
-        <input class="input" id="fBuscarCanal" placeholder="YouTube: @handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
-        <button class="btn" type="button" id="btnBuscarCanal">Buscar y agregar</button>
-      </div>
-      <div class="agregar" style="margin-top:8px">
-        <select class="input" id="fOtraPlat" aria-label="Otra plataforma">${otras.map((p) => `<option value="${p}">${PLATAFORMAS[p]}</option>`).join('')}</select>
-        <input class="input" id="fOtraUrl" placeholder="https://" aria-label="Enlace">
-        <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
-      </div>
-      <p class="hint" style="margin:10px 0 0">${conProductora
-        ? 'El primero de cada plataforma es el principal. En cada canal puedes decir si es de una productora.'
-        : 'Solo los canales propios de la productora. Si un canal es de un creador, se marca al editar a ese creador.'}</p>`;
+      <fieldset><legend>${conProductora ? 'Canales de YouTube' : 'Canales propios de YouTube'}</legend>
+        <div class="canales" id="fCanalesYT"></div>
+        <div class="agregar" style="margin-top:10px">
+          <input class="input" id="fBuscarCanal" placeholder="@handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
+          <button class="btn" type="button" id="btnBuscarCanal">Buscar y agregar</button>
+        </div>
+        <p class="hint" style="margin:10px 0 0">${conProductora
+          ? 'Puede tener varios o ninguno. De cada uno puedes decir si es de una productora. Con qué otros creadores aparece un canal se elige en su ficha, en la sección Canales.'
+          : 'Solo los canales que son de la productora y de ningún creador. Con qué creadores aparece cada uno se elige en su ficha, en la sección Canales.'}</p>
+      </fieldset>
+      <fieldset><legend>Redes sociales</legend>
+        <div class="canales" id="fRedes"></div>
+        <div class="agregar" style="margin-top:10px">
+          <select class="input" id="fOtraPlat" aria-label="Red social">${otras.map((p) => `<option value="${p}">${PLATAFORMAS[p]}</option>`).join('')}</select>
+          <input class="input" id="fOtraUrl" placeholder="https://" aria-label="Enlace">
+          <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
+        </div>
+        <p class="hint" style="margin:10px 0 0">${conProductora
+          ? 'TikTok, Instagram, su página… Un creador puede tener solo redes y ningún canal de YouTube.'
+          : 'TikTok, Instagram, su página…'}</p>
+      </fieldset>`;
   }
 
   function editorDeCanales(inicial, conProductora) {
-    const caja = $('#fCanales');
+    const cajas = { yt: $('#fCanalesYT'), redes: $('#fRedes') };
+    const grupo = (k) => (k.plataforma === 'youtube' ? 'yt' : 'redes');
     const lista = (inicial || []).map((k) => ({
       id: k.id || null, plataforma: k.plataforma, nombre: k.nombre || '', url: k.url || '',
-      handle: k.handle || null, channelId: k.channelId || null, productoraId: k.productoraId || ''
+      handle: k.handle || null, channelId: k.channelId || null, productoraId: k.productoraId || '',
+      // Solo para enseñarlo: con quién aparece un canal se cambia en su ficha.
+      creadores: k.creadores || []
     }));
 
-    function pintar() {
-      if (!lista.length) {
-        caja.innerHTML = '<div class="hint">Todavía no tiene canales. Agrega el primero aquí abajo.</div>';
-        return;
-      }
-      const vistas = {};
-      caja.innerHTML = lista.map((k, i) => {
-        const principal = !vistas[k.plataforma];
-        vistas[k.plataforma] = true;
-        const yt = k.plataforma === 'youtube';
-        const quien = yt
-          ? `<span class="mono">${esc(k.handle ? '@' + k.handle.replace(/^@/, '') : (k.channelId || k.url))}</span>`
-          : `<input class="input" data-campo="url" value="${esc(k.url)}" placeholder="https://" aria-label="Enlace de ${esc(PLATAFORMAS[k.plataforma] || k.plataforma)}">`;
+    // El índice del anterior de su misma lista, o -1 si es el primero.
+    const anterior = (i) => {
+      for (let j = i - 1; j >= 0; j--) if (grupo(lista[j]) === grupo(lista[i])) return j;
+      return -1;
+    };
+
+    function fila(k, i) {
+      const yt = k.plataforma === 'youtube';
+      const nombrePlat = PLATAFORMAS[k.plataforma] || k.plataforma;
+      // "Principal" solo se dice cuando hay con qué confundirlo.
+      const varios = lista.filter((x) => x.plataforma === k.plataforma).length > 1;
+      const principal = varios && lista.findIndex((x) => x.plataforma === k.plataforma) === i;
+      const con = nombresDe(k.creadores);
+      const botones = `<button class="btn sm" type="button" data-fila="subir" ${anterior(i) < 0 ? 'disabled' : ''} title="Subir en la lista" aria-label="Subir">↑</button>
+          <button class="btn sm danger" type="button" data-fila="quitar">Quitar</button>`;
+      // Una red social es un enlace y nada más: cabe en un renglón.
+      if (!yt) {
         return `<div class="canal-fila" data-i="${i}">
-          <div class="canal-quien"><span class="badge b-mute">${esc(PLATAFORMAS[k.plataforma] || k.plataforma)}</span>${principal ? '<span class="badge b-ok">Principal</span>' : ''}${quien}</div>
-          <div class="canal-datos">
-            <input class="input" data-campo="nombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Etiqueta: Clips, Directos… (opcional)" aria-label="Etiqueta del canal">
-            ${conProductora ? `<select class="input" data-campo="productoraId" aria-label="Productora del canal"><option value="">Solo del creador</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>De ${esc(p.nombre)}</option>`).join('')}</select>` : ''}
-            <button class="btn sm" type="button" data-fila="subir" ${i === 0 ? 'disabled' : ''} title="Subir en la lista" aria-label="Subir">↑</button>
-            <button class="btn sm danger" type="button" data-fila="quitar">Quitar</button>
-          </div></div>`;
-      }).join('');
+        <div class="canal-datos"><span class="badge b-mute">${esc(nombrePlat)}</span>${principal ? '<span class="badge b-ok">Principal</span>' : ''}
+          <input class="input" data-campo="url" value="${esc(k.url)}" placeholder="https://" aria-label="Enlace de ${esc(nombrePlat)}">
+          ${botones}
+        </div></div>`;
+      }
+      return `<div class="canal-fila" data-i="${i}">
+        <div class="canal-quien"><span class="badge b-mute">${esc(nombrePlat)}</span>${principal ? '<span class="badge b-ok">Principal</span>' : ''}<span class="mono">${esc(k.handle ? '@' + k.handle.replace(/^@/, '') : (k.channelId || k.url))}</span></div>
+        ${con.length ? `<div class="hint">También aparece con: ${esc(con.join(', '))}</div>` : ''}
+        <div class="canal-datos">
+          <input class="input" data-campo="nombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Etiqueta: Clips, Directos… (opcional)" aria-label="Etiqueta">
+          ${conProductora ? `<select class="input" data-campo="productoraId" aria-label="Productora del canal"><option value="">Solo del creador</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>De ${esc(p.nombre)}</option>`).join('')}</select>` : ''}
+          ${botones}
+        </div></div>`;
+    }
+
+    function pintar() {
+      const html = { yt: [], redes: [] };
+      lista.forEach((k, i) => html[grupo(k)].push(fila(k, i)));
+      cajas.yt.innerHTML = html.yt.join('') || '<div class="hint">Sin canales de YouTube.</div>';
+      cajas.redes.innerHTML = html.redes.join('') || '<div class="hint">Sin redes sociales.</div>';
     }
 
     const anotar = (e) => {
@@ -529,22 +581,25 @@
       const campo = e.target.dataset.campo;
       if (fila && campo) lista[Number(fila.dataset.i)][campo] = e.target.value;
     };
-    caja.addEventListener('input', anotar);
-    caja.addEventListener('change', anotar);
-    caja.addEventListener('click', (e) => {
+    const alPulsar = (e) => {
       const b = e.target.closest('[data-fila]');
       if (!b) return;
       const i = Number(b.closest('[data-i]').dataset.i);
       if (b.dataset.fila === 'quitar') lista.splice(i, 1);
-      else if (i > 0) lista.splice(i - 1, 0, lista.splice(i, 1)[0]);
+      else if (anterior(i) >= 0) lista.splice(anterior(i), 0, lista.splice(i, 1)[0]);
       pintar();
+    };
+    Object.values(cajas).forEach((caja) => {
+      caja.addEventListener('input', anotar);
+      caja.addEventListener('change', anotar);
+      caja.addEventListener('click', alPulsar);
     });
 
     $('#btnOtraPlat').addEventListener('click', () => {
       const url = $('#fOtraUrl').value.trim();
       const plataforma = $('#fOtraPlat').value;
       if (!/^https?:\/\//i.test(url)) { toast('El enlace de ' + PLATAFORMAS[plataforma] + ' debe empezar por https://', true); $('#fOtraUrl').focus(); return; }
-      lista.push({ id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '' });
+      lista.push({ id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '', creadores: [] });
       $('#fOtraUrl').value = '';
       pintar();
     });
@@ -555,12 +610,14 @@
       agregarYouTube(d) {
         if (lista.some((k) => k.plataforma === 'youtube' && k.channelId === d.channelId)) return false;
         const handle = d.handle ? d.handle.replace(/^@/, '') : null;
-        lista.push({ id: null, plataforma: 'youtube', nombre: '', productoraId: '', handle, channelId: d.channelId,
+        lista.push({ id: null, plataforma: 'youtube', nombre: '', productoraId: '', handle, channelId: d.channelId, creadores: [],
           url: handle ? 'https://www.youtube.com/@' + handle : 'https://www.youtube.com/channel/' + d.channelId });
         pintar();
         return true;
       },
       // La lista lista para mandar, o null si algún enlace no vale (ya avisó).
+      // Sin `creadores`: así el servidor deja a cada canal apareciendo con
+      // quien ya aparecía.
       valores() {
         for (const k of lista) {
           if (!/^https?:\/\//i.test((k.url || '').trim())) {
@@ -568,9 +625,11 @@
             return null;
           }
         }
-        return lista.map((k) => ({
+        // Como en pantalla: primero los canales de YouTube y después las redes.
+        return lista.filter((k) => grupo(k) === 'yt').concat(lista.filter((k) => grupo(k) === 'redes')).map((k) => ({
           id: k.id, plataforma: k.plataforma, nombre: k.nombre.trim() || null, url: k.url.trim(),
-          handle: k.handle, channelId: k.channelId, productoraId: conProductora ? (k.productoraId || null) : null
+          handle: k.handle, channelId: k.channelId,
+          productoraId: conProductora && k.plataforma === 'youtube' ? (k.productoraId || null) : null
         }));
       }
     };
@@ -581,6 +640,7 @@
     const q = $('#fBuscarCanal').value.trim();
     if (!q) { toast('Escribe un @handle, una URL o un ID de canal.', true); return; }
     const btn = $('#btnBuscarCanal');
+    const texto = btn.textContent;
     btn.disabled = true; btn.textContent = 'Buscando…';
     try {
       const d = await api('/api/admin/canal?query=' + encodeURIComponent(q));
@@ -589,7 +649,8 @@
     } catch (e) {
       toast(e.message, true);
     } finally {
-      btn.disabled = false; btn.textContent = 'Buscar y agregar';
+      // Quien recibe el canal puede haberle cambiado el texto al botón.
+      btn.disabled = false; if (btn.textContent === 'Buscando…') btn.textContent = texto;
     }
   }
 
@@ -602,7 +663,8 @@
   function prepararBusqueda(alEncontrar) {
     $('#btnBuscarCanal').addEventListener('click', () => buscarCanal(alEncontrar));
     $('#fBuscarCanal').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscarCanal(alEncontrar); } });
-    $('#fOtraUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#btnOtraPlat').click(); } });
+    const otra = $('#fOtraUrl');
+    if (otra) otra.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#btnOtraPlat').click(); } });
   }
 
   // Lo que entiende un servidor anterior a los canales múltiples: el canal
@@ -624,9 +686,14 @@
 
   function formularioCreador(c) {
     c = c || { activo: true, categoria: 'otros' };
+    const compartidos = c.canalesCompartidos || [];
     return `
       <div class="stack" style="gap:14px">
-        <fieldset><legend>Canales</legend>${controlesDeCanales(true)}</fieldset>
+        ${seccionesDeCanales(!estado.sinProductoras)}
+        ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
+          <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
+          <p class="hint" style="margin:10px 0 0">Los videos de estos canales también les llegan a quienes lo siguen. Se cambia en la ficha de cada canal, en la sección Canales.</p>
+        </fieldset>` : ''}
         <div class="form">
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
           <label class="f">Categoría<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -652,7 +719,7 @@
         if (nombre.length < 2) { toast('El nombre necesita al menos 2 letras.', true); return false; }
         const canales = editor.valores();
         if (!canales) return false;
-        if (!canales.length) { toast('Agrega al menos un canal.', true); return false; }
+        if (!canales.length) { toast('Agrega al menos un canal de YouTube o una red social.', true); return false; }
         const cuerpo = {
           id: c ? c.id : null, nombre, categoria: $('#fCategoria').value, bio: $('#fBio').value.trim() || null,
           fotoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
@@ -662,7 +729,8 @@
         const r = await api('/api/admin/creadores', { metodo: 'POST', cuerpo });
         if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica, true);
-        else toast(c ? 'Cambios guardados.' : 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.');
+        else toast(c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
+          ? 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.' : 'Creador creado.'));
         estado.creadores = null;
         estado.productoras = null;
         if (estado.vista === 'creadores') vistaCreadores();
@@ -689,20 +757,19 @@
       main.innerHTML = '<div class="head"><div><h1>Productoras</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene la versión con productoras. Aparecerán aquí cuando se despliegue.</div></div>';
       return;
     }
-    const nombreCreador = (id) => { const c = (estado.creadores || []).find((x) => x.id === id); return c ? c.nombre : null; };
     const lista = estado.productoras;
     main.innerHTML = `
-      <div class="head"><div><h1>Productoras</h1><p class="sub">Las casas detrás de varios creadores. Una productora tiene sus canales propios y, además, los canales de creadores que se le asignen. Quien la sigue en la app recibe avisos de todos esos canales.</p></div>
+      <div class="head"><div><h1>Productoras</h1><p class="sub">Las casas detrás de varios creadores. Una productora tiene sus canales propios y, además, los canales de creadores que se le asignen; quien la sigue recibe avisos de todos. Puede aparecer en el directorio como un creador más. Para que los videos de un canal suyo les lleguen también a quienes siguen a sus creadores, márcalos en la ficha de ese canal, en la sección Canales.</p></div>
         <button class="btn primary" data-accion="nueva-productora">Nueva productora</button></div>
       <section class="panel"><div class="tablewrap"><table><thead><tr><th>Productora</th><th>Canales</th><th>Creadores</th><th>Seguidores</th><th>En la app</th><th></th></tr></thead><tbody>
       ${lista.length ? lista.map((p) => {
-        const figuran = (p.creadores || []).map(nombreCreador).filter(Boolean);
+        const figuran = nombresDe(p.creadores);
         return `<tr>
           <td><div class="who">${avatar(p.logoUrl)}<div><b>${esc(p.nombre)}</b>${p.descripcion ? `<span class="clip" style="max-width:260px">${esc(p.descripcion)}</span>` : ''}</div></div></td>
           <td><div class="chips">${(p.canales || []).map((k) => chipCanal(k, true)).join('') || '<span class="muted">—</span>'}</div></td>
           <td>${figuran.length ? esc(figuran.join(', ')) : '<span class="muted">—</span>'}</td>
           <td class="num">${num(p.seguidores)}</td>
-          <td>${p.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculta</span>'}</td>
+          <td>${p.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculta</span>'}${p.enDirectorio ? '<div style="margin-top:4px"><span class="badge b-info">En el directorio</span></div>' : ''}</td>
           <td class="acciones">
             <button class="btn sm" data-accion="editar-productora" data-id="${esc(p.id)}">Editar</button>
             <button class="btn sm danger" data-accion="borrar-productora" data-id="${esc(p.id)}">Eliminar</button>
@@ -722,10 +789,16 @@
           <label class="f full">Logo (URL)<input class="input" id="fFoto" value="${esc(p.logoUrl)}" placeholder="https://"></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${p.activo ? 'checked' : ''}> Visible en la app y suscrita a los videos de sus canales propios</label>
         </div>
-        <fieldset><legend>Canales propios</legend>${controlesDeCanales(false)}</fieldset>
+        ${servidorConFichas() ? `<fieldset><legend>En el directorio</legend>
+          <label class="check"><input type="checkbox" id="fEnDirectorio" ${p.enDirectorio ? 'checked' : ''}> Aparece en el directorio como un creador más</label>
+          <label class="f" style="margin-top:10px">Tema en el que sale<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${(p.categoria || 'otros') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <p class="hint" style="margin:10px 0 0">Sale en el listado de creadores, con sus canales, y la gente la sigue desde ahí. Sirve también para las versiones de la app que no tienen la pestaña de productoras.</p>
+        </fieldset>` : ''}
+        ${seccionesDeCanales(false)}
         ${deCreadores.length ? `<fieldset><legend>Canales de creadores que son de esta productora</legend><div class="chips">${deCreadores.map((k) => chipCanal(k, true)).join('')}</div></fieldset>` : ''}
         <fieldset><legend>Creadores que figuran en ella</legend>
           ${casillas('creadores', estado.creadores || [], p.creadores || [], 'Todavía no hay creadores.')}
+          <p class="hint" style="margin:10px 0 0">Figurar en la productora no hace que les lleguen los videos de sus canales: eso se marca en la ficha de cada canal.</p>
         </fieldset>
       </div>`;
   }
@@ -742,11 +815,16 @@
         if (nombre.length < 2) { toast('El nombre necesita al menos 2 letras.', true); return false; }
         const canales = editor.valores();
         if (!canales) return false;
-        const r = await api('/api/admin/productoras', { metodo: 'POST', cuerpo: {
+        const cuerpo = {
           id: p ? p.id : null, nombre, descripcion: $('#fBio').value.trim() || null,
           logoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
           canales, creadores: marcadas('creadores')
-        } });
+        };
+        if ($('#fEnDirectorio')) {
+          cuerpo.enDirectorio = $('#fEnDirectorio').checked;
+          cuerpo.categoria = $('#fCategoria').value;
+        }
+        const r = await api('/api/admin/productoras', { metodo: 'POST', cuerpo });
         if (r.avisoSuscripcion) toast('Productora guardada, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Productora guardada, pero no se copió a testing: ' + r.avisoReplica, true);
         else toast(p ? 'Cambios guardados.' : 'Productora creada.');
@@ -766,29 +844,117 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Suscripciones WebSub
+  // Canales de YouTube: su ficha y su suscripción al hub
   // ---------------------------------------------------------------------------
-  async function vistaSuscripciones() {
+  async function vistaCanales() {
     await Promise.all([cargarCreadores(true), cargarProductoras(true)]);
+    const fichas = servidorConFichas();
     const canales = vigilados()
       .sort((a, b) => Number(conProblema(b)) - Number(conProblema(a)) || String(a.canal.expiraEn || '').localeCompare(String(b.canal.expiraEn || '')));
     const fallidas = canales.filter(conProblema).length;
     main.innerHTML = `
-      <div class="head"><div><h1>Suscripciones a YouTube</h1><p class="sub">Cada canal de YouTube del directorio se suscribe al hub de Google, que avisa al servidor cuando sube un video. El hub las corta a los 10 días y el servidor las renueva solo cada 4. Reintentar vuelve a guardar a su dueño, lo que repite la solicitud al hub para todos sus canales.</p></div>
-        ${fallidas ? `<button class="btn primary" data-accion="reintentar-fallidas">${fallidas === 1 ? 'Reintentar la que tiene problemas' : 'Reintentar las ' + num(fallidas) + ' con problemas'}</button>` : ''}</div>
-      <section class="panel"><div class="tablewrap"><table><thead><tr><th>De quién</th><th>Canal</th><th>Estado</th><th>Vence</th><th>En la app</th><th></th></tr></thead><tbody>
+      <div class="head"><div><h1>Canales de YouTube</h1><p class="sub">Cada canal de YouTube del directorio tiene su ficha: de quién es, de qué productora y con qué otros creadores aparece. Lo que publica le llega a quien sigue a cualquiera de ellos. El servidor se suscribe al hub de Google para enterarse de cada video; el hub corta la suscripción a los 10 días y el servidor la renueva solo cada 4.</p></div>
+        <div class="toolbar">${fallidas ? `<button class="btn" data-accion="reintentar-fallidas">${fallidas === 1 ? 'Reintentar la que tiene problemas' : 'Reintentar las ' + num(fallidas) + ' con problemas'}</button>` : ''}
+        ${fichas ? '<button class="btn primary" data-accion="nuevo-canal">Nuevo canal</button>' : ''}</div></div>
+      <section class="panel"><div class="tablewrap"><table><thead><tr><th>Canal</th><th>De quién es</th><th>También aparece con</th><th>Suscripción</th><th></th></tr></thead><tbody>
       ${canales.length ? canales.map((v) => {
         const k = v.canal, d = v.dueno, deProductora = v.tipo === 'productora';
+        const casa = !deProductora && k.productoraId ? nombreProductora(k.productoraId) : null;
+        const con = nombresDe(k.creadores);
         return `<tr>
-          <td><div class="who">${avatar(deProductora ? d.logoUrl : d.fotoUrl)}<div><b>${esc(d.nombre)}</b><span>${deProductora ? 'Productora · ' : ''}${plural(d.seguidores, 'seguidor', 'seguidores')}</span></div></div></td>
-          <td>${k.nombre ? `<div>${esc(k.nombre)}</div>` : ''}<a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></td>
-          <td>${d.activo ? badgeSusc(k.estadoSuscripcion || 'PENDIENTE_VERIFICACION') : `<span class="badge b-mute">Sin suscribir (${deProductora ? 'oculta' : 'oculto'})</span>`}</td>
-          <td class="num" title="${esc(fmtFecha(k.expiraEn))}">${k.expiraEn ? esc(relativo(k.expiraEn)) : '—'}${vencePronto(k) ? ' <span class="badge b-warn">pronto</span>' : ''}</td>
-          <td>${d.activo ? '<span class="badge b-ok">Visible</span>' : `<span class="badge b-mute">${deProductora ? 'Oculta' : 'Oculto'}</span>`}</td>
-          <td class="acciones">${d.activo ? `<button class="btn sm" data-accion="reintentar" data-tipo="${v.tipo}" data-id="${esc(d.id)}">Reintentar</button>` : ''}</td>
+          <td><b>${esc(k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal'))}</b><div><a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></div></td>
+          <td><div class="who">${avatar(deProductora ? d.logoUrl : d.fotoUrl)}<div><b>${esc(d.nombre)}</b><span>${deProductora ? 'Productora' : (casa ? 'Creador · canal de ' + esc(casa) : 'Creador')}${d.activo ? '' : (deProductora ? ' · oculta' : ' · oculto')}</span></div></div></td>
+          <td>${con.length ? esc(con.join(', ')) : '<span class="muted">—</span>'}</td>
+          <td>${d.activo ? badgeSusc(k.estadoSuscripcion || 'PENDIENTE_VERIFICACION') : '<span class="badge b-mute">Sin suscribir</span>'}${k.expiraEn ? `<div class="muted" style="font-size:12.5px" title="${esc(fmtFecha(k.expiraEn))}">vence ${esc(relativo(k.expiraEn))}${vencePronto(k) ? ' <span class="badge b-warn">pronto</span>' : ''}</div>` : ''}</td>
+          <td class="acciones">${fichas && k.id ? `<button class="btn sm" data-accion="editar-canal" data-id="${esc(k.id)}">Editar</button>` : ''}${d.activo ? `<button class="btn sm" data-accion="reintentar" data-tipo="${v.tipo}" data-id="${esc(d.id)}">Reintentar</button>` : ''}${fichas && k.id ? `<button class="btn sm danger" data-accion="borrar-canal" data-id="${esc(k.id)}">Eliminar</button>` : ''}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="6"><div class="empty">Todavía no hay ningún canal de YouTube en el directorio.</div></td></tr>'}
+      }).join('') : '<tr><td colspan="5"><div class="empty">Todavía no hay ningún canal de YouTube en el directorio.</div></td></tr>'}
       </tbody></table></div></section>`;
+  }
+
+  const tarjetaCanal = (k, titulo) => `<div class="canal"><div><b>${esc(titulo || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal vinculado'))}</b><div class="mono muted">${esc(k.channelId)}</div></div></div>`;
+
+  function formularioCanal(k) {
+    k = k || {};
+    return `
+      <div class="stack" style="gap:14px">
+        <fieldset><legend>Canal de YouTube</legend>
+          <div id="fKActual">${k.channelId ? tarjetaCanal(k) : '<span class="hint">Busca el canal por su @handle, su URL o su ID.</span>'}</div>
+          <div class="agregar" style="margin-top:10px">
+            <input class="input" id="fBuscarCanal" placeholder="@handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
+            <button class="btn" type="button" id="btnBuscarCanal">${k.channelId ? 'Cambiar' : 'Buscar'}</button>
+          </div>
+          <input type="hidden" id="fKUrl" value="${esc(k.url)}">
+          <input type="hidden" id="fKHandle" value="${esc(k.handle)}">
+          <input type="hidden" id="fKId" value="${esc(k.channelId)}">
+        </fieldset>
+        <div class="form">
+          <label class="f full">Etiqueta<input class="input" id="fKNombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Oficial, Clips, Directos… (opcional)"></label>
+          <label class="f">Creador dueño<select class="input" id="fKCreador"><option value="">Ninguno: es propio de la productora</option>${(estado.creadores || []).map((c) => `<option value="${esc(c.id)}" ${k.creadorId === c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>
+          <label class="f">Productora<select class="input" id="fKProductora"><option value="">Ninguna</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
+        </div>
+        <fieldset><legend>También aparece con estos creadores</legend>
+          ${casillas('con', estado.creadores || [], k.creadores || [], 'Todavía no hay creadores.')}
+          <p class="hint" style="margin:10px 0 0">Lo que publique este canal les llega también a quienes siguen a los creadores marcados, y sale en sus novedades. Los avisos van a nombre del dueño; si no tiene, a nombre de la productora.</p>
+        </fieldset>
+      </div>`;
+  }
+
+  async function abrirCanal(id) {
+    await Promise.all([cargarCreadores(false), cargarProductoras(false)]);
+    const v = id ? vigilados().find((x) => x.canal.id === id) : null;
+    if (id && !v) return;
+    const k = v ? v.canal : null;
+
+    // El dueño no puede estar además entre "los demás".
+    const alCambiarDueno = () => {
+      const dueno = $('#fKCreador').value;
+      $$('#mCuerpo [data-grupo="con"]').forEach((x) => {
+        x.disabled = x.value === dueno;
+        if (x.disabled) x.checked = false;
+      });
+    };
+
+    abrirModal(k ? 'Ficha del canal' : 'Nuevo canal de YouTube', formularioCanal(k), [
+      { texto: 'Cancelar' },
+      { texto: k ? 'Guardar cambios' : 'Agregar canal', tipo: 'primary', alPulsar: async () => {
+        const channelId = $('#fKId').value.trim();
+        if (!channelId) { toast('Busca primero el canal de YouTube.', true); $('#fBuscarCanal').focus(); return false; }
+        const creadorId = $('#fKCreador').value || null;
+        const productoraId = $('#fKProductora').value || null;
+        if (!creadorId && !productoraId) { toast('Di de quién es el canal: elige un creador dueño o una productora.', true); return false; }
+        let r;
+        try {
+          r = await api('/api/admin/canales', { metodo: 'POST', cuerpo: {
+            id: k ? k.id : null, nombre: $('#fKNombre').value.trim() || null,
+            url: $('#fKUrl').value || 'https://www.youtube.com/channel/' + channelId,
+            handle: $('#fKHandle').value || null, channelId, creadorId, productoraId,
+            creadores: marcadas('con').filter((x) => x !== creadorId)
+          } });
+        } catch (e) {
+          if (e.estado === 404 && !k) throw new ErrorApi('Este servidor todavía no tiene la versión con fichas de canal.', 404);
+          throw e;
+        }
+        if (r.avisoSuscripcion) toast('Canal guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
+        else if (r.avisoReplica) toast('Canal guardado, pero no se copió a testing: ' + r.avisoReplica, true);
+        else toast(k ? 'Cambios guardados.' : 'Canal agregado. La suscripción queda pendiente hasta que el hub la verifique.');
+        estado.creadores = null;
+        estado.productoras = null;
+        if (estado.vista === 'canales') vistaCanales();
+        refrescarContadores();
+      } }
+    ], () => {
+      $('#fKCreador').addEventListener('change', alCambiarDueno);
+      alCambiarDueno();
+      prepararBusqueda((d) => {
+        const handle = d.handle ? d.handle.replace(/^@/, '') : '';
+        $('#fKId').value = d.channelId;
+        $('#fKHandle').value = handle;
+        $('#fKUrl').value = handle ? 'https://www.youtube.com/@' + handle : 'https://www.youtube.com/channel/' + d.channelId;
+        $('#fKActual').innerHTML = tarjetaCanal({ handle, channelId: d.channelId }, d.titulo);
+        $('#btnBuscarCanal').textContent = 'Cambiar';
+      });
+    });
   }
 
   /** El mismo cuerpo que manda el formulario, armado desde el listado. */
@@ -1184,6 +1350,27 @@
         case 'nuevo-creador': await abrirCreador(null); break;
         case 'editar-creador': await abrirCreador(id); break;
         case 'nueva-productora': await abrirProductora(null); break;
+        case 'nuevo-canal': await abrirCanal(null); break;
+        case 'editar-canal': await abrirCanal(id); break;
+
+        case 'borrar-canal': {
+          const v = vigilados().find((x) => x.canal.id === id);
+          if (!v) break;
+          const k = v.canal;
+          const ok = await confirmar('¿Eliminar el canal ' + (k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : k.channelId)) + '?',
+            'Sale del directorio y el servidor deja de vigilarlo: ya no habrá avisos de sus videos. '
+              + (v.tipo === 'productora' ? 'Se borran también los videos que publicó.' : 'Los videos que ya publicó siguen siendo de ' + v.dueno.nombre + '.')
+              + ' No se puede deshacer.', 'Eliminar', true);
+          if (!ok) break;
+          const r = await api('/api/admin/canales/' + id, { metodo: 'DELETE' });
+          toast(r.mensaje || 'Canal eliminado.');
+          estado.creadores = null;
+          estado.productoras = null;
+          vistaCanales();
+          refrescarContadores();
+          break;
+        }
+
         case 'editar-productora': await abrirProductora(id); break;
 
         case 'borrar-productora': {
@@ -1243,7 +1430,7 @@
           const r = await reintentarDueno(tipo, c);
           if (r.avisoSuscripcion) toast('El hub respondió: ' + r.avisoSuscripcion, true);
           else toast('Solicitud enviada. Pasa a Activa cuando el hub la verifique.');
-          setTimeout(() => { if (estado.vista === 'suscripciones') vistaSuscripciones(); refrescarContadores(); }, 2000);
+          setTimeout(() => { if (estado.vista === 'canales') vistaCanales(); refrescarContadores(); }, 2000);
           break;
         }
 
@@ -1263,7 +1450,7 @@
             } catch (err) { mal++; }
           }
           toast(mal ? `${bien} enviadas, ${mal} fallaron.` : plural(bien, 'solicitud enviada', 'solicitudes enviadas') + ' al hub.', !!mal);
-          setTimeout(() => { if (estado.vista === 'suscripciones') vistaSuscripciones(); refrescarContadores(); }, 2000);
+          setTimeout(() => { if (estado.vista === 'canales') vistaCanales(); refrescarContadores(); }, 2000);
           break;
         }
 
@@ -1340,7 +1527,7 @@
   });
 
   window.addEventListener('hashchange', () => {
-    const v = location.hash.slice(1);
+    const v = ALIAS[location.hash.slice(1)] || location.hash.slice(1);
     if (sesion && v !== estado.vista && VISTAS[v]) ir(v);
   });
 
