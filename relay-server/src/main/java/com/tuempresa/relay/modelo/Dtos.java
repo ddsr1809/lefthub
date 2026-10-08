@@ -671,6 +671,28 @@ public final class Dtos {
      */
     public record FotoDto(String url, String origen) {}
 
+    // --- Borrado masivo --------------------------------------------------------
+
+    /** Qué partes del directorio se quieren borrar de golpe. */
+    public record PedirBorrado(List<String> partes) {}
+
+    /** Lo mismo, con el número que dio el servidor al contar. */
+    public record ConfirmarBorrado(List<String> partes, String codigo) {}
+
+    /** Cuánto hay (o cuánto se borró) de cada cosa. */
+    public record BorradoCuenta(long creadores, long productoras, long canales,
+                                long publicaciones, long reportes) {}
+
+    /**
+     * @param codigo  el número que hay que escribir para confirmar
+     * @param caducaEnSegundos cuánto vale
+     */
+    public record BorradoPreparado(String codigo, long caducaEnSegundos, List<String> partes,
+                                   BorradoCuenta cuenta) {}
+
+    /** @param version la versión del directorio que se cortó justo antes, si se cortó. */
+    public record BorradoHecho(BorradoCuenta borrado, Integer version) {}
+
     /**
      * Lo que se pudo leer de una cuenta para rellenar la ficha. Lo que no se
      * pudo viene en null, y `avisos` dice por qué, en frases para mostrar.

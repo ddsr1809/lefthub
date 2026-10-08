@@ -315,6 +315,36 @@ En Novedades, un video de un canal de productora se firma "Creador · Productora
 
 ---
 
+## Borrar datos de golpe
+
+Al final de **Resumen**, en el panel, está **Borrar datos**: sirve para vaciar
+de una vez todos los creadores, todas las productoras, todas las publicaciones
+o todos los reportes (los que se marquen). Pensado sobre todo para limpiar
+después de hacer pruebas.
+
+Lleva dos seguros, y el segundo está en el servidor:
+
+1. Al pulsar «Borrar lo marcado…» **no se borra nada**: el servidor cuenta lo
+   que se perdería y da un **número de seis cifras al azar**.
+2. El panel pregunta «¿SEGURO QUE QUIERES BORRAR TODO ESTO?», enseña la cuenta
+   y pide escribir ese número. Solo entonces se borra, y solo si el número es
+   el que el servidor dio a esa misma persona, para esas mismas casillas, hace
+   menos de cinco minutos. Vale una vez; a los tres fallos se anula.
+
+Lo que conviene saber:
+
+- **No se puede deshacer.** Con los creadores se van sus canales, sus redes,
+  sus videos y quién los seguía; en la app, esa gente deja de seguirlos.
+- Justo antes de borrar creadores o productoras se corta una **versión
+  automática** del directorio (sección Versiones), para poder consultar cómo
+  estaba. No se restaura sola.
+- Los usuarios, los administradores, los ajustes y las compras no se tocan.
+- Borrar uno solo (un creador, una productora, un canal) sigue haciéndose con
+  su botón «Eliminar», como siempre.
+
+En la API: `POST /api/admin/borrado/preparar` y `POST /api/admin/borrado`, los
+dos con `{"partes": ["creadores", …]}` y el segundo además con `"codigo"`.
+
 ## Llenar la ficha con los datos de una cuenta
 
 Para no teclear: el panel puede poner el **nombre**, la **descripción** y la
