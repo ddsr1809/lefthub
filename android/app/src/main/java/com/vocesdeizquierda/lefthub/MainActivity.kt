@@ -28,6 +28,7 @@ import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
+import com.vocesdeizquierda.lefthub.data.AyudaTele
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import com.vocesdeizquierda.lefthub.ui.*
@@ -46,6 +47,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (Aceptacion.vigente(this)) solicitarPermisoDeAvisos()
         Abiertos.cargar(this)
+        AyudaTele.cargar(this)
 
         setContent {
             var aceptado by remember { mutableStateOf(Aceptacion.vigente(this@MainActivity)) }
@@ -300,6 +302,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     abiertos = Abiertos.videos,
                     anuncios = banners.takeIf { conAnuncios },
                     onQuitarAnuncios = irAAjustes,
+                    ayudaTele = AyudaTele.pendiente,
+                    onAyudaTeleEntendida = { AyudaTele.entendida(contexto) },
                     onIrAlDirectorio = { nav.navigate("directorio") },
                     // El canal propio de una productora no tiene creador.
                     onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }

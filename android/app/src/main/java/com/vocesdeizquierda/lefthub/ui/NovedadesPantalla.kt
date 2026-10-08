@@ -47,6 +47,9 @@ import java.util.Locale
 // Los anuncios, cuando los hay, van entre los videos como una tarjeta más,
 // con otra forma y con la palabra "Publicidad" escrita arriba: nadie debe
 // tocar uno creyendo que es un video. Dónde cae cada uno lo decide Huecos.
+//
+// Arriba de la lista, hasta que la persona la da por leída, va la explicación
+// de cómo ver un video en la tele. Después vive en Ajustes.
 
 @Composable
 fun NovedadesPantalla(
@@ -68,7 +71,10 @@ fun NovedadesPantalla(
      */
     anuncios: BannersDelFeed? = null,
     /** El botón "Quitar los anuncios" que va debajo de cada uno. */
-    onQuitarAnuncios: () -> Unit = {}
+    onQuitarAnuncios: () -> Unit = {},
+    /** Todavía no ha leído cómo ver un video en la tele. Ver AyudaTele. */
+    ayudaTele: Boolean = false,
+    onAyudaTeleEntendida: () -> Unit = {}
 ) {
     val contexto = LocalContext.current
 
@@ -119,6 +125,14 @@ fun NovedadesPantalla(
                     enCortos = viendoCortos,
                     onElegir = { enCortos = it }
                 )
+            }
+        }
+
+        // Cómo verlo en la tele. Solo con los videos de siempre y solo si
+        // alguno se abre en YouTube, que es de donde sale el botón.
+        if (ayudaTele && !viendoCortos && lista.any { it.destino.plataforma == "youtube" }) {
+            item(key = "ayuda-tele") {
+                TarjetaVerEnLaTele(onEntendido = onAyudaTeleEntendida)
             }
         }
 
