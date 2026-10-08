@@ -34,6 +34,12 @@ enseña a cualquiera. Tampoco las publicaciones (los videos vuelven a llegar
 solos). Para todo eso sigue haciendo falta la copia completa de la base: ver
 "Copias de seguridad" en `relay-server/COMO-EJECUTAR.md`.
 
+Tampoco están las **versiones** del panel (sección Versiones) ni el registro
+de qué versión de pruebas tiene aplicada producción: viven en la base. Si la
+base de producción se pierde y se recupera desde estos archivos, la siguiente
+migración se comporta como la primera: no tiene versión anterior con la que
+comparar y pregunta cada diferencia.
+
 ## Testing y producción: solos, desde el VPS
 
 Un temporizador en el VPS lee las dos bases cada 5 minutos. Si algo cambió,

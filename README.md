@@ -341,6 +341,34 @@ De dónde sale cada cosa:
   cuando quieren. El servidor no inventa: si lo que llega es «Instagram»,
   «Log in» o cifras de seguidores, lo descarta y el panel dice qué faltó.
 
+## Versiones y migración de pruebas a producción
+
+El panel tiene una sección **Versiones**. Una versión es una foto numerada de los creadores, las productoras y sus canales tal como están en ese ambiente en ese momento. Se crea a mano, con una nota, y no cambia nada en la app. Con «Qué cambió desde entonces» se compara cualquier versión con el directorio de ahora.
+
+Sirve sobre todo para **preparar cambios en pruebas y llevarlos a producción**:
+
+1. **En el panel de pruebas** se dan de alta o se cambian las fichas. Mientras producción no las tenga, salen en «Cambios de pruebas sin migrar».
+2. **En el panel de pruebas**, sección Versiones, se pulsa **Crear versión**.
+3. **En el panel de producción**, sección Versiones, esa versión aparece en «Migrar desde pruebas». **Revisar y migrar** enseña, antes de guardar nada, qué pasaría:
+   - **Se lleva sin preguntar** lo que es nuevo y lo que cambió solo en pruebas.
+   - **Conflictos**: lo que se cambió en los dos lados y no coincide. Se ven los dos valores (y cómo estaba antes) y se elige uno, caso por caso o todos a la vez. No deja migrar hasta decidirlos todos.
+   - **Canales que se quitaron en pruebas**: en producción se conservan, salvo que se marque la casilla.
+   - **Para tener en cuenta**: lo que se retiró en un lado, o una foto que quedó guardada en el servidor de pruebas.
+4. **Migrar** guarda las fichas en producción y deja las dos partes iguales.
+
+Lo que conviene saber:
+
+- **Se compara campo por campo y contra la versión anterior.** Producción recuerda la última versión que aplicó. Si en pruebas cambió el nombre de alguien y en producción su descripción, se quedan los dos cambios sin preguntar. Solo es conflicto cuando el mismo dato cambió en los dos lados. La primera migración no tiene con qué comparar y pregunta cada diferencia de las fichas que se tocaron en pruebas.
+- **Retirar no se migra.** Si un creador o una productora se retira en pruebas, la revisión lo avisa y en producción se conserva: retirarlo allá borra sus videos y quién lo sigue, así que se hace a mano.
+- **Pruebas ya no pierde sus cambios.** Antes, guardar una ficha en producción pisaba su copia en pruebas. Ahora, si esa ficha tiene en pruebas cambios sin migrar, la copia no entra: producción guarda igual y su panel avisa de que no se copió. El choque aparece como conflicto al migrar. Para renunciar al cambio de pruebas está el botón **Descartar** de su lista de pendientes.
+- **Elegir lo de producción también iguala pruebas.** La ficha se vuelve a copiar a pruebas tal como está en producción.
+- **Cada ficha se guarda por la ruta de siempre**, una a una. Si alguna falla (por ejemplo, un canal de YouTube que en producción ya es de otro), las demás entran y la pantalla dice cuál falló y por qué. Corregido el motivo, «Reintentar lo que faltó» vuelve a proponer solo eso. No hay nada que deshacer.
+- **Antes de migrar, producción corta sola una versión** («Antes de migrar la versión N de pruebas»), para poder ver después qué cambió.
+- **Los ids siguen siendo distintos** en cada ambiente. Lo que nace en pruebas recibe en producción un id nuevo y queda enlazado con su ficha de pruebas.
+- **Hacen falta los dos servidores con esta versión** y la copia de creadores encendida (`REPLICA_URL` y `REPLICA_TOKEN`, ver `PIPELINE.md`): producción lee las versiones de pruebas con ese mismo token.
+
+Dónde está cada cosa: la foto la arma la base de datos (`V10__versiones.sql`); comparar, detectar conflictos y decidir qué se guarda es de `admin/versiones.js`, que tiene sus pruebas (`node admin/versiones.test.js`); el servidor solo guarda y entrega las versiones (`VersionesService`).
+
 ## Foto de perfil
 
 En la ficha de un creador (y en la de una productora, para su logo) la sección

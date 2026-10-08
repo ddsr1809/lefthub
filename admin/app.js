@@ -266,6 +266,7 @@
     filtroPubs: 'todos',    // todos | videos | cortos
     ajustes: null,          // null: el servidor es anterior a los ajustes
     usuarios: null,         // la página que está en pantalla
+    migracion: null,        // la revisión de una migración que está en pantalla
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
   };
 
@@ -274,6 +275,7 @@
     creadores: vistaCreadores,
     productoras: vistaProductoras,
     canales: vistaCanales,
+    versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
     usuarios: vistaUsuarios,
@@ -1635,6 +1637,314 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Versiones y migración de pruebas a producción
+  // ---------------------------------------------------------------------------
+  // Qué cambia, qué choca y qué se guarda lo decide versiones.js. Aquí está la
+  // pantalla y el orden de las peticiones.
+  const V = window.Versiones;
+  const TIPO_FICHA = { creador: 'Creador', productora: 'Productora' };
+  const contenidoDe = (v) => plural(v.creadores, 'creador', 'creadores') + ' · ' + plural(v.productoras, 'productora', 'productoras');
+
+  function filasDeVersiones(lista, botones, vacio) {
+    if (!lista.length) return `<tr><td colspan="5"><div class="empty">${vacio}</div></td></tr>`;
+    return lista.map((v) => `<tr>
+      <td><b>Versión ${esc(v.numero)}</b>${v.automatica ? ' <span class="badge b-mute">Automática</span>' : ''}</td>
+      <td>${v.nota ? esc(v.nota) : '<span class="muted">Sin nota</span>'}${v.creadoPor ? `<div class="muted" style="font-size:12.5px">${esc(v.creadoPor)}</div>` : ''}</td>
+      <td class="num">${esc(fmtFecha(v.creadoEn))}</td>
+      <td class="muted">${esc(contenidoDe(v))}</td>
+      <td class="acciones">${botones(v)}</td></tr>`).join('');
+  }
+
+  const tablaDeVersiones = (filas) => `<div class="tablewrap"><table><thead><tr><th>Versión</th><th>Nota</th><th>Cuándo</th><th>Contenido</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`;
+
+  function panelMigrar(datos, remotas, error) {
+    const m = datos.migracion;
+    const aplicada = m ? m.version : 0;
+    const cabecera = m
+      ? `Producción tiene aplicada la <b>versión ${esc(m.version)}</b> de pruebas (${esc(relativo(m.aplicadaEn))}${m.aplicadaPor ? ', por ' + esc(m.aplicadaPor) : ''}).`
+        + (m.fallidas ? ` <span class="badge b-warn">${plural(m.fallidas, 'ficha no se pudo guardar', 'fichas no se pudieron guardar')}</span>` : '')
+      : 'Todavía no se ha migrado ninguna versión de pruebas.';
+    const cuerpo = error
+      ? `<div class="panel-body"><div class="aviso-mal">No se pudieron leer las versiones de pruebas: ${esc(error)}</div></div>`
+      : tablaDeVersiones(filasDeVersiones(remotas.versiones.filter((v) => !v.automatica), (v) => (v.numero === aplicada
+        ? (m.fallidas
+          ? `<button class="btn sm" data-accion="revisar-migracion" data-id="${esc(v.numero)}">Reintentar lo que faltó</button>`
+          : '<span class="badge b-ok">Aplicada</span>')
+        : v.numero < aplicada
+          ? '<span class="muted">Anterior</span>'
+          : `<button class="btn sm primary" data-accion="revisar-migracion" data-id="${esc(v.numero)}">Revisar y migrar</button>`),
+        'En pruebas todavía no hay versiones. Entra al panel de pruebas, sección Versiones, y crea una.'));
+    return `<section class="panel"><div class="panel-head"><h2>Migrar desde pruebas</h2></div>
+      <div class="panel-body" style="border-bottom:1px solid var(--line)"><p style="margin:0">${cabecera}</p>
+      <p class="hint" style="margin:6px 0 0">Antes de guardar nada verás qué cambia y, si algo se tocó en los dos lados, eliges cuál se queda.</p></div>${cuerpo}</section>`;
+  }
+
+  function panelPendientes(datos) {
+    const lista = datos.pendientes || [];
+    return `<section class="panel"><div class="panel-head"><h2>Cambios de pruebas sin migrar</h2></div>
+      <div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Lo que se dio de alta o se cambió aquí y producción todavía no tiene. Mientras estén en esta lista, la copia que manda producción no los pisa. Para llevarlos: crea una versión y, en el panel de producción, entra a Versiones y pulsa «Revisar y migrar».</p></div>
+      ${lista.length ? `<ul class="alertas">${lista.map((x) => `<li>
+        <span><b>${esc(x.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[x.tipo] || x.tipo)}</span> ${x.nuevo ? '<span class="badge b-info">Nuevo aquí</span>' : '<span class="badge b-warn">Con cambios</span>'}</span>
+        ${x.nuevo ? '' : `<button class="btn sm" data-accion="descartar-pendiente" data-id="${esc(x.id)}" data-tipo="${esc(x.tipo)}" data-nombre="${esc(x.nombre)}">Descartar</button>`}</li>`).join('')}</ul>`
+        : '<div class="empty">Nada pendiente: pruebas no tiene cambios que producción no conozca.</div>'}</section>`;
+  }
+
+  async function vistaVersiones() {
+    estado.migracion = null;
+    let datos;
+    try {
+      datos = await api('/api/admin/versiones');
+    } catch (e) {
+      if (e.estado !== 404) throw e;
+      main.innerHTML = '<div class="head"><div><h1>Versiones</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene la versión con versiones del directorio. Aparecerán aquí cuando se despliegue.</div></div>';
+      return;
+    }
+
+    let remotas = null, error = null;
+    if (datos.papel === 'produccion') {
+      try { remotas = await api('/api/admin/versiones/remotas'); } catch (e) { error = e.message; }
+    }
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Versiones</h1><p class="sub">Una versión es una foto numerada de los creadores, las productoras y sus canales tal como están en este momento. Sirve para saber qué cambió desde entonces${datos.papel === 'pruebas' ? ' y es lo que producción trae cuando migra' : datos.papel === 'produccion' ? ' y para traer a producción lo que se preparó en pruebas' : ''}.</p></div>
+        <button class="btn primary" data-accion="crear-version">Crear versión</button></div>
+      <div class="stack">
+      ${datos.papel === 'produccion' ? panelMigrar(datos, remotas, error) : ''}
+      ${datos.papel === 'pruebas' ? panelPendientes(datos) : ''}
+      <section class="panel"><div class="panel-head"><h2>Versiones de ${config.ambiente === 'produccion' ? 'producción' : config.ambiente === 'pruebas' ? 'pruebas' : 'este servidor'}</h2></div>
+      ${tablaDeVersiones(filasDeVersiones(datos.versiones, (v) => `<button class="btn sm" data-accion="comparar-version" data-id="${esc(v.numero)}">Qué cambió desde entonces</button>`,
+        'Todavía no hay versiones. Crea la primera para tener un punto con el que comparar.'))}</section>
+      </div>`;
+  }
+
+  function crearVersion() {
+    abrirModal('Crear versión', `<div class="form">
+        <p class="full" style="margin:0">Se guarda una foto del directorio tal como está ahora. No cambia nada en la app.</p>
+        <label class="full">Nota <span class="opcional">(opcional)</span><input class="input" id="verNota" maxlength="200" placeholder="Qué trae esta versión" autocomplete="off"></label>
+      </div>`, [
+      { texto: 'Cancelar' },
+      { texto: 'Crear versión', tipo: 'primary', alPulsar: async () => {
+        const r = await api('/api/admin/versiones', { metodo: 'POST', cuerpo: { nota: $('#verNota').value.trim() || null } });
+        toast('Versión ' + r.numero + ' creada.');
+        if (estado.vista === 'versiones') await vistaVersiones();
+      } }
+    ]);
+  }
+
+  async function compararVersion(numero) {
+    const [v, ahora] = await Promise.all([api('/api/admin/versiones/' + numero), api('/api/admin/versiones/actual')]);
+    const dif = V.comparar(v.contenido, ahora.contenido);
+    const marca = { nuevo: ['Nuevo', 'b-ok'], quitado: ['Retirado', 'b-bad'], cambia: ['Cambió', 'b-warn'] };
+    abrirModal('Qué cambió desde la versión ' + numero, dif.length
+      ? `<ul class="cambios">${dif.map((d) => `<li><div><b>${esc(d.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[d.tipo])}</span> <span class="badge ${marca[d.estado][1]}">${marca[d.estado][0]}</span></div>
+          ${d.cambios.map((c) => `<div class="cambio"><span class="muted">${esc(c.etiqueta)}:</span> <s>${esc(c.antes)}</s> → ${esc(c.despues)}</div>`).join('')}</li>`).join('')}</ul>`
+      : '<p style="margin:0">Nada: el directorio está igual que en esa versión.</p>', [{ texto: 'Cerrar' }]);
+  }
+
+  // --- Revisar una migración ---------------------------------------------------
+
+  async function revisarMigracion(numero) {
+    main.innerHTML = '<div class="cargando">Comparando la versión de pruebas con producción…</div>';
+    const [remota, ahora, ultima] = await Promise.all([
+      api('/api/admin/versiones/remotas/' + numero),
+      api('/api/admin/versiones/actual'),
+      api('/api/admin/migraciones/ultima')]);
+    const anterior = (ultima && ultima.estado) || {};
+
+    estado.migracion = {
+      numero,
+      nota: remota.nota,
+      plan: V.planear({ base: anterior.base || null, pruebas: remota.contenido, produccion: ahora.contenido, ids: anterior.ids || null }),
+      decisiones: {},
+      ids: anterior.ids || null,
+      existen: new Set(ahora.contenido.creadores.concat(ahora.contenido.productoras).map((f) => f.id))
+    };
+    pintarRevision();
+  }
+
+  function itemsDe(plan, clase) {
+    const lista = [];
+    plan.fichas.forEach((f) => f.items.forEach((i) => { if (i.clase === clase) lista.push({ f, i }); }));
+    return lista;
+  }
+
+  const deQuien = (f, i) => `<b>${esc(f.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[f.tipo])} · ${esc(i.etiqueta)}</span>`;
+
+  function pintarRevision() {
+    const m = estado.migracion, plan = m.plan, r = plan.resumen;
+    const conflictos = itemsDe(plan, 'conflicto'), porConfirmar = itemsDe(plan, 'confirmar'), autos = itemsDe(plan, 'auto');
+    const nuevos = plan.fichas.filter((f) => f.estado === 'nuevo');
+    const marcado = (i, lado) => (m.decisiones[i.id] === lado ? ' checked' : '');
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Migrar la versión ${esc(m.numero)} de pruebas</h1>
+        <p class="sub">${m.nota ? '«' + esc(m.nota) + '». ' : ''}Todavía no se ha guardado nada. Revisa qué va a cambiar en producción y, donde las dos partes tocaron lo mismo, elige cuál se queda.</p></div>
+        <button class="btn" data-accion="volver-versiones">Volver</button></div>
+      <div class="stack">
+      <div class="chips">
+        <span class="badge b-ok">${plural(r.nuevos, 'ficha nueva', 'fichas nuevas')}</span>
+        <span class="badge b-info">${plural(r.cambios, 'cambio', 'cambios')}</span>
+        <span class="badge ${r.conflictos ? 'b-bad' : 'b-mute'}">${plural(r.conflictos, 'conflicto', 'conflictos')}</span>
+        <span class="badge ${r.confirmar ? 'b-warn' : 'b-mute'}">${num(r.confirmar)} por confirmar</span>
+        <span class="badge b-mute">${num(r.iguales)} sin cambios</span>
+      </div>
+      ${plan.primeraVez ? '<div class="aviso-ok">Es la primera migración: no hay una versión anterior con la que saber qué lado cambió cada cosa, así que cada diferencia se pregunta. Las siguientes solo preguntarán lo que de verdad se haya tocado en los dos lados.</div>' : ''}
+
+      ${plan.avisos.length ? `<section class="panel"><div class="panel-head"><h2>Para tener en cuenta</h2></div><ul class="cambios">${plan.avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>` : ''}
+
+      ${conflictos.length ? `<section class="panel"><div class="panel-head"><h2>Conflictos</h2>
+          <div class="toolbar"><button class="btn sm" data-accion="elegir-todos" data-valor="pruebas">Pruebas en todos</button><button class="btn sm" data-accion="elegir-todos" data-valor="produccion">Producción en todos</button></div></div>
+        <div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Se cambió en los dos lados y no coincide. Lo que elijas queda en producción, y pruebas quedará igual.</p></div>
+        <div class="panel-body choques">${conflictos.map(({ f, i }) => `<fieldset class="choque">
+          <legend>${deQuien(f, i)}</legend>
+          ${i.textoBase !== null ? `<p class="hint" style="margin:0 0 8px">Antes de que cambiara: ${esc(i.textoBase)}</p>` : ''}
+          <div class="lados">
+            <label class="lado"><input type="radio" name="d-${esc(i.id)}" value="pruebas" data-decision="${esc(i.id)}"${marcado(i, 'pruebas')}><span><b>Lo de pruebas</b><span class="valor">${esc(i.textoPruebas)}</span></span></label>
+            <label class="lado"><input type="radio" name="d-${esc(i.id)}" value="produccion" data-decision="${esc(i.id)}"${marcado(i, 'produccion')}><span><b>Lo de producción</b> <span class="muted">(dejar como está)</span><span class="valor">${esc(i.textoProduccion)}</span></span></label>
+          </div></fieldset>`).join('')}</div></section>` : ''}
+
+      ${porConfirmar.length ? `<section class="panel"><div class="panel-head"><h2>Canales que se quitaron en pruebas</h2></div>
+        <div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">En producción se conservan, salvo que marques la casilla; y como pruebas copia lo que hay en producción, allá volverán a aparecer. Quitar un canal de YouTube deja de vigilarlo.</p></div>
+        <ul class="alertas">${porConfirmar.map(({ f, i }) => `<li><span>${deQuien(f, i)}<div class="valor">${esc(i.textoProduccion)}</div></span>
+          <label class="check"><input type="checkbox" data-quitar="${esc(i.id)}"${marcado(i, 'pruebas')}> Quitarlo también en producción</label></li>`).join('')}</ul></section>` : ''}
+
+      ${nuevos.length || autos.length ? `<section class="panel"><div class="panel-head"><h2>Se lleva a producción sin preguntar</h2></div>
+        <ul class="cambios">
+          ${nuevos.map((f) => `<li><b>${esc(f.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[f.tipo])}</span> <span class="badge b-ok">Alta nueva</span></li>`).join('')}
+          ${autos.map(({ f, i }) => `<li>${deQuien(f, i)}<div class="cambio"><s>${esc(i.textoProduccion)}</s> → ${esc(i.textoPruebas)}</div></li>`).join('')}
+        </ul></section>` : ''}
+
+      ${!conflictos.length && !porConfirmar.length && !nuevos.length && !autos.length ? '<section class="panel"><div class="empty">Esta versión no trae nada que producción no tenga ya. Puedes darla por aplicada para que quede como punto de partida de la siguiente.</div></section>' : ''}
+
+      <div class="pie-migrar"><span id="migrarFalta"></span><button class="btn primary" id="migrarBoton" data-accion="migrar"></button></div>
+      </div>`;
+    actualizarPieDeMigracion();
+  }
+
+  function actualizarPieDeMigracion() {
+    const m = estado.migracion;
+    if (!m || !$('#migrarBoton')) return;
+    const faltan = V.sinDecidir(m.plan, m.decisiones).length;
+    const cuantas = V.operaciones(m.plan, m.decisiones).filter((op) => !op.copia).length;
+    $('#migrarFalta').textContent = faltan ? (faltan === 1 ? 'Falta 1 conflicto por decidir.' : 'Faltan ' + faltan + ' conflictos por decidir.') : '';
+    const boton = $('#migrarBoton');
+    boton.disabled = faltan > 0;
+    boton.textContent = cuantas ? 'Migrar a producción (' + plural(cuantas, 'ficha', 'fichas') + ')'
+      : faltan ? 'Migrar a producción' : 'Dar por aplicada la versión ' + m.numero;
+  }
+
+  main.addEventListener('change', (e) => {
+    const m = estado.migracion;
+    if (!m) return;
+    const t = e.target;
+    if (t.dataset.decision) m.decisiones[t.dataset.decision] = t.value;
+    else if (t.dataset.quitar) m.decisiones[t.dataset.quitar] = t.checked ? 'pruebas' : 'produccion';
+    else return;
+    actualizarPieDeMigracion();
+  });
+
+  /**
+   * Aplica el plan. Cada ficha se guarda por la ruta de siempre, así que pasa
+   * por las mismas reglas que un guardado a mano y se copia de vuelta a
+   * pruebas. Si algo falla a medias no hay que deshacer nada: lo que no entró
+   * se queda fuera de la base y la siguiente revisión lo vuelve a proponer.
+   */
+  async function ejecutarMigracion() {
+    const m = estado.migracion;
+    if (V.sinDecidir(m.plan, m.decisiones).length) { toast('Faltan conflictos por decidir.', true); return; }
+    const ops = V.operaciones(m.plan, m.decisiones);
+    const cambian = ops.filter((op) => !op.copia).length;
+
+    const seguro = await confirmar('¿Migrar la versión ' + m.numero + ' a producción?',
+      cambian
+        ? 'Se van a guardar ' + plural(cambian, 'ficha', 'fichas') + ' en producción. Los usuarios de la app lo verán de inmediato.'
+        : 'No hay nada que cambiar en producción. La versión queda anotada como aplicada y será el punto de partida de la siguiente.',
+      cambian ? 'Migrar' : 'Dar por aplicada', cambian > 0);
+    if (!seguro) return;
+
+    main.innerHTML = `<div class="head"><div><h1>Migrando la versión ${esc(m.numero)}…</h1><p class="sub">No cierres esta pestaña hasta que termine.</p></div></div>
+      <section class="panel"><ul class="cambios" id="migrarPasos"></ul></section>`;
+    const paso = (html, clase) => { const li = document.createElement('li'); li.innerHTML = html; if (clase) li.className = clase; $('#migrarPasos').appendChild(li); return li; };
+
+    try {
+      const r = await api('/api/admin/migraciones/preparar', { metodo: 'POST', cuerpo: { version: m.numero } });
+      paso('Producción quedó guardada como estaba en su <b>versión ' + esc(r.respaldo) + '</b>.');
+    } catch (e) {
+      paso('No se pudo empezar: ' + esc(e.message) + ' No se cambió nada.', 'mal');
+      paso('<button class="btn" data-accion="volver-versiones">Volver a Versiones</button>');
+      return;
+    }
+
+    const nuevos = {}, fallidas = [], avisos = [], pendientes = [];
+    let guardadas = 0;
+
+    const guardar = async (op) => {
+      const ruta = op.tipo === 'creador' ? '/api/admin/creadores' : '/api/admin/productoras';
+      let { cuerpo, incompleto } = V.cuerpoDe(op, nuevos, m.existen);
+      let r = await api(ruta, { metodo: 'POST', cuerpo });
+      if (op.nuevo && !nuevos[op.id]) {
+        nuevos[op.id] = r.id;
+        m.existen.add(r.id);
+        // Al crearlo, producción ya mandó su copia, pero pruebas todavía no
+        // sabía que es su misma ficha. Se le dice cuál es (antes de que otra
+        // ficha lo nombre) y se guarda otra vez, para que la copia llegue ahora
+        // a la ficha correcta. Lo que avisara la primera copia ya no cuenta.
+        try {
+          await api('/api/admin/migraciones/enlazar', { metodo: 'POST', cuerpo: { tipo: op.tipo, pruebas: op.idPruebas, produccion: r.id } });
+          ({ cuerpo, incompleto } = V.cuerpoDe(op, nuevos, m.existen));
+          r = await api(ruta, { metodo: 'POST', cuerpo });
+        } catch (e) {
+          avisos.push('«' + op.nombre + '» se creó, pero no se pudo enlazar con su ficha de pruebas: ' + e.message);
+        }
+      }
+      if (r.avisoReplica) avisos.push('«' + op.nombre + '» se guardó, pero no se copió de vuelta a pruebas: ' + r.avisoReplica);
+      if (r.avisoSuscripcion) avisos.push('«' + op.nombre + '» se guardó, pero YouTube no confirmó la suscripción: ' + r.avisoSuscripcion);
+      return incompleto;
+    };
+
+    for (const op of ops) {
+      const li = paso(esc(TIPO_FICHA[op.tipo]) + ' <b>' + esc(op.nombre) + '</b>…');
+      try {
+        if (await guardar(op)) pendientes.push(op);
+        if (!op.copia) guardadas++;
+        li.innerHTML = esc(TIPO_FICHA[op.tipo]) + ' <b>' + esc(op.nombre) + '</b>: '
+          + (op.nuevo ? 'dado de alta.' : op.copia ? 'se quedó como estaba aquí, y así se copió a pruebas.' : 'actualizado.');
+      } catch (e) {
+        // Una copia que falla no deja nada a medias en producción.
+        if (op.copia) { li.remove(); avisos.push('«' + op.nombre + '» se quedó como estaba aquí, pero no se pudo copiar así a pruebas: ' + e.message); continue; }
+        fallidas.push(op.id);
+        li.className = 'mal';
+        li.innerHTML = esc(TIPO_FICHA[op.tipo]) + ' <b>' + esc(op.nombre) + '</b>: no se guardó. ' + esc(e.message);
+      }
+    }
+    // Segunda vuelta para quien nombraba a alguien que todavía no existía.
+    for (const op of pendientes) {
+      try { await guardar(op); } catch (e) { avisos.push('«' + op.nombre + '» quedó sin alguna de sus ligas con fichas nuevas: ' + e.message); }
+    }
+
+    const fin = V.estadoFinal(m.plan, nuevos, fallidas, m.ids);
+    let anotada = true;
+    try {
+      await api('/api/admin/migraciones', { metodo: 'POST', cuerpo: { version: m.numero, estado: { base: fin.base, ids: fin.ids, resumen: { guardadas, fallidas: fallidas.length } } } });
+    } catch (e) {
+      anotada = false;
+      paso('Las fichas se guardaron, pero no se pudo anotar la migración: ' + esc(e.message) + ' Repite «Revisar y migrar» con esta misma versión: no duplicará nada.', 'mal');
+    }
+
+    avisos.forEach((a) => paso(esc(a), 'aviso'));
+    $('#main h1').textContent = fallidas.length ? 'La versión ' + m.numero + ' se migró a medias' : 'Versión ' + m.numero + ' migrada';
+    $('#main .sub').textContent = plural(guardadas, 'ficha guardada', 'fichas guardadas') + ' en producción'
+      + (fallidas.length ? ', ' + plural(fallidas.length, 'no se pudo guardar', 'no se pudieron guardar') + '. Corrige lo que indica cada una y, en Versiones, pulsa «Reintentar lo que faltó»: solo propondrá eso.' : '.')
+      + (anotada ? '' : ' La migración no quedó anotada.');
+    paso('<button class="btn primary" data-accion="volver-versiones">Volver a Versiones</button>');
+
+    estado.migracion = null;
+    estado.creadores = null;
+    estado.productoras = null;
+    refrescarContadores();
+  }
+
+  // ---------------------------------------------------------------------------
   // Acciones
   // ---------------------------------------------------------------------------
   document.addEventListener('click', async (e) => {
@@ -1651,6 +1961,31 @@
     try {
       switch (accion) {
         case 'recargar': ir(estado.vista); break;
+
+        case 'crear-version': crearVersion(); break;
+        case 'comparar-version': await compararVersion(Number(id)); break;
+        case 'revisar-migracion': await revisarMigracion(Number(id)); break;
+        case 'volver-versiones': ir('versiones'); break;
+        case 'migrar': await ejecutarMigracion(); break;
+
+        case 'elegir-todos': {
+          const m = estado.migracion;
+          if (!m) break;
+          itemsDe(m.plan, 'conflicto').forEach(({ i }) => { m.decisiones[i.id] = b.dataset.valor; });
+          pintarRevision();
+          break;
+        }
+
+        case 'descartar-pendiente': {
+          const ok = await confirmar('¿Descartar los cambios de ' + b.dataset.nombre + '?',
+            'Pruebas deja de proteger lo que se cambió aquí. La próxima vez que esa ficha se guarde en producción, o cuando se repita la copia completa, quedará igual que allá. Si prefieres llevar los cambios a producción, no los descartes: crea una versión y mígrala.',
+            'Descartar', true);
+          if (!ok) break;
+          await api('/api/admin/versiones/descartar', { metodo: 'POST', cuerpo: { tipo: b.dataset.tipo, id } });
+          toast('Cambios descartados.');
+          await vistaVersiones();
+          break;
+        }
         case 'nuevo-creador': await abrirCreador(null); break;
         case 'editar-creador': await abrirCreador(id); break;
         case 'nueva-productora': await abrirProductora(null); break;
