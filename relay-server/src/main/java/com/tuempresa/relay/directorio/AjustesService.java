@@ -10,15 +10,19 @@ import java.time.Instant;
 /**
  * Los ajustes generales que el equipo cambia desde el panel.
  *
- * Por ahora uno: si la app muestra los videos cortos (Shorts). Se lee de la
- * base cada vez, sin caché: es una consulta por clave primaria, y así un
- * cambio en el panel vale desde la siguiente petición, sin reiniciar nada.
+ * Son dos: si la app muestra los videos cortos (Shorts) y si muestra
+ * anuncios. Se leen de la base cada vez, sin caché: es una consulta por clave
+ * primaria, y así un cambio en el panel vale desde la siguiente petición, sin
+ * reiniciar nada.
  */
 @Service
 public class AjustesService {
 
     /** Si la app muestra los videos cortos. Sin fila en la tabla, no. */
     static final String CORTOS = "cortos";
+
+    /** Si la app muestra anuncios en Novedades. Sin fila en la tabla, no. */
+    static final String ANUNCIOS = "anuncios";
 
     private final Repositorios.Ajustes ajustes;
 
@@ -34,13 +38,38 @@ public class AjustesService {
      */
     @Transactional(readOnly = true)
     public boolean cortos() {
-        return ajustes.findById(CORTOS).map(a -> "true".equals(a.getValor())).orElse(false);
+        return encendido(CORTOS);
     }
 
     @Transactional
     public void ponerCortos(boolean permitidos) {
-        Ajuste ajuste = ajustes.findById(CORTOS).orElseGet(() -> new Ajuste(CORTOS));
-        ajuste.setValor(String.valueOf(permitidos));
+        poner(CORTOS, permitidos);
+    }
+
+    /**
+     * ¿Muestra anuncios la app?
+     *
+     * Apagado (lo normal mientras nadie lo encienda), la app no pide ningún
+     * anuncio ni ofrece quitarlos. Encendido, los ve todo el mundo menos las
+     * cuentas que los quitaron: eso lo dice cada cuenta, no este ajuste.
+     */
+    @Transactional(readOnly = true)
+    public boolean anuncios() {
+        return encendido(ANUNCIOS);
+    }
+
+    @Transactional
+    public void ponerAnuncios(boolean encendidos) {
+        poner(ANUNCIOS, encendidos);
+    }
+
+    private boolean encendido(String clave) {
+        return ajustes.findById(clave).map(a -> "true".equals(a.getValor())).orElse(false);
+    }
+
+    private void poner(String clave, boolean valor) {
+        Ajuste ajuste = ajustes.findById(clave).orElseGet(() -> new Ajuste(clave));
+        ajuste.setValor(String.valueOf(valor));
         ajuste.setActualizadoEn(Instant.now());
         ajustes.save(ajuste);
     }

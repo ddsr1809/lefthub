@@ -21,7 +21,8 @@ public record RelayProperties(
         @DefaultValue Cors cors,
         @DefaultValue Replica replica,
         @DefaultValue Fotos fotos,
-        @DefaultValue Perfiles perfiles
+        @DefaultValue Perfiles perfiles,
+        @DefaultValue Compras compras
 ) {
 
     public record Jwt(
@@ -99,6 +100,28 @@ public record RelayProperties(
             @DefaultValue("https://api.microlink.io") String base,
             @DefaultValue("") String apiKey
     ) {}
+
+    /**
+     * La compra de "quitar los anuncios" en Google Play.
+     *
+     * @param paquete      el applicationId de la app en Play Console
+     * @param producto     el ID del producto, como se dio de alta allí
+     * @param credenciales ruta al JSON de la cuenta de servicio. Si no se
+     *                     pone otra, es la misma de FCM: basta con invitarla
+     *                     en Play Console
+     * @param apiBase      la dirección de Google; existe como ajuste solo para
+     *                     poder apuntar las pruebas a un servidor de pega
+     */
+    public record Compras(
+            @DefaultValue("") String paquete,
+            @DefaultValue("sin_anuncios") String producto,
+            @DefaultValue("") String credenciales,
+            @DefaultValue("https://androidpublisher.googleapis.com/androidpublisher/v3") String apiBase
+    ) {
+        public boolean estaConfigurado() {
+            return !paquete.isBlank() && !producto.isBlank() && !credenciales.isBlank();
+        }
+    }
 
     /**
      * Copia de creadores de produccion a testing.

@@ -530,13 +530,14 @@ public class AdminController {
 
     @GetMapping("/ajustes")
     public Dtos.AjustesDto ajustes() {
-        return new Dtos.AjustesDto(ajustes.cortos());
+        return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios());
     }
 
     /** Solo cambia lo que llega; lo demás se queda como estaba. */
     @PutMapping("/ajustes")
     public Dtos.AjustesDto cambiarAjustes(@RequestBody Dtos.CambiarAjustes peticion) {
         if (peticion.cortos() != null) ajustes.ponerCortos(peticion.cortos());
+        if (peticion.anuncios() != null) ajustes.ponerAnuncios(peticion.anuncios());
         return ajustes();
     }
 

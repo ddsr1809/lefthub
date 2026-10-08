@@ -1,5 +1,6 @@
 package com.tuempresa.relay.directorio;
 
+import com.tuempresa.relay.anuncios.TiendaGoogle;
 import com.tuempresa.relay.config.SeguridadConfig.Sesion;
 import com.tuempresa.relay.modelo.*;
 import com.tuempresa.relay.push.PushService;
@@ -43,18 +44,21 @@ public class DirectorioController {
     private final Repositorios.Usuarios usuarios;
     private final Catalogo catalogo;
     private final AjustesService ajustes;
+    private final TiendaGoogle tienda;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
                                 Repositorios.Publicaciones publicaciones,
                                 Repositorios.Usuarios usuarios,
-                                Catalogo catalogo, AjustesService ajustes) {
+                                Catalogo catalogo, AjustesService ajustes,
+                                TiendaGoogle tienda) {
         this.creadores = creadores;
         this.productoras = productoras;
         this.publicaciones = publicaciones;
         this.usuarios = usuarios;
         this.catalogo = catalogo;
         this.ajustes = ajustes;
+        this.tienda = tienda;
     }
 
     // -------------------------------------------------------------------------
@@ -269,7 +273,7 @@ public class DirectorioController {
     @GetMapping("/perfil")
     @Transactional(readOnly = true)
     public Dtos.PerfilDto perfil() {
-        return Dtos.PerfilDto.de(usuarioActual(), ajustes.cortos());
+        return perfilDe(usuarioActual());
     }
 
     /**
@@ -352,10 +356,19 @@ public class DirectorioController {
         if (peticion.avisos() != null) usuario.setAvisos(peticion.avisos());
         if (peticion.cortos() != null) usuario.setCortos(peticion.cortos());
 
-        return Dtos.PerfilDto.de(usuario, ajustes.cortos());
+        return perfilDe(usuario);
     }
 
     // -------------------------------------------------------------------------
+
+    /**
+     * El perfil lleva también lo que decide el equipo: si hay videos cortos,
+     * si hay anuncios y si se pueden comprar. Así la app se entera de todo
+     * con la misma lectura, la que ya hace al abrirse.
+     */
+    private Dtos.PerfilDto perfilDe(Usuario usuario) {
+        return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista());
+    }
 
     private Usuario usuarioActual() {
         return usuarios.findById(Sesion.exigir())

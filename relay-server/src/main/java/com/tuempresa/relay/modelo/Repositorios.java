@@ -238,6 +238,14 @@ public final class Repositorios {
 
         long countByPosibleBotTrue();
 
+        /** Cuántas cuentas ya no ven anuncios, por motivo: compra, folio o panel. */
+        @Query("""
+                select u.sinAnunciosOrigen, count(u) from Usuario u
+                where u.sinAnuncios = true
+                group by u.sinAnunciosOrigen
+                """)
+        List<Object[]> sinAnunciosPorOrigen();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
@@ -275,6 +283,33 @@ public final class Repositorios {
     }
 
     public interface Ajustes extends JpaRepository<Ajuste, String> {
+    }
+
+    public interface Folios extends JpaRepository<Folio, String> {
+
+        List<Folio> findAllByOrderByCreadoEnDesc(Pageable pagina);
+
+        /**
+         * Gasta un folio: lo borra y dice si estaba. Es una sola sentencia a
+         * propósito. Si dos personas mandan el mismo folio a la vez, la base
+         * deja pasar a una sola: la otra recibe 0 y se queda sin él.
+         */
+        @Modifying
+        @Query("delete from Folio f where f.codigo = :codigo")
+        int gastar(@Param("codigo") String codigo);
+    }
+
+    public interface Compras extends JpaRepository<Compra, UUID> {
+
+        Optional<Compra> findByToken(String token);
+
+        /**
+         * Las compras de una cuenta pasan a otra. Hay que llamarlo antes de
+         * borrar la primera cuando se funden dos: si no, se irían con ella.
+         */
+        @Modifying
+        @Query("update Compra c set c.usuarioId = :a where c.usuarioId = :de")
+        void pasar(@Param("de") UUID de, @Param("a") UUID a);
     }
 
     public interface Fotos extends JpaRepository<Foto, UUID> {

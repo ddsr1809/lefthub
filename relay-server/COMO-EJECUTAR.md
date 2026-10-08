@@ -63,6 +63,8 @@ Authorization: Bearer <token>
 | `DELETE` | `/api/favoritos/{creadorId}` | Dejar de seguir |
 | `PUT` | `/api/preferencias` | Tamaño de letra, tema, avisos |
 | `POST` | `/api/reportes` | Enlace roto |
+| `POST` | `/api/anuncios/folio` | Canjea un folio de regalo. Body: `{codigo}` |
+| `POST` | `/api/anuncios/compra` | Registra una compra de Google Play. Body: `{producto, token}` |
 | `DELETE` | `/api/cuenta` | Borrado definitivo |
 
 ### Moderación
@@ -76,6 +78,10 @@ Authorization: Bearer <token>
 | `POST` | `/api/admin/videos/{videoId}/mover` |
 | `GET` | `/api/admin/reportes` |
 | `POST` | `/api/admin/administradores?correo=` |
+| `GET` | `/api/admin/anuncios` |
+| `POST` | `/api/admin/folios` |
+| `DELETE` | `/api/admin/folios/{codigo}` |
+| `POST` | `/api/admin/usuarios/{id}/sin-anuncios?valor=` |
 
 ### Sin token
 
@@ -217,6 +223,8 @@ Flyway lleva la cuenta de las migraciones aplicadas. **Nunca edites `V1__esquema
 **`JWT_SECRETO debe tener al menos 32 caracteres`.** HMAC-SHA256 lo exige. El servidor lo comprueba al arrancar en vez de fallar en el primer inicio de sesión.
 
 **`Schema-validation: missing table`.** Hibernate valida al arrancar que las entidades cuadran con las tablas. Si sale esto, Flyway no llegó a aplicar las migraciones: revisa la conexión a la base.
+
+**`COMPRAS DESACTIVADAS` o `Google Play respondió HTTP 403` en los registros.** El servidor no puede confirmar compras. Lo primero es que el JSON de la cuenta de servicio no se puede leer; lo segundo, que esa cuenta no está invitada en Play Console o que la Google Play Android Developer API no está activada en su proyecto. Mientras tanto la app no ofrece comprar. Los pasos están en el README, sección «Anuncios, y cómo quitarlos».
 
 **Firmas inválidas en los registros.** El `WEBSUB_SECRETO` actual no coincide con el que se usó al suscribirse. Cambiarlo invalida todas las suscripciones: hay que rehacerlas con `/internal/renovar`.
 

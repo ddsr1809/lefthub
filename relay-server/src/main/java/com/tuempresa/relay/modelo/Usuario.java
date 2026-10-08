@@ -24,6 +24,11 @@ public class Usuario {
     public static final String GOOGLE = "google";
     public static final String APPLE = "apple";
 
+    /** Por qué una cuenta ya no ve anuncios. */
+    public static final String POR_COMPRA = "compra";
+    public static final String POR_FOLIO = "folio";
+    public static final String POR_PANEL = "panel";
+
     @Id
     @GeneratedValue
     private UUID id;
@@ -59,6 +64,21 @@ public class Usuario {
      */
     @Column(nullable = false)
     private boolean cortos = true;
+
+    /**
+     * Ya no ve anuncios: lo compró, canjeó un folio de regalo o se lo puso el
+     * equipo desde el panel. Va en la cuenta para que la acompañe si cambia
+     * de teléfono. Ver V11.
+     */
+    @Column(name = "sin_anuncios", nullable = false)
+    private boolean sinAnuncios = false;
+
+    /** compra | folio | panel. Null mientras ve anuncios. */
+    @Column(name = "sin_anuncios_origen")
+    private String sinAnunciosOrigen;
+
+    @Column(name = "sin_anuncios_desde")
+    private Instant sinAnunciosDesde;
 
     /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
@@ -141,6 +161,32 @@ public class Usuario {
 
     public boolean isCortos() { return cortos; }
     public void setCortos(boolean cortos) { this.cortos = cortos; }
+
+    public boolean isSinAnuncios() { return sinAnuncios; }
+    public String getSinAnunciosOrigen() { return sinAnunciosOrigen; }
+    public Instant getSinAnunciosDesde() { return sinAnunciosDesde; }
+
+    /**
+     * Le quita los anuncios. Si ya no los veía, se queda con el motivo y la
+     * fecha de la primera vez: es lo que explica por qué no los ve.
+     */
+    public void quitarAnuncios(String origen) {
+        quitarAnuncios(origen, Instant.now());
+    }
+
+    public void quitarAnuncios(String origen, Instant desde) {
+        if (sinAnuncios) return;
+        sinAnuncios = true;
+        sinAnunciosOrigen = origen;
+        sinAnunciosDesde = desde != null ? desde : Instant.now();
+    }
+
+    /** Vuelve a ver anuncios. Solo lo hace el equipo, desde el panel. */
+    public void devolverAnuncios() {
+        sinAnuncios = false;
+        sinAnunciosOrigen = null;
+        sinAnunciosDesde = null;
+    }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

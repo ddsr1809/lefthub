@@ -110,6 +110,20 @@ relay:
     proyecto-id: ${FCM_PROYECTO_ID:}
     credenciales: ${FCM_CREDENCIALES:}
 
+  compras:
+    # Quitar los anuncios pagando, en Google Play. Sin COMPRAS_PAQUETE la app
+    # no ofrece la compra (los folios de regalo funcionan igual).
+    #
+    # paquete: el applicationId con el que la app está en Play Console.
+    # producto: el ID del producto de pago único, como se dio de alta allí.
+    paquete: ${COMPRAS_PAQUETE:}
+    producto: ${COMPRAS_PRODUCTO:sin_anuncios}
+    # La cuenta de servicio que le pregunta a Google si una compra es de
+    # verdad. Por defecto es la misma de FCM: solo hay que invitarla en Play
+    # Console (ver "Anuncios" en el README). Pon otra ruta si prefieres una
+    # cuenta aparte.
+    credenciales: ${COMPRAS_CREDENCIALES:${FCM_CREDENCIALES:}}
+
   google:
     # client_id de tipo web. Se usa como audiencia al verificar los tokens
     # que mandan las apps tras el inicio de sesión con Google.

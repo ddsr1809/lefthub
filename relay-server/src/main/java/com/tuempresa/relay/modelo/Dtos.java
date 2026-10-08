@@ -1,5 +1,7 @@
 package com.tuempresa.relay.modelo;
 
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
@@ -199,7 +201,20 @@ public final class Dtos {
              * El equipo permite los videos cortos. Con esto en false la app no
              * enseña ni el apartado ni la opción, diga lo que diga {@code cortos}.
              */
-            boolean cortosDisponibles
+            boolean cortosDisponibles,
+            /**
+             * El equipo tiene encendidos los anuncios. La app los muestra
+             * solo si esto es true y {@code sinAnuncios} es false.
+             */
+            boolean anuncios,
+            /** Esta cuenta ya no ve anuncios: los compró o canjeó un folio. */
+            boolean sinAnuncios,
+            /**
+             * El servidor puede confirmar compras con Google Play. Con esto
+             * en false la app no enseña el botón de comprar; el folio de
+             * regalo sigue valiendo.
+             */
+            boolean compraDisponible
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -208,14 +223,16 @@ public final class Dtos {
          * "Siguiendo" y suscribe el teléfono a sus avisos. Quien sí las
          * conoce las tiene aparte en {@code productoras} y las descuenta.
          */
-        public static PerfilDto de(Usuario u, boolean cortosDisponibles) {
+        public static PerfilDto de(Usuario u, boolean cortosDisponibles,
+                                   boolean anuncios, boolean compraDisponible) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
             return new PerfilDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
                     seguidos, u.getEscalaTexto(), u.getTema(), u.isAvisos(),
                     List.copyOf(u.getProductorasSeguidas()),
-                    u.isCortos(), cortosDisponibles);
+                    u.isCortos(), cortosDisponibles,
+                    anuncios, u.isSinAnuncios(), compraDisponible);
         }
     }
 
@@ -347,11 +364,69 @@ public final class Dtos {
 
     public record CanalGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
 
-    /** Los ajustes generales del panel. Hoy uno: si la app muestra los videos cortos. */
-    public record AjustesDto(boolean cortos) {}
+    /** Los ajustes generales del panel: si la app muestra los videos cortos, y si muestra anuncios. */
+    public record AjustesDto(boolean cortos, boolean anuncios) {}
 
     /** Lo que se cambia de los ajustes. Lo que no viene no se toca. */
-    public record CambiarAjustes(Boolean cortos) {}
+    public record CambiarAjustes(Boolean cortos, Boolean anuncios) {}
+
+    // -------------------------------------------------------------------------
+    // Anuncios: quitarlos con una compra o con un folio de regalo
+    // -------------------------------------------------------------------------
+
+    /** El folio tal como lo tecleó la persona, con guion o sin él. */
+    public record CanjearFolio(
+            @NotBlank(message = "Escribe el folio.")
+            @Size(max = 40, message = "Ese folio es demasiado largo.")
+            String codigo
+    ) {}
+
+    /** Lo que la app recibe de Google Play al comprar. */
+    public record RegistrarCompra(
+            @NotBlank(message = "Falta el producto de la compra.")
+            @Size(max = 100, message = "Ese producto no es válido.")
+            String producto,
+
+            @NotBlank(message = "Falta el comprobante de la compra.")
+            @Size(max = 2000, message = "Ese comprobante no es válido.")
+            String token
+    ) {}
+
+    /** La respuesta a un canje o a una compra: cómo quedó la cuenta y qué decirle. */
+    public record SinAnuncios(boolean sinAnuncios, String mensaje) {}
+
+    public record CrearFolios(
+            @Min(value = 1, message = "Pide al menos un folio.")
+            @Max(value = 100, message = "Se pueden crear hasta 100 folios cada vez.")
+            int cantidad,
+
+            @Size(max = 200, message = "La nota es demasiado larga.")
+            String nota
+    ) {}
+
+    /** Un folio sin usar. El código va como se reparte: ABCDE-FGHJK. */
+    public record FolioDto(String codigo, String nota, Instant creadoEn) {}
+
+    /**
+     * La sección Anuncios del panel.
+     *
+     * @param encendidos       la app muestra anuncios
+     * @param comprasListas    el servidor puede confirmar compras con Google Play
+     * @param producto         el ID del producto que se vende
+     * @param paquete          la app de Play Console en la que se vende
+     * @param sinAnuncios      cuentas que ya no los ven, por motivo: compra, folio o panel
+     * @param folios           los folios sin usar más recientes
+     * @param foliosSinUsar    cuántos hay en total
+     */
+    public record AnunciosAdminDto(
+            boolean encendidos,
+            boolean comprasListas,
+            String producto,
+            String paquete,
+            Map<String, Long> sinAnuncios,
+            List<FolioDto> folios,
+            long foliosSinUsar
+    ) {}
 
     /** Lo que salió de repasar los cortos guardados. */
     public record RevisionDeCortos(int revisados, int corregidos, int sinRespuesta) {}
@@ -490,14 +565,19 @@ public final class Dtos {
             String red,
             String agente,
             boolean posibleBot,
-            String motivoBot
+            String motivoBot,
+            /** Ya no ve anuncios, y por qué: compra | folio | panel. */
+            boolean sinAnuncios,
+            String sinAnunciosOrigen,
+            Instant sinAnunciosDesde
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
                     u.getFavoritos().size(), u.getEscalaTexto(), u.getTema(),
                     u.getCreadoEn(), u.getVistoEn(),
                     u.getIp(), u.getPais(), u.getAsn(), u.getRed(), u.getAgente(),
-                    u.isPosibleBot(), u.getMotivoBot());
+                    u.isPosibleBot(), u.getMotivoBot(),
+                    u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde());
         }
     }
 
