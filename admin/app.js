@@ -615,11 +615,16 @@
         </div></div>`;
     }
 
+    // Quien quiera enterarse de que la lista cambió (la sección de la foto,
+    // que ofrece una fuente por cada cuenta).
+    let alCambiar = null;
+
     function pintar() {
       const html = { yt: [], redes: [] };
       lista.forEach((k, i) => html[grupo(k)].push(fila(k, i)));
       cajas.yt.innerHTML = html.yt.join('') || '<div class="hint">Sin canales de YouTube.</div>';
       cajas.redes.innerHTML = html.redes.join('') || '<div class="hint">Sin redes sociales.</div>';
+      if (alCambiar) alCambiar();
     }
 
     const anotar = (e) => {
@@ -656,6 +661,10 @@
 
     pintar();
     return {
+      // Las cuentas que hay ahora en el formulario, guardadas o no.
+      cuentas: () => lista.slice(),
+      // Llama a `fn` ahora y cada vez que la lista cambie.
+      escuchar(fn) { alCambiar = fn; fn(); },
       // Devuelve false si el canal ya estaba en la lista.
       agregarYouTube(d) {
         if (lista.some((k) => k.plataforma === 'youtube' && k.channelId === d.channelId)) return false;
@@ -721,7 +730,96 @@
   function rellenarDesdeCanal(d) {
     if (!$('#fNombre').value.trim()) $('#fNombre').value = (d.titulo || '').slice(0, 60);
     if (!$('#fBio').value.trim() && d.descripcion) $('#fBio').value = d.descripcion.slice(0, 600);
-    if (!$('#fFoto').value.trim() && d.fotoUrl) $('#fFoto').value = d.fotoUrl;
+    if (!$('#fFoto').value.trim() && d.fotoUrl) ponerFoto(d.fotoUrl);
+  }
+
+  // ---------------------------------------------------------------------------
+  // La foto de perfil: de una de sus cuentas, o a mano
+  // ---------------------------------------------------------------------------
+  // De qué redes sabe el servidor traer la foto. De una página web, no.
+  const REDES_CON_FOTO = ['youtube', 'x', 'instagram', 'tiktok', 'facebook', 'threads', 'telegram', 'twitch', 'spotify', 'patreon'];
+
+  function seccionFoto(titulo, url) {
+    return `
+      <fieldset><legend>${esc(titulo)}</legend>
+        <div class="foto">
+          <span class="foto-previa" id="fFotoPrevia"></span>
+          <div class="foto-datos">
+            <input class="input" id="fFoto" value="${esc(url)}" placeholder="https://… dirección de la imagen" aria-label="Dirección de la imagen">
+            <div class="foto-fuentes" id="fFotoFuentes"></div>
+          </div>
+        </div>
+        <p class="hint" style="margin:10px 0 0">Elige de cuál de sus cuentas tomarla, o «Manual» para pegar la dirección de una imagen. No cambia sola: si la persona cambia su foto en esa red, vuelve a pulsar el botón.</p>
+      </fieldset>`;
+  }
+
+  /** Pone la dirección en el campo y la enseña. */
+  function ponerFoto(url) {
+    $('#fFoto').value = url || '';
+    pintarFoto();
+  }
+
+  function pintarFoto() {
+    const caja = $('#fFotoPrevia');
+    if (!caja) return;
+    const url = $('#fFoto').value.trim();
+    caja.classList.remove('rota');
+    caja.innerHTML = /^https?:\/\//i.test(url) ? `<img src="${esc(url)}" alt="Foto de perfil" referrerpolicy="no-referrer">` : '';
+    const img = caja.querySelector('img');
+    // Una dirección que no carga se nota aquí, antes de guardar.
+    if (img) img.addEventListener('error', () => { caja.innerHTML = ''; caja.classList.add('rota'); });
+  }
+
+  // Cómo se nombra una cuenta en su botón: "@usuario" o lo último del enlace.
+  function nombreDeCuenta(k) {
+    if (k.handle) return '@' + k.handle.replace(/^@/, '');
+    const fin = (k.url || '').split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || '';
+    return fin.length > 26 ? fin.slice(0, 25) + '…' : fin;
+  }
+
+  /** Un botón por cada cuenta del formulario de la que se puede tomar la foto, y «Manual». */
+  function prepararFoto(editor) {
+    const fuentes = $('#fFotoFuentes');
+    let cuentas = [];
+
+    editor.escuchar(() => {
+      const todas = editor.cuentas().filter((k) => REDES_CON_FOTO.includes(k.plataforma) && (k.plataforma !== 'youtube' || k.channelId));
+      // YouTube primero: es la fuente más segura y no gasta del cupo diario.
+      cuentas = todas.filter((k) => k.plataforma === 'youtube').concat(todas.filter((k) => k.plataforma !== 'youtube'));
+      fuentes.innerHTML = '<span class="hint">Tomarla de:</span>'
+        + cuentas.map((k, i) => `<button class="btn sm" type="button" data-fuente="${i}">${esc(PLATAFORMAS[k.plataforma] || k.plataforma)} · ${esc(nombreDeCuenta(k))}</button>`).join('')
+        + '<button class="btn sm" type="button" data-fuente="manual">Manual</button>'
+        + (cuentas.length ? '' : '<span class="hint">Agrega una red o un canal y aparecerá aquí.</span>');
+    });
+
+    fuentes.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-fuente]');
+      if (!b) return;
+      if (b.dataset.fuente === 'manual') { $('#fFoto').focus(); $('#fFoto').select(); return; }
+
+      const k = cuentas[Number(b.dataset.fuente)];
+      const red = PLATAFORMAS[k.plataforma] || k.plataforma;
+      const texto = b.textContent;
+      b.disabled = true; b.textContent = 'Trayendo…';
+      try {
+        const p = new URLSearchParams({ plataforma: k.plataforma, url: k.url || '' });
+        if (k.channelId) p.set('channelId', k.channelId);
+        const r = await api('/api/admin/foto?' + p.toString());
+        ponerFoto(r.url);
+        toast('Foto tomada de ' + red + '. Se guarda al guardar el formulario.');
+      } catch (err) {
+        // Un servidor anterior a esto no tiene la ruta.
+        toast(err.message === 'Esa ruta no existe.'
+          ? 'Este servidor todavía no sabe tomar fotos de las redes. Actualízalo, o pega la dirección de la imagen.'
+          : err.message, true);
+      } finally {
+        // La lista pudo repintarse mientras tanto; entonces el botón ya es otro.
+        if (b.isConnected) { b.disabled = false; b.textContent = texto; }
+      }
+    });
+
+    $('#fFoto').addEventListener('input', pintarFoto);
+    pintarFoto();
   }
 
   function prepararBusqueda(alEncontrar) {
@@ -757,11 +855,11 @@
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
           <label class="f">Categoría<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(c.bio)}</textarea></label>
-          <label class="f full">Foto (URL)<input class="input" id="fFoto" value="${esc(c.fotoUrl)}" placeholder="https://"></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
         ${seccionRedes(true)}
         ${seccionYouTube(true)}
+        ${seccionFoto('Foto de perfil', c.fotoUrl)}
         ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
           <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
           <p class="hint" style="margin:10px 0 0">Los videos de estos canales también les llegan a quienes lo siguen. Se cambia en la ficha de cada canal, en la sección Canales.</p>
@@ -810,6 +908,7 @@
         if (!c) rellenarDesdeCanal(d);
         toast('Canal agregado: ' + (d.titulo || d.channelId));
       });
+      prepararFoto(editor);
     });
   }
 
@@ -851,7 +950,6 @@
         <div class="form">
           <label class="f full">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(p.nombre)}"></label>
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(p.descripcion)}</textarea></label>
-          <label class="f full">Logo (URL)<input class="input" id="fFoto" value="${esc(p.logoUrl)}" placeholder="https://"></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${p.activo ? 'checked' : ''}> Visible en la app y suscrita a los videos de sus canales propios</label>
         </div>
         ${servidorConFichas() ? `<fieldset><legend>En el directorio</legend>
@@ -860,6 +958,7 @@
           <p class="hint" style="margin:10px 0 0">Sale en el listado de creadores, con sus canales, y la gente la sigue desde ahí. Sirve también para las versiones de la app que no tienen la pestaña de productoras.</p>
         </fieldset>` : ''}
         ${seccionesDeCanales(false)}
+        ${seccionFoto('Logo', p.logoUrl)}
         ${deCreadores.length ? `<fieldset><legend>Canales de creadores que son de esta productora</legend><div class="chips">${deCreadores.map((k) => chipCanal(k, true)).join('')}</div></fieldset>` : ''}
         <fieldset><legend>Creadores que figuran en ella</legend>
           ${casillas('creadores', estado.creadores || [], p.creadores || [], 'Todavía no hay creadores.')}
@@ -905,6 +1004,7 @@
         if (!p) rellenarDesdeCanal(d);
         toast('Canal agregado: ' + (d.titulo || d.channelId));
       });
+      prepararFoto(editor);
     });
   }
 

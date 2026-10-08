@@ -100,6 +100,14 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:60
 .form{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .form .full{grid-column:1/-1}
 .check{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600}
+.foto{display:flex;gap:14px;align-items:flex-start}
+.foto-previa{flex:none;width:72px;height:72px;border-radius:50%;background:var(--surface-2);border:1px solid var(--line);overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:11.5px;color:var(--muted);text-align:center;line-height:1.2}
+.foto-previa:empty::after{content:"Sin foto"}
+.foto-previa.rota{border-color:var(--danger)}
+.foto-previa.rota:empty::after{content:"No carga";color:var(--danger)}
+.foto-previa img{width:100%;height:100%;object-fit:cover}
+.foto-datos{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:8px}
+.foto-fuentes{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
 .opcional{font-weight:500;font-size:12px;color:var(--muted);margin-left:6px}
 .ajuste{padding:14px 18px;display:flex;flex-direction:column;gap:8px}
 .ajuste .hint{margin:0;max-width:80ch;font-size:13.5px}
