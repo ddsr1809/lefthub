@@ -1,7 +1,9 @@
 package com.tuempresa.relay.directorio;
 
 import com.tuempresa.relay.modelo.Canal;
+import com.tuempresa.relay.modelo.Creador;
 import com.tuempresa.relay.modelo.Dtos;
+import com.tuempresa.relay.modelo.Productora;
 import com.tuempresa.relay.modelo.Repositorios;
 import com.tuempresa.relay.websub.WebSubService;
 import org.slf4j.Logger;
@@ -29,6 +31,9 @@ import java.util.UUID;
  * productora. Los dos guardan su lista por aquí, así que las reglas —qué
  * plataformas valen, que un canal de YouTube no puede tener dos dueños, qué
  * fila se reutiliza— están escritas una vez.
+ *
+ * Un canal de YouTube tiene además su ficha propia (guardarFicha): ahí se
+ * dice con qué otros creadores aparece y se le puede cambiar de dueño.
  */
 @Service
 public class CanalesService {
@@ -146,6 +151,7 @@ public class CanalesService {
         actuales.forEach(k -> conocidos.add(k.getId()));
 
         if (creadorId != null) comprobarProductoras(limpios);
+        comprobarCreadores(limpios);
         comprobarQueNoSonDeOtro(limpios, conocidos);
 
         Plan plan = planear(actuales, limpios);
@@ -174,6 +180,8 @@ public class CanalesService {
             canal.setHandle(pedido.handle());
             canal.setChannelId(pedido.channelId());
             canal.setOrden(i);
+            // Sin lista, el canal sigue apareciendo con los creadores que ya tenía.
+            if (pedido.creadores() != null) ponerVinculados(canal, pedido.creadores());
             guardados.add(canal);
         }
 
@@ -198,6 +206,172 @@ public class CanalesService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Uno de los canales apunta a una productora que ya no existe.");
         }
+    }
+
+    /** Los creadores con los que se dice que aparece un canal tienen que existir. */
+    private void comprobarCreadores(List<Dtos.GuardarCanal> pedidos) {
+        Set<UUID> pedidos2 = new HashSet<>();
+        pedidos.forEach(p -> { if (p.creadores() != null) pedidos2.addAll(p.creadores()); });
+        comprobarQueExisten(pedidos2);
+    }
+
+    private void comprobarQueExisten(Collection<UUID> ids) {
+        if (ids.isEmpty()) return;
+        if (creadores.findAllById(ids).size() != new HashSet<>(ids).size()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Uno de los creadores con los que aparece el canal ya no existe.");
+        }
+    }
+
+    /** Deja al canal apareciendo exactamente con esos creadores, sin contar a su dueño. */
+    private static void ponerVinculados(Canal canal, Collection<UUID> pedidos) {
+        Set<UUID> quedan = new LinkedHashSet<>(pedidos);
+        quedan.remove(null);
+        quedan.remove(canal.getCreadorId());
+
+        // Sobre el mismo conjunto: Hibernate vigila esa instancia.
+        canal.getVinculados().retainAll(quedan);
+        canal.getVinculados().addAll(quedan);
+    }
+
+    // -------------------------------------------------------------------------
+    // La ficha de un canal de YouTube, por sí sola
+    // -------------------------------------------------------------------------
+
+    /**
+     * @param creadores   creadores dueños que hay que volver a copiar a testing
+     * @param productoras productoras dueñas (de canales sin creador) que hay
+     *                    que volver a copiar
+     */
+    public record Ficha(Canal canal, Cambio cambio, Set<UUID> creadores, Set<UUID> productoras) {}
+
+    /**
+     * Guarda la ficha de un canal de YouTube: de quién es, de qué productora
+     * y con qué otros creadores aparece. Es el único sitio donde un canal
+     * puede cambiar de dueño.
+     */
+    @Transactional
+    public Ficha guardarFicha(Dtos.GuardarFichaDeCanal peticion) {
+        Canal canal;
+        if (peticion.id() != null) {
+            canal = canales.findById(peticion.id())
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                            "Ese canal ya no existe."));
+            if (!Canal.YOUTUBE.equals(canal.getPlataforma())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Solo los canales de YouTube tienen ficha propia.");
+            }
+        } else {
+            canal = new Canal();
+            canal.setPlataforma(Canal.YOUTUBE);
+        }
+
+        UUID creadorId = peticion.creadorId();
+        UUID productoraId = peticion.productoraId();
+
+        if (creadorId == null && productoraId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El canal tiene que ser de un creador o de una productora.");
+        }
+        Creador dueno = creadorId == null ? null : creadores.findById(creadorId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Ese creador ya no existe."));
+        Productora casa = productoraId == null ? null : productoras.findById(productoraId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Esa productora ya no existe."));
+
+        List<UUID> conQuien = peticion.creadores() != null ? peticion.creadores() : List.of();
+        comprobarQueExisten(conQuien.stream().filter(Objects::nonNull).toList());
+
+        String channelId = limpiar(peticion.channelId());
+        String url = limpiar(peticion.url());
+        if (channelId == null || url == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Faltan el enlace o el ID del canal de YouTube.");
+        }
+        Optional<Canal> ocupado = canales.porCanalDeYouTube(channelId);
+        if (ocupado.isPresent() && !ocupado.get().getId().equals(canal.getId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Ese canal de YouTube ya está en el directorio: es de "
+                            + nombreDelDueno(ocupado.get()) + ".");
+        }
+
+        // Cómo estaba, para saber qué dar de baja en el hub y a quién más
+        // hay que volver a copiar a testing.
+        List<String> antes = deYouTube(List.of(canal));
+        UUID creadorAnterior = canal.getCreadorId();
+        UUID productoraAnterior = canal.getProductoraId();
+        boolean nuevo = canal.getId() == null;
+        boolean cambiaDeDueno = nuevo || !Objects.equals(creadorAnterior, creadorId)
+                || (creadorId == null && !Objects.equals(productoraAnterior, productoraId));
+
+        String nombre = limpiar(peticion.nombre());
+        if (nombre != null && nombre.length() > MAXIMO_NOMBRE) nombre = nombre.substring(0, MAXIMO_NOMBRE);
+
+        canal.setNombre(nombre);
+        canal.setUrl(url);
+        canal.setHandle(limpiar(peticion.handle()));
+        canal.setChannelId(channelId);
+        canal.setCreadorId(creadorId);
+        canal.setProductoraId(productoraId);
+        if (cambiaDeDueno) {
+            // Al final de la lista de su nuevo dueño: no le quita el sitio a
+            // su canal principal.
+            List<Canal> hermanos = creadorId != null
+                    ? canales.deCreador(creadorId)
+                    : canales.propiosDeProductora(productoraId);
+            canal.setOrden(hermanos.stream()
+                    .filter(k -> !k.getId().equals(canal.getId()))
+                    .mapToInt(Canal::getOrden).max().orElse(-1) + 1);
+        }
+        ponerVinculados(canal, conQuien);
+
+        canales.saveAndFlush(canal);
+
+        // Lo que publicó cuando no tenía creador pasa a ser de su creador;
+        // si no, esos videos se quedarían sin nadie que los firme.
+        if (creadorId != null && creadorAnterior == null && !nuevo) {
+            publicaciones.adoptar(canal.getId(), creadorId);
+        }
+
+        boolean visible = dueno != null ? dueno.isActivo() : casa.isActivo();
+
+        Set<UUID> creadoresAfectados = new LinkedHashSet<>();
+        Set<UUID> productorasAfectadas = new LinkedHashSet<>();
+        anotarDueno(creadorId, productoraId, creadoresAfectados, productorasAfectadas);
+        if (!nuevo) anotarDueno(creadorAnterior, productoraAnterior, creadoresAfectados, productorasAfectadas);
+
+        return new Ficha(canal, Cambio.de(antes, deYouTube(List.of(canal)), visible),
+                creadoresAfectados, productorasAfectadas);
+    }
+
+    /**
+     * Quita un canal de YouTube del directorio. Lo que publicó sigue siendo
+     * de su creador; si no tenía, se va con él.
+     */
+    @Transactional
+    public Ficha eliminarFicha(UUID canalId) {
+        Canal canal = canales.findById(canalId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Ese canal ya no existe."));
+
+        List<String> suyo = deYouTube(List.of(canal));
+        Set<UUID> creadoresAfectados = new LinkedHashSet<>();
+        Set<UUID> productorasAfectadas = new LinkedHashSet<>();
+        anotarDueno(canal.getCreadorId(), canal.getProductoraId(), creadoresAfectados, productorasAfectadas);
+
+        publicaciones.borrarSinCreadorDe(List.of(canal.getId()));
+        canales.delete(canal);
+        canales.flush();
+
+        return new Ficha(canal, Cambio.de(suyo, List.of(), false), creadoresAfectados, productorasAfectadas);
+    }
+
+    /** El dueño es el creador; sin creador, la productora. */
+    private static void anotarDueno(UUID creadorId, UUID productoraId,
+                                    Set<UUID> creadores, Set<UUID> productoras) {
+        if (creadorId != null) creadores.add(creadorId);
+        else if (productoraId != null) productoras.add(productoraId);
     }
 
     /**
@@ -271,7 +445,9 @@ public class CanalesService {
             }
 
             limpios.add(new Dtos.GuardarCanal(pedido.id(), plataforma, nombre, url,
-                    limpiar(pedido.handle()), channelId, pedido.productoraId()));
+                    limpiar(pedido.handle()), channelId, pedido.productoraId(),
+                    pedido.creadores() == null ? null
+                            : pedido.creadores().stream().filter(Objects::nonNull).distinct().toList()));
         }
         return limpios;
     }
@@ -351,7 +527,7 @@ public class CanalesService {
                         plataforma,
                         principal != null ? principal.getNombre() : null,
                         conexion.url(), conexion.handle(), conexion.channelId(),
-                        principal != null ? principal.getProductoraId() : null));
+                        principal != null ? principal.getProductoraId() : null, null));
             }
 
             dePlataforma.stream().skip(1).forEach(k -> pedidos.add(comoPedido(k)));
@@ -362,7 +538,8 @@ public class CanalesService {
     /** El canal tal como está, para guardar "lo mismo que había". */
     static Dtos.GuardarCanal comoPedido(Canal k) {
         return new Dtos.GuardarCanal(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
-                k.getHandle(), k.getChannelId(), k.getProductoraId());
+                k.getHandle(), k.getChannelId(), k.getProductoraId(),
+                List.copyOf(k.getVinculados()));
     }
 
     static List<String> deYouTube(Collection<Canal> lista) {

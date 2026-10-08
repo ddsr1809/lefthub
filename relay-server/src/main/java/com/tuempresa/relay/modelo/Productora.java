@@ -39,6 +39,18 @@ public class Productora {
     private boolean activo = true;
 
     /**
+     * Aparece en el directorio como un creador más. Así se la puede seguir
+     * también desde las versiones de la app que no conocen las productoras:
+     * para ellas es una fila más del listado.
+     */
+    @Column(name = "en_directorio", nullable = false)
+    private boolean enDirectorio = false;
+
+    /** En qué tema del directorio sale. Solo cuenta si aparece en él. */
+    @Column(nullable = false)
+    private String categoria = "otros";
+
+    /**
      * Solo en testing: id que tiene esta productora en producción, cuando
      * llegó copiada desde allá. Ver V5__origen_de_replica.sql.
      */
@@ -65,6 +77,12 @@ public class Productora {
 
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
+
+    public boolean isEnDirectorio() { return enDirectorio; }
+    public void setEnDirectorio(boolean enDirectorio) { this.enDirectorio = enDirectorio; }
+
+    public String getCategoria() { return categoria; }
+    public void setCategoria(String categoria) { this.categoria = categoria; }
 
     public UUID getOrigenId() { return origenId; }
     public void setOrigenId(UUID origenId) { this.origenId = origenId; }

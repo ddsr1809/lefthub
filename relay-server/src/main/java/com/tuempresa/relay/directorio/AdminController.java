@@ -35,6 +35,7 @@ public class AdminController {
 
     private final Repositorios.Creadores creadores;
     private final Repositorios.Productoras productoras;
+    private final Repositorios.Canales canales;
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Usuarios usuarios;
     private final Repositorios.Suscripciones suscripciones;
@@ -50,6 +51,7 @@ public class AdminController {
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
+                           Repositorios.Canales canales,
                            Repositorios.Publicaciones publicaciones,
                            Repositorios.Usuarios usuarios,
                            Repositorios.Suscripciones suscripciones,
@@ -60,6 +62,7 @@ public class AdminController {
                            ReplicaService replica) {
         this.creadores = creadores;
         this.productoras = productoras;
+        this.canales = canales;
         this.publicaciones = publicaciones;
         this.usuarios = usuarios;
         this.suscripciones = suscripciones;
@@ -85,7 +88,7 @@ public class AdminController {
         Catalogo.Vista vista = catalogo.vista();
         Map<String, Suscripcion> estados = estadosDelHub();
 
-        return creadores.findAll().stream()
+        return vista.creadores().stream()
                 .sorted(Comparator.comparing(Creador::getNombre))
                 .map(c -> {
                     List<Canal> suyos = vista.canalesDe(c.getId());
@@ -98,8 +101,10 @@ public class AdminController {
                             s != null ? s.getEstado() : null,
                             s != null ? s.getExpiraEn() : null,
                             usuarios.cuantosSiguen(c.getId()),
-                            suyos.stream().map(k -> canalAdmin(k, c.getNombre(), estados)).toList(),
-                            List.copyOf(c.getProductoras()));
+                            suyos.stream().map(k -> canalAdmin(k, vista, estados)).toList(),
+                            List.copyOf(c.getProductoras()),
+                            vista.compartidosCon(c.getId()).stream()
+                                    .map(k -> canalAdmin(k, vista, estados)).toList());
                 })
                 .toList();
     }
@@ -157,23 +162,20 @@ public class AdminController {
         Catalogo.Vista vista = catalogo.vista();
         Map<String, Suscripcion> estados = estadosDelHub();
 
-        List<Creador> todos = creadores.findAll();
-        Map<UUID, String> nombres = new HashMap<>();
-        todos.forEach(c -> nombres.put(c.getId(), c.getNombre()));
-
-        return productoras.findAll().stream()
+        return vista.productoras().stream()
                 .sorted(Comparator.comparing(Productora::getNombre, String.CASE_INSENSITIVE_ORDER))
                 .map(p -> new Dtos.ProductoraAdminDto(
                         p.getId(), p.getNombre(), p.getDescripcion(), p.getLogoUrl(), p.isActivo(),
                         vista.canalesDeProductora(p.getId()).stream()
-                                .map(k -> canalAdmin(k, nombres.get(k.getCreadorId()), estados))
+                                .map(k -> canalAdmin(k, vista, estados))
                                 .toList(),
-                        todos.stream()
+                        vista.creadores().stream()
                                 .filter(c -> c.getProductoras().contains(p.getId()))
                                 .sorted(Comparator.comparing(Creador::getNombre, String.CASE_INSENSITIVE_ORDER))
                                 .map(Creador::getId)
                                 .toList(),
-                        usuarios.cuantosSiguenProductora(p.getId())))
+                        usuarios.cuantosSiguenProductora(p.getId()),
+                        p.isEnDirectorio(), p.getCategoria()))
                 .toList();
     }
 
@@ -216,6 +218,75 @@ public class AdminController {
     }
 
     // -------------------------------------------------------------------------
+    // Canales de YouTube
+    // -------------------------------------------------------------------------
+
+    /**
+     * Todos los canales de YouTube del directorio, cada uno con su dueño, su
+     * productora, los demás creadores con los que aparece y el estado de su
+     * suscripción al hub.
+     */
+    @GetMapping("/canales")
+    @Transactional(readOnly = true)
+    public List<Dtos.CanalAdminDto> listarCanales() {
+        Catalogo.Vista vista = catalogo.vista();
+        Map<String, Suscripcion> estados = estadosDelHub();
+
+        return canales.deYouTube().stream().map(k -> canalAdmin(k, vista, estados)).toList();
+    }
+
+    /**
+     * Alta o edición de la ficha de un canal de YouTube: de quién es, de qué
+     * productora y con qué otros creadores aparece. Lo que publique les llega
+     * a quienes siguen a cualquiera de ellos.
+     */
+    @PostMapping("/canales")
+    @Transactional
+    public Dtos.CanalGuardado guardarCanal(@Valid @RequestBody Dtos.GuardarFichaDeCanal peticion) {
+        CanalesService.Ficha ficha = canalesService.guardarFicha(peticion);
+
+        String avisoSuscripcion = null;
+        try {
+            canalesService.sincronizarWebSub(ficha.cambio());
+        } catch (Exception e) {
+            log.error("No se pudo sincronizar la suscripción del canal {}", ficha.canal().getId(), e);
+            avisoSuscripcion = e.getMessage();
+        }
+
+        return new Dtos.CanalGuardado(ficha.canal().getId(), avisoSuscripcion, copiarDuenos(ficha));
+    }
+
+    @DeleteMapping("/canales/{id}")
+    @Transactional
+    public Dtos.RespuestaSimple borrarCanal(@PathVariable UUID id) {
+        CanalesService.Ficha ficha = canalesService.eliminarFicha(id);
+
+        darDeBaja(ficha.cambio());
+        copiarDuenos(ficha);
+        return Dtos.RespuestaSimple.de("Canal retirado del directorio.");
+    }
+
+    /**
+     * Un canal no viaja solo a testing: va dentro de su dueño. Aquí se
+     * vuelven a copiar el de ahora y, si cambió, el de antes.
+     *
+     * @return el primer motivo de fallo, o null si todo se copió.
+     */
+    private String copiarDuenos(CanalesService.Ficha ficha) {
+        String aviso = null;
+
+        for (Productora p : productoras.findAllById(ficha.productoras())) {
+            String fallo = replica.enviar(p);
+            if (aviso == null) aviso = fallo;
+        }
+        for (Creador c : creadores.findAllById(ficha.creadores())) {
+            String fallo = replica.enviar(c);
+            if (aviso == null) aviso = fallo;
+        }
+        return aviso;
+    }
+
+    // -------------------------------------------------------------------------
 
     /** Bajas del hub al retirar algo. Si fallan, lo retirado se retira igual. */
     private void darDeBaja(Cambio cambio) {
@@ -232,15 +303,18 @@ public class AdminController {
         return estados;
     }
 
-    private static Dtos.CanalAdminDto canalAdmin(Canal k, String creadorNombre,
+    private static Dtos.CanalAdminDto canalAdmin(Canal k, Catalogo.Vista vista,
                                                  Map<String, Suscripcion> estados) {
         Suscripcion s = k.getCanalDeYouTube() != null ? estados.get(k.getCanalDeYouTube()) : null;
+        Creador dueno = vista.creador(k.getCreadorId());
 
         return new Dtos.CanalAdminDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
-                k.getHandle(), k.getChannelId(), k.getCreadorId(), creadorNombre,
+                k.getHandle(), k.getChannelId(), k.getCreadorId(),
+                dueno != null ? dueno.getNombre() : null,
                 k.getProductoraId(),
                 s != null ? s.getEstado() : null,
-                s != null ? s.getExpiraEn() : null);
+                s != null ? s.getExpiraEn() : null,
+                List.copyOf(k.getVinculados()));
     }
 
     /**
@@ -341,7 +415,7 @@ public class AdminController {
         List<Publicacion> lista = publicaciones.findAllByOrderByPublicadoEnDesc(
                 PageRequest.of(0, Math.min(limite, 200)));
 
-        return DirectorioController.aDtos(lista, catalogo.vista(), creadores);
+        return DirectorioController.aDtos(lista, catalogo.vista());
     }
 
     /**

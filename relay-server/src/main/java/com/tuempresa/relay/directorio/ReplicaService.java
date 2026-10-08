@@ -194,10 +194,28 @@ public class ReplicaService {
             else errores.add(creador.getNombre() + ": " + fallo);
         }
 
+        // Segunda vuelta para quien tiene canales que aparecen con otros
+        // creadores: en la primera, testing todavía no conocía a todos y dejó
+        // caer esas ligas. Ahora ya están copiados.
+        for (Productora productora : casas) {
+            if (!conCompartidos(canales.propiosDeProductora(productora.getId()))) continue;
+            String fallo = enviar(productora);
+            if (fallo != null) errores.add("Productora " + productora.getNombre() + " (canales compartidos): " + fallo);
+        }
+        for (Creador creador : todos) {
+            if (!conCompartidos(canales.deCreador(creador.getId()))) continue;
+            String fallo = enviar(creador);
+            if (fallo != null) errores.add(creador.getNombre() + " (canales compartidos): " + fallo);
+        }
+
         int total = casas.size() + todos.size();
         log.info("Copia completa a testing: {} de {} ({} productoras, {} creadores)",
                 replicados, total, casas.size(), todos.size());
         return new Dtos.ResultadoReplica(total, replicados, errores.size(), errores);
+    }
+
+    private static boolean conCompartidos(List<Canal> lista) {
+        return lista.stream().anyMatch(k -> !k.getVinculados().isEmpty());
     }
 
     /**
@@ -224,7 +242,8 @@ public class ReplicaService {
     static Dtos.GuardarProductora cuerpoDe(Productora productora, List<Canal> propios) {
         return new Dtos.GuardarProductora(productora.getId(), productora.getNombre(),
                 productora.getDescripcion(), productora.getLogoUrl(), productora.isActivo(),
-                propios.stream().map(CanalesService::comoPedido).toList(), null);
+                propios.stream().map(CanalesService::comoPedido).toList(), null,
+                productora.isEnDirectorio(), productora.getCategoria());
     }
 
     static String destino(String url) {
@@ -310,12 +329,16 @@ public class ReplicaService {
         productora.setOrigenId(origen);
 
         // Los ids de los canales son de producción: aquí se emparejan por
-        // channel_id o por enlace. Los creadores no se tocan (ver cuerpoDe).
+        // channel_id o por enlace. Quién figura en ella no se toca (ver
+        // cuerpoDe); con qué creadores aparece cada canal, sí.
         Dtos.GuardarProductora local = new Dtos.GuardarProductora(null, peticion.nombre(),
                 peticion.descripcion(), peticion.logoUrl(), peticion.activo(),
                 peticion.canales() == null ? null
-                        : peticion.canales().stream().map(k -> sinIds(k, null)).toList(),
-                null);
+                        : peticion.canales().stream()
+                                .filter(Objects::nonNull)
+                                .map(k -> sinIds(k, null))
+                                .toList(),
+                null, peticion.enDirectorio(), peticion.categoria());
 
         Cambio cambio = servicioDeProductoras.aplicar(productora, local);
 
@@ -364,9 +387,21 @@ public class ReplicaService {
                 suyos, casas);
     }
 
-    private static Dtos.GuardarCanal sinIds(Dtos.GuardarCanal k, UUID productoraLocal) {
+    /**
+     * El canal con las referencias de aquí. Un creador con el que aparece y
+     * que testing todavía no conoce se deja caer, igual que una productora:
+     * la liga vuelve la próxima vez que se copie.
+     */
+    private Dtos.GuardarCanal sinIds(Dtos.GuardarCanal k, UUID productoraLocal) {
+        List<UUID> conQuien = k.creadores() == null ? null
+                : k.creadores().stream()
+                        .filter(Objects::nonNull)
+                        .map(origen -> creadores.findByOrigenId(origen).map(Creador::getId).orElse(null))
+                        .filter(Objects::nonNull)
+                        .toList();
+
         return new Dtos.GuardarCanal(null, k.plataforma(), k.nombre(), k.url(),
-                k.handle(), k.channelId(), productoraLocal);
+                k.handle(), k.channelId(), productoraLocal, conQuien);
     }
 
     /**

@@ -40,7 +40,7 @@ class CanalesTest {
     }
 
     private static Dtos.GuardarCanal pedido(UUID id, String plataforma, String url, String channelId) {
-        return new Dtos.GuardarCanal(id, plataforma, null, url, null, channelId, null);
+        return new Dtos.GuardarCanal(id, plataforma, null, url, null, channelId, null, null);
     }
 
     // -------------------------------------------------------------------------
@@ -115,7 +115,7 @@ class CanalesTest {
     @DisplayName("Se recortan los espacios, y lo que queda vacío se guarda como ausente")
     void normaliza() {
         List<Dtos.GuardarCanal> limpios = CanalesService.normalizar(List.of(
-                new Dtos.GuardarCanal(null, " youtube ", "  ", " https://youtube.com/@a ", "", " " + PRINCIPAL + " ", null)));
+                new Dtos.GuardarCanal(null, " youtube ", "  ", " https://youtube.com/@a ", "", " " + PRINCIPAL + " ", null, null)));
 
         Dtos.GuardarCanal k = limpios.get(0);
         assertEquals("youtube", k.plataforma());
@@ -142,11 +142,35 @@ class CanalesTest {
     }
 
     @Test
+    @DisplayName("Con qué creadores aparece un canal: sin lista no se toca; con lista, sin repetidos ni huecos")
+    void creadoresDelCanal() {
+        UUID ana = UUID.randomUUID();
+
+        List<Dtos.GuardarCanal> limpios = CanalesService.normalizar(List.of(
+                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@a", null, PRINCIPAL, null, null),
+                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@b", null, CLIPS, null,
+                        java.util.Arrays.asList(ana, null, ana))));
+
+        assertNull(limpios.get(0).creadores());
+        assertEquals(List.of(ana), limpios.get(1).creadores());
+    }
+
+    @Test
+    @DisplayName("Guardar \"lo mismo que había\" conserva con quién aparece el canal")
+    void comoPedidoLlevaLosCreadores() {
+        UUID ana = UUID.randomUUID();
+        Canal oficial = canal("youtube", "https://youtube.com/@casa", PRINCIPAL);
+        oficial.getVinculados().add(ana);
+
+        assertEquals(List.of(ana), CanalesService.comoPedido(oficial).creadores());
+    }
+
+    @Test
     @DisplayName("El nombre de un canal no pasa de 60 caracteres")
     void nombreLargo() {
         String largo = "x".repeat(200);
         List<Dtos.GuardarCanal> limpios = CanalesService.normalizar(List.of(
-                new Dtos.GuardarCanal(null, "web", largo, "https://ejemplo.mx", null, null, null)));
+                new Dtos.GuardarCanal(null, "web", largo, "https://ejemplo.mx", null, null, null, null)));
 
         assertEquals(CanalesService.MAXIMO_NOMBRE, limpios.get(0).nombre().length());
     }

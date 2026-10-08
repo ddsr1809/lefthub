@@ -19,7 +19,11 @@ import org.springframework.web.client.RestClientResponseException;
 import java.io.FileInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -38,10 +42,11 @@ import java.util.UUID;
  * fan-out ni almacenar tokens de dispositivo. Eso último simplifica además el
  * borrado de cuenta.
  *
- * Las productoras tienen su propio topic. Cuando un video es a la vez de un
- * creador y de una productora, no se mandan dos mensajes sino uno con una
- * condición ("sigue al creador O a la productora"): FCM lo entrega una sola
- * vez a cada teléfono, aunque siga a los dos.
+ * Las productoras tienen su propio topic. Cuando un video tiene varias
+ * audiencias (su creador, su productora, los demás creadores con los que
+ * aparece el canal) no se manda un mensaje a cada una sino uno solo con una
+ * condición ("sigue a este O a aquel"): FCM lo entrega una sola vez a cada
+ * teléfono, aunque siga a varios.
  */
 @Service
 public class PushService {
@@ -109,24 +114,38 @@ public class PushService {
     /**
      * En nombre de quién sale un aviso y a quién le llega.
      *
-     * Siempre hay creador, productora o los dos. El nombre que se lee en la
-     * notificación es el del creador; el de la productora solo cuando el canal
-     * es suyo y de nadie más.
+     * Siempre hay creador, productora o los dos: es el dueño del canal. El
+     * nombre que se lee en la notificación es el del creador; el de la
+     * productora solo cuando el canal es suyo y de nadie más. {@code tambien}
+     * son los demás creadores con los que aparece el canal: no firman, pero a
+     * quienes los siguen también les llega.
      */
-    public record Emisor(String nombre, UUID creadorId, UUID productoraId) {
+    public record Emisor(String nombre, UUID creadorId, UUID productoraId, List<UUID> tambien) {
 
-        public static Emisor de(Creador creador, Productora productora) {
+        /** FCM no admite más de cinco topics en una condición. */
+        static final int TOPICS_POR_MENSAJE = 5;
+
+        public Emisor {
+            tambien = tambien != null ? List.copyOf(tambien) : List.of();
+        }
+
+        public static Emisor de(Creador creador, Productora productora, Collection<UUID> tambien) {
             if (creador == null && productora == null) {
                 throw new IllegalArgumentException("Un aviso necesita creador o productora.");
             }
             return new Emisor(
                     creador != null ? creador.getNombre() : productora.getNombre(),
                     creador != null ? creador.getId() : null,
-                    productora != null ? productora.getId() : null);
+                    productora != null ? productora.getId() : null,
+                    tambien != null ? List.copyOf(tambien) : List.of());
+        }
+
+        public static Emisor de(Creador creador, Productora productora) {
+            return de(creador, productora, List.of());
         }
 
         public static Emisor de(Creador creador) {
-            return de(creador, null);
+            return de(creador, null, List.of());
         }
 
         /** El topic de siempre; también agrupa los avisos en el teléfono. */
@@ -135,21 +154,46 @@ public class PushService {
         }
 
         /**
-         * La condición de FCM cuando hay dos audiencias, o null si basta con
-         * el topic. Con condición, quien sigue al creador y a la productora
-         * recibe un solo aviso.
+         * Todos los topics a los que va el aviso, sin repetir.
+         *
+         * La productora lleva dos: el suyo y el que le tocaría si fuera un
+         * creador. Una versión de la app que no conoce las productoras la ve
+         * en el directorio como un creador más y se suscribe a ese.
          */
-        public String condicion() {
-            if (creadorId == null || productoraId == null) return null;
-            return "'" + topicDe(creadorId) + "' in topics || '"
-                    + topicDeProductora(productoraId) + "' in topics";
+        public List<String> topics() {
+            Set<String> todos = new LinkedHashSet<>();
+            if (creadorId != null) todos.add(topicDe(creadorId));
+            if (productoraId != null) {
+                todos.add(topicDeProductora(productoraId));
+                todos.add(topicDe(productoraId));
+            }
+            tambien.forEach(id -> todos.add(topicDe(id)));
+            return List.copyOf(todos);
         }
 
-        /** Pone el destinatario en el mensaje: `topic` o `condition`, nunca los dos. */
-        void dirigir(ObjectNode mensaje) {
-            String condicion = condicion();
-            if (condicion != null) mensaje.put("condition", condicion);
-            else mensaje.put("topic", topic());
+        /**
+         * A quién se dirige cada mensaje: un topic suelto, o una condición de
+         * FCM ("sigue a este O a aquel") cuando hay varias audiencias. Con
+         * condición, quien sigue a dos de ellas recibe un solo aviso.
+         *
+         * Casi siempre es un solo mensaje. Solo con más de cinco topics hay
+         * que partirlo, y entonces quien cae en dos trozos lo recibe dos
+         * veces; por eso esos mensajes llevan la misma etiqueta, para que el
+         * segundo sustituya al primero en la pantalla.
+         */
+        public List<Destino> destinos() {
+            List<String> todos = topics();
+            if (todos.size() == 1) return List.of(new Destino(todos.get(0), null));
+
+            List<Destino> destinos = new ArrayList<>();
+            for (int i = 0; i < todos.size(); i += TOPICS_POR_MENSAJE) {
+                List<String> trozo = todos.subList(i, Math.min(i + TOPICS_POR_MENSAJE, todos.size()));
+                destinos.add(trozo.size() == 1
+                        ? new Destino(trozo.get(0), null)
+                        : new Destino(null, String.join(" || ",
+                                trozo.stream().map(t -> "'" + t + "' in topics").toList())));
+            }
+            return destinos;
         }
 
         /**
@@ -159,6 +203,15 @@ public class PushService {
         void identificar(ObjectNode datos) {
             if (creadorId != null) datos.put("creatorId", String.valueOf(creadorId));
             if (productoraId != null) datos.put("productoraId", String.valueOf(productoraId));
+        }
+    }
+
+    /** El destinatario de un mensaje: `topic` o `condition`, nunca los dos. */
+    public record Destino(String topic, String condicion) {
+
+        void dirigir(ObjectNode mensaje) {
+            if (condicion != null) mensaje.put("condition", condicion);
+            else mensaje.put("topic", topic);
         }
     }
 
@@ -215,40 +268,50 @@ public class PushService {
     private boolean enviarPublicacion(Emisor emisor, String videoId, String titulo,
                                       String miniatura, String encabezado, String etiqueta) {
 
-        ObjectNode mensaje = json.createObjectNode();
-        emisor.dirigir(mensaje);
+        List<Destino> destinos = emisor.destinos();
+        boolean todos = true;
 
-        ObjectNode notificacion = mensaje.putObject("notification");
-        notificacion.put("title", encabezado);
-        notificacion.put("body", (titulo == null || titulo.isBlank())
-                ? "Toca para verlo en YouTube." : titulo);
-        if (miniatura != null) notificacion.put("image", miniatura);
+        for (Destino destino : destinos) {
+            ObjectNode mensaje = json.createObjectNode();
+            destino.dirigir(mensaje);
 
-        // Los datos viajan aparte para que la app resuelva el enlace profundo
-        // al abrir la notificación, incluso si el destino cambió después.
-        ObjectNode datos = mensaje.putObject("data");
-        datos.put("tipo", "publicacion");
-        emisor.identificar(datos);
-        datos.put("videoId", videoId);
-        datos.put("platform", "youtube");
-        datos.put("url", "https://www.youtube.com/watch?v=" + videoId);
+            ObjectNode notificacion = mensaje.putObject("notification");
+            notificacion.put("title", encabezado);
+            notificacion.put("body", (titulo == null || titulo.isBlank())
+                    ? "Toca para verlo en YouTube." : titulo);
+            if (miniatura != null) notificacion.put("image", miniatura);
 
-        ObjectNode android = mensaje.putObject("android");
-        android.put("priority", "HIGH");
-        ObjectNode androidNotif = android.putObject("notification");
-        androidNotif.put("channel_id", CANAL_PUBLICACIONES);
-        androidNotif.put("tag", etiqueta);
-        if (miniatura != null) androidNotif.put("image", miniatura);
+            // Los datos viajan aparte para que la app resuelva el enlace profundo
+            // al abrir la notificación, incluso si el destino cambió después.
+            ObjectNode datos = mensaje.putObject("data");
+            datos.put("tipo", "publicacion");
+            emisor.identificar(datos);
+            datos.put("videoId", videoId);
+            datos.put("platform", "youtube");
+            datos.put("url", "https://www.youtube.com/watch?v=" + videoId);
 
-        ObjectNode apns = mensaje.putObject("apns");
-        apns.putObject("headers").put("apns-priority", "10");
-        ObjectNode aps = apns.putObject("payload").putObject("aps");
-        aps.put("sound", "default");
-        aps.put("thread-id", emisor.topic());
-        aps.put("mutable-content", 1);
-        if (miniatura != null) apns.putObject("fcm_options").put("image", miniatura);
+            ObjectNode android = mensaje.putObject("android");
+            android.put("priority", "HIGH");
+            ObjectNode androidNotif = android.putObject("notification");
+            androidNotif.put("channel_id", CANAL_PUBLICACIONES);
+            androidNotif.put("tag", etiqueta);
+            if (miniatura != null) androidNotif.put("image", miniatura);
 
-        return enviar(mensaje, encabezado) == null;
+            ObjectNode apns = mensaje.putObject("apns");
+            ObjectNode cabeceras = apns.putObject("headers");
+            cabeceras.put("apns-priority", "10");
+            // Solo si el aviso salió partido: que la copia que llegue por el
+            // segundo trozo sustituya a la primera en vez de sumarse.
+            if (destinos.size() > 1) cabeceras.put("apns-collapse-id", "video_" + videoId);
+            ObjectNode aps = apns.putObject("payload").putObject("aps");
+            aps.put("sound", "default");
+            aps.put("thread-id", emisor.topic());
+            aps.put("mutable-content", 1);
+            if (miniatura != null) apns.putObject("fcm_options").put("image", miniatura);
+
+            if (enviar(mensaje, encabezado) != null) todos = false;
+        }
+        return todos;
     }
 
     /**
@@ -267,31 +330,39 @@ public class PushService {
                 ? "\"" + tituloVideo + "\" ahora está en " + donde + ". Toca para verlo."
                 : "Ahora está en " + donde + ". Toca para verlo.";
 
-        ObjectNode mensaje = json.createObjectNode();
-        emisor.dirigir(mensaje);
+        boolean todos = true;
 
-        ObjectNode notificacion = mensaje.putObject("notification");
-        notificacion.put("title", "El video de " + emisor.nombre() + " cambió de lugar");
-        notificacion.put("body", cuerpo);
+        for (Destino destino : emisor.destinos()) {
+            ObjectNode mensaje = json.createObjectNode();
+            destino.dirigir(mensaje);
 
-        ObjectNode datos = mensaje.putObject("data");
-        datos.put("tipo", "movido");
-        emisor.identificar(datos);
-        datos.put("videoId", videoId);
-        // FCM exige que todos los valores de data sean cadenas: un null
-        // devuelve 400 y el aviso se pierde entero.
-        datos.put("platform", destinoPlataforma != null ? destinoPlataforma : "web");
-        datos.put("url", destinoUrl != null ? destinoUrl : "");
+            ObjectNode notificacion = mensaje.putObject("notification");
+            notificacion.put("title", "El video de " + emisor.nombre() + " cambió de lugar");
+            notificacion.put("body", cuerpo);
 
-        ObjectNode android = mensaje.putObject("android");
-        android.put("priority", "HIGH");
-        android.putObject("notification").put("channel_id", CANAL_AVISOS);
+            ObjectNode datos = mensaje.putObject("data");
+            datos.put("tipo", "movido");
+            emisor.identificar(datos);
+            datos.put("videoId", videoId);
+            // FCM exige que todos los valores de data sean cadenas: un null
+            // devuelve 400 y el aviso se pierde entero.
+            datos.put("platform", destinoPlataforma != null ? destinoPlataforma : "web");
+            datos.put("url", destinoUrl != null ? destinoUrl : "");
 
-        ObjectNode apns = mensaje.putObject("apns");
-        apns.putObject("headers").put("apns-priority", "10");
-        apns.putObject("payload").putObject("aps").put("sound", "default");
+            ObjectNode android = mensaje.putObject("android");
+            android.put("priority", "HIGH");
+            ObjectNode androidNotif = android.putObject("notification");
+            androidNotif.put("channel_id", CANAL_AVISOS);
+            // Misma etiqueta en todos los trozos: ver Emisor.destinos().
+            androidNotif.put("tag", "movido_" + videoId);
 
-        return enviar(mensaje, "contenido movido de " + emisor.nombre()) == null;
+            ObjectNode apns = mensaje.putObject("apns");
+            apns.putObject("headers").put("apns-priority", "10");
+            apns.putObject("payload").putObject("aps").put("sound", "default");
+
+            if (enviar(mensaje, "contenido movido de " + emisor.nombre()) != null) todos = false;
+        }
+        return todos;
     }
 
     /**
@@ -321,10 +392,16 @@ public class PushService {
 
     // -------------------------------------------------------------------------
 
+    private static String destinoDe(ObjectNode mensaje) {
+        return mensaje.has("condition")
+                ? mensaje.path("condition").asText()
+                : "topic " + mensaje.path("topic").asText();
+    }
+
     /** Devuelve null si FCM aceptó el mensaje, o el motivo del fallo. */
     private String enviar(ObjectNode mensaje, String descripcion) {
         if (credenciales == null) {
-            log.warn("FCM sin configurar; no se envió el aviso de {}", descripcion);
+            log.warn("FCM sin configurar; no se envió el aviso de {} a {}", descripcion, destinoDe(mensaje));
             return "FCM sin configurar en el servidor (revisa FCM_PROYECTO_ID y el JSON de credenciales).";
         }
 
@@ -345,10 +422,7 @@ public class PushService {
                     .retrieve()
                     .body(JsonNode.class);
 
-            log.info("Aviso enviado ({}) a {}: {}", descripcion,
-                    mensaje.has("condition")
-                            ? mensaje.path("condition").asText()
-                            : "topic " + mensaje.path("topic").asText(),
+            log.info("Aviso enviado ({}) a {}: {}", descripcion, destinoDe(mensaje),
                     respuesta != null ? respuesta.path("name").asText() : "sin id");
             return null;
 

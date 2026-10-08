@@ -10,13 +10,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.text.Collator;
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Map;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -71,23 +70,47 @@ public class DirectorioController {
     @GetMapping("/creadores")
     @Transactional(readOnly = true)
     public List<Dtos.CreadorDto> listar(@RequestParam(required = false) String categoria) {
-        List<Creador> lista = (categoria == null || categoria.isBlank() || "todos".equals(categoria))
-                ? creadores.findByActivoTrueOrderByNombreAsc()
-                : creadores.findByActivoTrueAndCategoriaOrderByNombreAsc(categoria);
-
+        boolean todos = categoria == null || categoria.isBlank() || "todos".equals(categoria);
         Catalogo.Vista vista = catalogo.vista();
-        return lista.stream().map(vista::creador).toList();
+
+        List<Dtos.CreadorDto> lista = new ArrayList<>();
+        vista.creadores().stream()
+                .filter(c -> c.isActivo() && (todos || categoria.equals(c.getCategoria())))
+                .map(vista::ficha)
+                .forEach(lista::add);
+
+        // Las productoras que aparecen en el directorio van intercaladas por
+        // nombre, como una fila más. Los creadores conservan el orden en que
+        // los entrega la base.
+        Collator porNombre = Collator.getInstance(Locale.forLanguageTag("es"));
+        porNombre.setStrength(Collator.PRIMARY);
+
+        vista.productoras().stream()
+                .filter(p -> p.isActivo() && p.isEnDirectorio()
+                        && (todos || categoria.equals(p.getCategoria())))
+                .map(vista::comoCreador)
+                .forEach(fila -> {
+                    int i = 0;
+                    while (i < lista.size() && porNombre.compare(lista.get(i).nombre(), fila.nombre()) <= 0) i++;
+                    lista.add(i, fila);
+                });
+
+        return lista;
     }
 
     @GetMapping("/creadores/{id}")
     @Transactional(readOnly = true)
     public Dtos.CreadorDto uno(@PathVariable UUID id) {
-        Creador creador = creadores.findById(id)
-                .filter(Creador::isActivo)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Ese creador ya no está en el directorio."));
+        Catalogo.Vista vista = catalogo.vista();
 
-        return catalogo.vista().creador(creador);
+        Creador creador = vista.creadorVisible(id);
+        if (creador != null) return vista.ficha(creador);
+
+        Productora productora = vista.productoraVisible(id);
+        if (productora != null && productora.isEnDirectorio()) return vista.comoCreador(productora);
+
+        throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                "Ese creador ya no está en el directorio.");
     }
 
     // -------------------------------------------------------------------------
@@ -103,22 +126,23 @@ public class DirectorioController {
     @Transactional(readOnly = true)
     public List<Dtos.ProductoraDto> productoras() {
         Catalogo.Vista vista = catalogo.vista();
-        Map<UUID, Creador> visibles = creadoresVisibles();
 
         return productoras.findByActivoTrueOrderByNombreAsc().stream()
-                .map(p -> vista.productora(p, visibles))
+                .map(p -> vista.ficha(vista.productora(p.getId())))
                 .toList();
     }
 
     @GetMapping("/productoras/{id}")
     @Transactional(readOnly = true)
     public Dtos.ProductoraDto productora(@PathVariable UUID id) {
-        Productora productora = productoras.findById(id)
-                .filter(Productora::isActivo)
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Esa productora ya no está en el directorio."));
+        Catalogo.Vista vista = catalogo.vista();
 
-        return catalogo.vista().productora(productora, creadoresVisibles());
+        Productora productora = vista.productoraVisible(id);
+        if (productora == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Esa productora ya no está en el directorio.");
+        }
+        return vista.ficha(productora);
     }
 
     // -------------------------------------------------------------------------
@@ -134,7 +158,9 @@ public class DirectorioController {
      *
      * De una productora entra lo publicado en los canales que le pertenecen,
      * no todo lo de sus creadores: seguir a la casa no es seguir a cada
-     * persona que trabaja con ella.
+     * persona que trabaja con ella. De un creador entra además lo de los
+     * canales de otros en los que aparece: el de su productora, si en la
+     * ficha de ese canal se marcó que sale con él.
      */
     @GetMapping("/publicaciones")
     @Transactional(readOnly = true)
@@ -154,31 +180,31 @@ public class DirectorioController {
                 deCanales.isEmpty() ? List.of(NINGUNO) : deCanales,
                 PageRequest.of(0, Math.min(limite, 100)));
 
-        return aDtos(lista, vista, creadores);
+        return aDtos(lista, vista);
     }
 
     /**
-     * Los canales de las productoras visibles que sigue la persona. Los de un
-     * creador oculto no cuentan: es lo mismo que enseña la ficha de la
-     * productora.
+     * Los canales que entran en las novedades de la persona sin ser de un
+     * creador que sigue: los de las productoras visibles que sigue, y los de
+     * otros en los que aparece alguno de sus creadores. Un canal con el dueño
+     * oculto no cuenta: es lo mismo que enseñan las fichas.
      */
-    private List<UUID> canalesSeguidos(Usuario usuario, Catalogo.Vista vista) {
-        List<Canal> candidatos = new ArrayList<>();
+    static List<UUID> canalesSeguidos(Usuario usuario, Catalogo.Vista vista) {
+        Set<UUID> ids = new LinkedHashSet<>();
+
         for (UUID productoraId : usuario.getProductorasSeguidas()) {
             if (vista.productoraVisible(productoraId) == null) continue;
-            candidatos.addAll(vista.canalesDeProductora(productoraId));
+            vista.canalesDeProductora(productoraId).stream()
+                    .filter(vista::vivo)
+                    .forEach(k -> ids.add(k.getId()));
         }
-        if (candidatos.isEmpty()) return List.of();
-
-        Set<UUID> ocultos = new HashSet<>();
-        creadores.findAllById(candidatos.stream()
-                        .map(Canal::getCreadorId).filter(id -> id != null).distinct().toList())
-                .forEach(c -> { if (!c.isActivo()) ocultos.add(c.getId()); });
-
-        return candidatos.stream()
-                .filter(k -> k.getCreadorId() == null || !ocultos.contains(k.getCreadorId()))
-                .map(Canal::getId)
-                .toList();
+        for (UUID creadorId : usuario.getFavoritos()) {
+            if (vista.creadorVisible(creadorId) == null) continue;
+            vista.compartidosCon(creadorId).stream()
+                    .filter(vista::vivo)
+                    .forEach(k -> ids.add(k.getId()));
+        }
+        return List.copyOf(ids);
     }
 
     /**
@@ -186,24 +212,15 @@ public class DirectorioController {
      * de una productora visible, cuál. Una sola consulta para los nombres, en
      * vez de una por publicación.
      */
-    static List<Dtos.PublicacionDto> aDtos(List<Publicacion> lista, Catalogo.Vista vista,
-                                           Repositorios.Creadores creadores) {
-        List<UUID> ids = lista.stream()
-                .map(Publicacion::getCreadorId)
-                .filter(id -> id != null)
-                .distinct()
-                .toList();
-
-        Map<UUID, String> nombres = new HashMap<>();
-        creadores.findAllById(ids).forEach(c -> nombres.put(c.getId(), c.getNombre()));
-
+    static List<Dtos.PublicacionDto> aDtos(List<Publicacion> lista, Catalogo.Vista vista) {
         return lista.stream().map(p -> {
             Canal canal = vista.canal(p.getCanalId());
             Productora productora = canal != null
                     ? vista.productoraVisible(canal.getProductoraId()) : null;
 
-            String nombre = p.getCreadorId() != null
-                    ? nombres.get(p.getCreadorId())
+            Creador creador = vista.creador(p.getCreadorId());
+            String nombre = creador != null
+                    ? creador.getNombre()
                     : (productora != null ? productora.getNombre() : null);
 
             return Dtos.PublicacionDto.de(p, nombre, productora);
@@ -230,12 +247,17 @@ public class DirectorioController {
     @PutMapping("/favoritos/{creadorId}")
     @Transactional
     public Dtos.RespuestaSimple seguir(@PathVariable UUID creadorId) {
-        if (!creadores.existsById(creadorId)) {
+        Usuario usuario = usuarioActual();
+
+        if (creadores.existsById(creadorId)) {
+            usuario.getFavoritos().add(creadorId);
+        } else if (productoras.existsById(creadorId)) {
+            // Una productora que aparece en el directorio como un creador
+            // más: la app que no conoce las productoras la sigue por aquí.
+            usuario.getProductorasSeguidas().add(creadorId);
+        } else {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ese creador no existe.");
         }
-
-        Usuario usuario = usuarioActual();
-        usuario.getFavoritos().add(creadorId);
 
         return Dtos.RespuestaSimple.de("Ahora recibes sus avisos.");
     }
@@ -245,6 +267,8 @@ public class DirectorioController {
     public Dtos.RespuestaSimple dejarDeSeguir(@PathVariable UUID creadorId) {
         Usuario usuario = usuarioActual();
         usuario.getFavoritos().remove(creadorId);
+        // Por si era una productora seguida como creador (ver seguir()).
+        usuario.getProductorasSeguidas().remove(creadorId);
 
         return Dtos.RespuestaSimple.de("Dejaste de recibir sus avisos.");
     }
@@ -301,12 +325,5 @@ public class DirectorioController {
         return usuarios.findById(Sesion.exigir())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "Tu sesión ya no es válida. Vuelve a abrir la app."));
-    }
-
-    /** Los creadores visibles, por id y en orden alfabético. */
-    private Map<UUID, Creador> creadoresVisibles() {
-        Map<UUID, Creador> visibles = new LinkedHashMap<>();
-        creadores.findByActivoTrueOrderByNombreAsc().forEach(c -> visibles.put(c.getId(), c));
-        return visibles;
     }
 }

@@ -96,6 +96,11 @@ Las productoras se copian igual, por `POST /internal/replica/productoras`. Un
 creador solo queda ligado en testing a las productoras que testing ya conoce,
 asi que el script de abajo las manda primero.
 
+Con que otros creadores aparece un canal viaja dentro de su dueno (su creador
+o, si no tiene, su productora), y testing solo puede ligarlo a los creadores
+que ya conoce. Por eso la copia completa da una segunda vuelta a quien tiene
+canales compartidos, y guardar la ficha de un canal vuelve a copiar a su dueno.
+
 Se enciende una vez, en el **VPS**, cuando los dos ambientes ya tienen esta
 version desplegada. El mismo comando copia los creadores que ya existian:
 

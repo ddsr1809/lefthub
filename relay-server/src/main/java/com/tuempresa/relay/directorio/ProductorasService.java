@@ -57,6 +57,17 @@ public class ProductorasService {
         productora.setActivo(peticion.estaActivo());
         productora.setActualizadoEn(Instant.now());
 
+        // Quien no manda estos dos campos (el botón de reintentar, un panel
+        // anterior) deja la productora como estaba en el directorio.
+        if (peticion.enDirectorio() != null) productora.setEnDirectorio(peticion.enDirectorio());
+        if (peticion.categoria() != null && !peticion.categoria().isBlank()) {
+            if (!Dtos.CATEGORIAS.contains(peticion.categoria())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Categoría no válida: " + peticion.categoria());
+            }
+            productora.setCategoria(peticion.categoria());
+        }
+
         productoras.saveAndFlush(productora);
 
         if (peticion.creadores() != null) {

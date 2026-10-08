@@ -5,6 +5,7 @@ import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,8 +82,9 @@ public final class Dtos {
     /**
      * Un canal del directorio.
      *
-     * {@code creadorId} falta en el canal propio de una productora;
-     * {@code productoraId} falta en el canal que es solo de su creador.
+     * {@code creadorId} es el dueño y falta en el canal propio de una
+     * productora; {@code productoraId} falta en el canal que es solo de su
+     * creador. {@code creadores} son los demás creadores con los que aparece.
      */
     public record CanalDto(
             UUID id,
@@ -92,12 +94,16 @@ public final class Dtos {
             String handle,
             String channelId,
             UUID creadorId,
-            UUID productoraId
+            UUID productoraId,
+            List<UUID> creadores
     ) {
-        /** @param productoraId la del canal, o null si no hay que mostrarla. */
-        public static CanalDto de(Canal k, UUID productoraId) {
+        /**
+         * @param productoraId la del canal, o null si no hay que mostrarla.
+         * @param creadores    los creadores visibles con los que además aparece.
+         */
+        public static CanalDto de(Canal k, UUID productoraId, List<UUID> creadores) {
             return new CanalDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
-                    k.getHandle(), k.getChannelId(), k.getCreadorId(), productoraId);
+                    k.getHandle(), k.getChannelId(), k.getCreadorId(), productoraId, creadores);
         }
     }
 
@@ -109,10 +115,16 @@ public final class Dtos {
             String fotoUrl,
             /** Un enlace por plataforma: lo que leen las apps anteriores. */
             List<ConexionDto> conexiones,
-            /** Todos sus canales, en orden. */
+            /** Sus canales, en orden, y después los de otros en los que aparece. */
             List<CanalDto> canales,
             /** Productoras visibles en las que figura. */
-            List<UUID> productoras
+            List<UUID> productoras,
+            /**
+             * {@code true} cuando la fila no es un creador sino una productora
+             * que aparece en el directorio: su id es el de la productora.
+             * Falta en los creadores de verdad.
+             */
+            Boolean esProductora
     ) {}
 
     public record ProductoraDto(
@@ -123,7 +135,10 @@ public final class Dtos {
             /** Los canales que le pertenecen: los propios y los de sus creadores. */
             List<CanalDto> canales,
             /** Creadores visibles que figuran en ella. */
-            List<UUID> creadores
+            List<UUID> creadores,
+            /** Aparece también en el listado de creadores, en {@code categoria}. */
+            boolean enDirectorio,
+            String categoria
     ) {}
 
     public record PublicacionDto(
@@ -170,12 +185,22 @@ public final class Dtos {
             String escalaTexto,
             String tema,
             boolean avisos,
-            /** Productoras que sigue. Los creadores van en {@code favoritos}. */
+            /** Productoras que sigue. */
             List<UUID> productoras
     ) {
+        /**
+         * {@code favoritos} lleva a los creadores y también a las productoras
+         * que se siguen: una versión de la app que no conoce las productoras
+         * las ve en el directorio como un creador más, y con su id aquí pinta
+         * "Siguiendo" y suscribe el teléfono a sus avisos. Quien sí las
+         * conoce las tiene aparte en {@code productoras} y las descuenta.
+         */
         public static PerfilDto de(Usuario u) {
+            List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
+            u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
+
             return new PerfilDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
-                    List.copyOf(u.getFavoritos()), u.getEscalaTexto(), u.getTema(), u.isAvisos(),
+                    seguidos, u.getEscalaTexto(), u.getTema(), u.isAvisos(),
                     List.copyOf(u.getProductorasSeguidas()));
         }
     }
@@ -265,7 +290,8 @@ public final class Dtos {
      * {@code id} es el del canal que se está editando; sin él (o si no es de
      * ese dueño) se busca por channelId o por URL antes de dar uno de alta.
      * {@code productoraId} solo cuenta en los canales de un creador: los de
-     * una productora son siempre suyos.
+     * una productora son siempre suyos. {@code creadores} son los demás
+     * creadores con los que aparece el canal; si no viene, no se tocan.
      */
     public record GuardarCanal(
             UUID id,
@@ -274,8 +300,38 @@ public final class Dtos {
             String url,
             String handle,
             String channelId,
-            UUID productoraId
+            UUID productoraId,
+            List<UUID> creadores
     ) {}
+
+    /**
+     * La ficha de un canal de YouTube, guardada por sí sola.
+     *
+     * {@code creadorId} es el dueño: quien firma los avisos. Si no tiene, el
+     * dueño es la productora, y entonces {@code productoraId} es obligatoria.
+     * {@code creadores} son los otros creadores con los que aparece: lo que
+     * publica el canal les llega también a quienes los siguen.
+     */
+    public record GuardarFichaDeCanal(
+            UUID id,
+
+            @Size(max = 60, message = "La etiqueta no puede pasar de 60 caracteres.")
+            String nombre,
+
+            @NotBlank(message = "Falta el enlace del canal.")
+            String url,
+
+            String handle,
+
+            @NotBlank(message = "Falta el ID del canal de YouTube. Búscalo con el buscador.")
+            String channelId,
+
+            UUID creadorId,
+            UUID productoraId,
+            List<UUID> creadores
+    ) {}
+
+    public record CanalGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
 
     public record GuardarProductora(
             UUID id,
@@ -294,7 +350,13 @@ public final class Dtos {
             List<GuardarCanal> canales,
 
             /** Creadores que figuran en ella. Si no viene, no se tocan. */
-            List<UUID> creadores
+            List<UUID> creadores,
+
+            /** Aparece en el directorio como un creador más. Si no viene, no se toca. */
+            Boolean enDirectorio,
+
+            /** En qué tema del directorio sale. Si no viene, no se toca. */
+            String categoria
     ) {
         public boolean estaActivo() { return activo == null || activo; }
     }
@@ -326,7 +388,9 @@ public final class Dtos {
             String creadorNombre,
             UUID productoraId,
             String estadoSuscripcion,
-            Instant expiraEn
+            Instant expiraEn,
+            /** Los otros creadores con los que aparece, visibles o no. */
+            List<UUID> creadores
     ) {}
 
     /**
@@ -346,7 +410,9 @@ public final class Dtos {
             Instant expiraEn,
             long seguidores,
             List<CanalAdminDto> canales,
-            List<UUID> productoras
+            List<UUID> productoras,
+            /** Canales de otros (de una productora, de otro creador) en los que aparece. */
+            List<CanalAdminDto> canalesCompartidos
     ) {}
 
     public record ProductoraAdminDto(
@@ -358,7 +424,9 @@ public final class Dtos {
             /** Todos los canales que le pertenecen; los propios vienen sin creadorId. */
             List<CanalAdminDto> canales,
             List<UUID> creadores,
-            long seguidores
+            long seguidores,
+            boolean enDirectorio,
+            String categoria
     ) {}
 
     // -------------------------------------------------------------------------

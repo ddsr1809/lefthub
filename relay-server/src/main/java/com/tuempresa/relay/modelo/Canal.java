@@ -2,7 +2,11 @@ package com.tuempresa.relay.modelo;
 
 import jakarta.persistence.*;
 
+import org.hibernate.annotations.BatchSize;
+
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -18,6 +22,12 @@ import java.util.UUID;
  *
  * El dueño es el creador. Si no hay creador, es la productora: el canal
  * oficial de la casa. La base no admite un canal sin ninguno de los dos.
+ *
+ * Además del dueño, un canal puede aparecer con otros creadores (ver
+ * {@link #getVinculados()}): el canal de una productora en el que salen tres
+ * personas, por ejemplo. Lo que publica les llega también a quienes los
+ * siguen, pero el dueño sigue siendo quien firma los avisos y quien decide,
+ * con estar visible u oculto, si el canal se vigila.
  *
  * Los dos vínculos van como ids sueltos y no como relaciones JPA a propósito:
  * el canal se consulta casi siempre por su channel_id (el webhook) o en bloque
@@ -64,6 +74,18 @@ public class Canal {
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn = Instant.now();
 
+    /**
+     * Los otros creadores con los que aparece este canal, sin contar al dueño.
+     *
+     * BatchSize: el directorio lee todos los canales de una vez, y sin él
+     * Hibernate haría una consulta por canal para traer esta lista.
+     */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "canales_creadores", joinColumns = @JoinColumn(name = "canal_id"))
+    @Column(name = "creador_id")
+    @BatchSize(size = 200)
+    private Set<UUID> vinculados = new LinkedHashSet<>();
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
@@ -93,6 +115,11 @@ public class Canal {
 
     public Instant getCreadoEn() { return creadoEn; }
     public void setCreadoEn(Instant creadoEn) { this.creadoEn = creadoEn; }
+
+    public Set<UUID> getVinculados() { return vinculados; }
+    public void setVinculados(Set<UUID> vinculados) {
+        this.vinculados = vinculados != null ? vinculados : new LinkedHashSet<>();
+    }
 
     /** ID canónico si es un canal de YouTube que se puede vigilar; si no, null. */
     @Transient

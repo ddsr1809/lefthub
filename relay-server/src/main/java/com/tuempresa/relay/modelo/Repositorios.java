@@ -72,6 +72,22 @@ public final class Repositorios {
         @Query("select k from Canal k where k.productoraId in :productoras")
         List<Canal> deProductoras(@Param("productoras") Collection<UUID> productoras);
 
+        /** Los canales de YouTube, que son los que tienen ficha propia en el panel. */
+        @Query("""
+                select k from Canal k
+                where k.plataforma = 'youtube'
+                order by k.creadoEn asc, k.id asc
+                """)
+        List<Canal> deYouTube();
+
+        /** Canales de otros en los que aparece un creador. */
+        @Query("""
+                select k from Canal k join k.vinculados v
+                where v = :creador
+                order by k.creadoEn asc, k.id asc
+                """)
+        List<Canal> dondeAparece(@Param("creador") UUID creador);
+
         /** Los canales propios de una productora: los que no tienen creador. */
         @Query("""
                 select k from Canal k
@@ -141,6 +157,11 @@ public final class Repositorios {
         @Modifying
         @Query("delete from Publicacion p where p.creadorId is null and p.canalId in :canales")
         void borrarSinCreadorDe(@Param("canales") Collection<UUID> canales);
+
+        /** Lo que un canal publicó cuando no tenía creador pasa a ser del que ahora tiene. */
+        @Modifying
+        @Query("update Publicacion p set p.creadorId = :creador where p.canalId = :canal and p.creadorId is null")
+        void adoptar(@Param("canal") UUID canal, @Param("creador") UUID creador);
 
         List<Publicacion> findAllByOrderByPublicadoEnDesc(Pageable pagina);
 
