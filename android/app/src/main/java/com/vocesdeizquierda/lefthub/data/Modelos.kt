@@ -296,7 +296,53 @@ data class SuscripcionesYouTube(
     val verificadoEn: Instant? = null,
     val canalesSuscritos: Set<String> = emptySet(),
     val canalesNoSuscritos: Set<String> = emptySet()
-)
+) {
+    /** El servidor contestó canal por canal, y no solo por creador. */
+    val sabeDeCanales: Boolean
+        get() = canalesSuscritos.isNotEmpty() || canalesNoSuscritos.isNotEmpty()
+
+    /**
+     * Canales a los que se estaba suscrito en `antes` y aquí ya no.
+     *
+     * Cuenta solo lo que YouTube contestó las dos veces: un canal que salió
+     * del directorio, o del que ahora no se sabe nada, no es una baja.
+     */
+    fun canalesPerdidosDesde(antes: SuscripcionesYouTube): Set<String> =
+        antes.canalesSuscritos intersect canalesNoSuscritos
+
+    /** Lo mismo por creador, para un servidor que no sabe de canales. */
+    fun creadoresPerdidosDesde(antes: SuscripcionesYouTube): Set<String> =
+        antes.suscritos intersect noSuscritos
+}
+
+/**
+ * La persona dejó de estar suscrita en YouTube a alguien del directorio.
+ *
+ * Solo se sabe al comprobar, que es al abrir la app y al volver de YouTube:
+ * el servidor no puede preguntarle a YouTube con la app cerrada, así que esto
+ * no llega como notificación sino como un aviso en pantalla.
+ */
+data class BajasDeYouTube(
+    /** Cómo se llama cada canal en el Directorio: "Juan Pérez · Clips". */
+    val nombres: List<String>,
+    /** El canal, si es uno solo: el aviso ofrece ir a su ficha. */
+    val canalId: String? = null
+) {
+    val texto: String
+        get() {
+            // Con muchos de golpe, la lista entera no cabe en un aviso.
+            val quienes = if (nombres.size <= TOPE_DE_NOMBRES) enumerar(nombres)
+            else enumerar(nombres.take(TOPE_DE_NOMBRES - 1) + "${nombres.size - TOPE_DE_NOMBRES + 1} canales más")
+
+            return "Antes estabas suscrito en YouTube a $quienes, y ahora ya no. " +
+                "Si fue sin querer, abre su canal en YouTube y vuelve a suscribirte. " +
+                "Los avisos de esta app no cambian."
+        }
+
+    private companion object {
+        const val TOPE_DE_NOMBRES = 6
+    }
+}
 
 enum class PermisoYouTube {
     /** Todavía no se ha preguntado. Es el estado al abrir la app. */
@@ -311,6 +357,11 @@ data class EstadoYouTube(
     val suscripciones: SuscripcionesYouTube = SuscripcionesYouTube(),
     val verificando: Boolean = false
 ) {
+    /** Hay alguna respuesta de YouTube, y por tanto etiquetas que pintar. */
+    val haySuscripciones: Boolean
+        get() = suscripciones.sabeDeCanales ||
+            suscripciones.suscritos.isNotEmpty() || suscripciones.noSuscritos.isNotEmpty()
+
     /**
      * `true` o `false` si se sabe; `null` si no: falta el permiso, el creador
      * no tiene canal de YouTube o aún no se ha comprobado. La interfaz no debe

@@ -14,6 +14,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -240,11 +241,13 @@ private fun FilaDeDirectorio(
                 )
                 // Línea aparte y con palabras: la diferencia no puede depender
                 // solo de un color ni de un icono que haya que interpretar.
-                if (lineaExtra != null) {
+                if (lineaExtra != null && lineaExtraDestacada) {
+                    EtiquetaYouTube(lineaExtra, Modifier.padding(top = Espacio.xs))
+                } else if (lineaExtra != null) {
                     Text(
                         lineaExtra,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (lineaExtraDestacada) esquema.onBackground else esquema.onSurfaceVariant,
+                        color = esquema.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -289,6 +292,59 @@ private fun FilaDeDirectorio(
     }
 
     HorizontalDivider(color = esquema.outline)
+}
+
+/**
+ * La etiqueta verde de "ya estás suscrito en YouTube".
+ *
+ * El verde no se usa para nada más en la app, y aun así la etiqueta lo dice
+ * con palabras y con una palomita: quien no distingue el verde la lee igual.
+ */
+@Composable
+internal fun EtiquetaYouTube(texto: String = "Suscrito en YouTube", modifier: Modifier = Modifier) {
+    val esquema = MaterialTheme.colorScheme
+
+    Text(
+        "✓ $texto",
+        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+        color = esquema.onTertiary,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(esquema.tertiary)
+            .padding(horizontal = Espacio.sm, vertical = Espacio.xs)
+    )
+}
+
+/**
+ * El anuncio que va arriba del Directorio y explica la etiqueta verde. Lleva
+ * la etiqueta misma como muestra, para que no haya que imaginarse el color.
+ */
+@Composable
+fun LeyendaYouTube(modifier: Modifier = Modifier) {
+    val esquema = MaterialTheme.colorScheme
+    val forma = RoundedCornerShape(12.dp)
+
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(forma)
+            .background(esquema.surface)
+            .border(1.dp, esquema.outline, forma)
+            .padding(Espacio.md)
+            // Para el lector de pantalla es una sola frase, no dos trozos.
+            .semantics(mergeDescendants = true) {}
+    ) {
+        EtiquetaYouTube()
+        Text(
+            "Esta etiqueta verde marca a quién ya estás suscrito en YouTube. " +
+                "Seguir aquí y suscribirte en YouTube son cosas distintas.",
+            style = MaterialTheme.typography.bodySmall,
+            color = esquema.onSurface,
+            modifier = Modifier.padding(top = Espacio.sm)
+        )
+    }
 }
 
 @Composable
