@@ -82,7 +82,7 @@ fun DirectorioPantalla(
     val secciones = listOfNotNull(
         CREADORES to "Creadores",
         (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
-        (PRODUCTORAS to "Productoras").takeIf { productoras.isNotEmpty() }
+        (PRODUCTORAS to "Medios").takeIf { productoras.isNotEmpty() }
     )
     // Si la lista que se estaba viendo se queda vacía (se retiró la última
     // productora, por ejemplo), su pestaña desaparece y se vuelve a los creadores.
@@ -410,7 +410,7 @@ fun CreadorPantalla(
         }
         if (susProductoras.isNotEmpty()) {
             Text(
-                if (susProductoras.size == 1) "Su productora" else "Sus productoras",
+                if (susProductoras.size == 1) "Su medio" else "Sus medios",
                 style = MaterialTheme.typography.headlineMedium,
                 color = esquema.onBackground,
                 modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)

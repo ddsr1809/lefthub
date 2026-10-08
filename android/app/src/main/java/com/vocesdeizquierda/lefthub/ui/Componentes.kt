@@ -131,7 +131,7 @@ fun FilaProductora(
     val canales = productora.canales.size
     val creadores = productora.creadores.size
     val detalle = listOfNotNull(
-        "Productora",
+        "Medio",
         "$canales ${if (canales == 1) "canal" else "canales"}".takeIf { canales > 0 },
         "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 }
     ).joinToString(" · ")
@@ -143,7 +143,7 @@ fun FilaProductora(
         siguiendo = siguiendo,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
-        descripcionAlAbrir = "${productora.nombre}, productora. Ver sus canales y creadores."
+        descripcionAlAbrir = "${productora.nombre}, medio. Ver sus canales y creadores."
     )
 }
 
