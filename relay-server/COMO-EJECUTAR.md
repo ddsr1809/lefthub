@@ -198,6 +198,8 @@ docker compose exec -T db pg_dump -U relay relay | gzip > relay-$(date +%F).sql.
 
 Lo que de verdad duele perder no son las publicaciones —esas vuelven a llegar— sino las cuentas y los favoritos de la gente.
 
+El directorio (creadores, productoras y canales) tiene además su propia copia en archivos, en la carpeta `datos/` del repositorio, que el VPS mantiene al día solo. No sustituye a la de arriba: no lleva cuentas ni favoritos. Ver `datos/README.md`.
+
 ---
 
 ## Cambiar el esquema más adelante

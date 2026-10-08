@@ -29,6 +29,7 @@ android/firma.properties
 
 .DS_Store
 *.log
+__pycache__/
 android/local.properties
 android/app/google-services.json
 android/local.properties

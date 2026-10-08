@@ -128,6 +128,44 @@ Lo que conviene saber:
 - Si en testing ya existia un creador con ese canal de YouTube, la copia lo
   adopta en lugar de duplicarlo.
 
+## Respaldo del directorio en datos/
+
+Los creadores, las productoras y los canales de testing y de produccion se
+guardan tambien en archivos, en `datos/testing/` y `datos/produccion/` de este
+repositorio. Un temporizador del VPS lee las dos bases cada 5 minutos y, si
+algo cambio, hace un commit en `master` y lo sube. Que hay en esos archivos y
+como se recupera algo desde ellos esta en `datos/README.md`.
+
+Se enciende una vez, en el **VPS**, cuando `master` ya trae esta version:
+
+```bash
+git -C /opt/vocesleft pull
+bash /opt/vocesleft/scripts/vps/respaldo-datos.sh instalar
+```
+
+La primera vez se detiene y muestra una llave: hay que agregarla en GitHub
+(Settings del repositorio, Deploy keys) marcando **Allow write access**, y
+repetir el comando. Es la unica llave del VPS que puede escribir en el
+repositorio, y solo vale para este.
+
+Lo que conviene saber:
+
+- **No redespliega nada.** Esos commits solo tocan `datos/`, que no esta entre
+  las rutas que disparan el pipeline.
+- **`master` recibe commits que `development` y `testing` no tienen.** No
+  estorban al fusionar con pull requests, que es como sube el codigo. Lo que
+  ya no funciona es empujar directo a `master` desde tu equipo sin traer antes
+  lo ultimo.
+- **Usa un clon aparte**, `/opt/vocesleft-datos`. El de `/opt/vocesleft`, de
+  donde sale el panel, no se toca: sigue actualizandose solo cuando haces
+  `git pull` en el.
+- **Si `master` esta protegida** contra subidas directas, GitHub rechazara el
+  commit y la pasada lo dira en su registro. Hay que permitir esa llave en la
+  regla, o indicar otra rama con `RAMA=...` al instalar.
+- Ver las ultimas pasadas: `journalctl -u vocesleft-datos -n 30 --no-pager`.
+- El ambiente developer no pasa por aqui: `make datos-guardar` en tu equipo
+  escribe `datos/development/`.
+
 ## Configurar SSH y GitHub
 
 Todo lo de esta seccion y la siguiente lo hace un solo comando desde tu laptop:

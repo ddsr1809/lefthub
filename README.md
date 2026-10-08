@@ -15,6 +15,7 @@ El nombre "Relé" es un marcador de posición: cámbialo por el que prefieras, p
 | `android/` | La app de Android, en Kotlin y Jetpack Compose. | Play Store |
 | `ios/` | La app de iPhone, en Swift y SwiftUI. | App Store |
 | `scripts/` | Utilidades de terminal. | Tu computadora |
+| `datos/` | Copia en archivos de los creadores, productoras y canales de cada ambiente, para no perderlos. Ver `datos/README.md`. | GitHub |
 | `firestore.rules` | Quién puede leer y escribir qué. | Firebase |
 
 ---
