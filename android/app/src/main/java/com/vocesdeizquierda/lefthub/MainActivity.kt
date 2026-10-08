@@ -24,6 +24,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.vocesdeizquierda.lefthub.anuncios.Anuncios
+import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
@@ -76,6 +78,20 @@ class MainActivity : ComponentActivity() {
                     }
                 }
 
+                // Anuncios. Todo cuelga de lo que diga el perfil, que es lo
+                // que decide el servidor: mientras la persona no vea anuncios
+                // (el equipo los tiene apagados, o ella los quitó) no se
+                // arranca la biblioteca de Google ni se le pregunta nada.
+                val veAnuncios = estado.perfil.veAnuncios
+                LaunchedEffect(veAnuncios) {
+                    if (veAnuncios) Anuncios.preparar(this@MainActivity)
+                }
+                // Y a Google Play se le pregunta el precio, y si esta persona
+                // ya lo había comprado, solo cuando hay algo que vender.
+                LaunchedEffect(veAnuncios, estado.perfil.compraDisponible) {
+                    modelo.prepararTienda(applicationContext)
+                }
+
                 // La notificación que abrió la app trae el destino en los extras.
                 // Lo procesamos una vez y lo limpiamos, o al girar la pantalla
                 // volvería a abrirse el video.
@@ -98,7 +114,11 @@ class MainActivity : ComponentActivity() {
         // Pedir el ViewModel lo crea, y al crearse abre la cuenta anónima:
         // antes de la aceptación no se toca.
         if (!Aceptacion.vigente(this)) return
-        ViewModelProvider(this)[AppViewModel::class.java].verificarYouTube(applicationContext)
+        val modelo = ViewModelProvider(this)[AppViewModel::class.java]
+        modelo.verificarYouTube(applicationContext)
+        // Si al abrir no se pudo hablar con Google Play (sin conexión, por
+        // ejemplo), se reintenta al volver. Si ya se pudo, esto no hace nada.
+        modelo.prepararTienda(applicationContext, soloSiFalta = true)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -207,6 +227,23 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         }
     }
 
+    // Los anuncios de Novedades viven aquí, por encima de las pestañas, para
+    // que cambiar de pestaña y volver no pida anuncios nuevos. Se sueltan al
+    // cerrarse la pantalla, y en el momento en que la persona deja de verlos:
+    // acaba de comprar o de canjear un folio y no debe quedar ni uno a la vista.
+    val conAnuncios = estado.perfil.veAnuncios && Anuncios.listos
+    val banners = remember { BannersDelFeed() }
+    DisposableEffect(Unit) { onDispose { banners.destruir() } }
+    LaunchedEffect(conAnuncios) { if (!conAnuncios) banners.destruir() }
+
+    // Ajustes, entrando siempre por su principio, como al tocar su pestaña.
+    val irAAjustes = {
+        nav.navigate("ajustes") {
+            popUpTo(nav.graph.startDestinationId)
+            launchSingleTop = true
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -261,6 +298,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     cortos = estado.cortos,
                     verCortos = estado.perfil.veCortos,
                     abiertos = Abiertos.videos,
+                    anuncios = banners.takeIf { conAnuncios },
+                    onQuitarAnuncios = irAAjustes,
                     onIrAlDirectorio = { nav.navigate("directorio") },
                     // El canal propio de una productora no tiene creador.
                     onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
@@ -355,7 +394,18 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onCerrarSesion = { modelo.cerrarSesion(contexto) },
                     onBorrarCuenta = { modelo.borrarCuenta(contexto) },
                     onConectarYouTube = { modelo.conectarYouTube(contexto) },
-                    onDesconectarYouTube = { modelo.desconectarYouTube(contexto) }
+                    onDesconectarYouTube = { modelo.desconectarYouTube(contexto) },
+                    // La pantalla de pago y el formulario de privacidad son de
+                    // Google y se abren encima de esta pantalla: necesitan la
+                    // Activity, que aquí es el propio contexto.
+                    onComprarSinAnuncios = {
+                        (contexto as? Activity)?.let { modelo.comprarSinAnuncios(it) }
+                    },
+                    onCanjearFolio = { modelo.canjearFolio(it) },
+                    onFolioCerrado = { modelo.folioCerrado() },
+                    onPrivacidadDeAnuncios = {
+                        (contexto as? Activity)?.let { Anuncios.abrirOpcionesDePrivacidad(it) }
+                    }
                 )
             }
         }

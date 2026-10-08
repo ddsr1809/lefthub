@@ -100,7 +100,10 @@ internal fun perfilDe(json: JSONObject): Perfil {
         avisos = json.optBoolean("avisos", true),
         productoras = productoras,
         cortos = json.optBoolean("cortos", true),
-        cortosDisponibles = json.optBoolean("cortosDisponibles", false)
+        cortosDisponibles = json.optBoolean("cortosDisponibles", false),
+        anuncios = json.optBoolean("anuncios", false),
+        sinAnuncios = json.optBoolean("sinAnuncios", false),
+        compraDisponible = json.optBoolean("compraDisponible", false)
     )
 }
 

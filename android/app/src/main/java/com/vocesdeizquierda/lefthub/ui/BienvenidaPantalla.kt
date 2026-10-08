@@ -63,6 +63,14 @@ fun BienvenidaPantalla(onAceptar: () -> Unit) {
                     "Solo usamos ese dato para mostrarte sus novedades y enviarte sus " +
                     "avisos. No lo compartimos."
             )
+            // Va con todas las letras porque es lo que cambia para la
+            // persona: hay publicidad, y la pone Google con sus propios datos.
+            Punto(
+                "La app puede mostrar anuncios de Google entre los videos. Para elegirlos " +
+                    "y medirlos, Google usa el identificador de publicidad de tu teléfono " +
+                    "y datos de tu conexión. No le decimos a quién sigues ni qué videos " +
+                    "abres. Los anuncios se pueden quitar desde Ajustes."
+            )
             Punto(
                 "No hace falta dar tu nombre ni tu correo, y puedes borrar tu cuenta y " +
                     "tus datos cuando quieras desde Ajustes."

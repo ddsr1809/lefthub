@@ -193,10 +193,26 @@ data class Perfil(
      * apartado ni la opción de Ajustes, diga lo que diga `cortos`. Un servidor
      * anterior no lo manda, y entonces es que no.
      */
-    val cortosDisponibles: Boolean = false
+    val cortosDisponibles: Boolean = false,
+    /**
+     * El equipo tiene encendidos los anuncios. Un servidor anterior no lo
+     * manda, y entonces es que no hay.
+     */
+    val anuncios: Boolean = false,
+    /** Esta cuenta ya no ve anuncios: los compró o canjeó un folio de regalo. */
+    val sinAnuncios: Boolean = false,
+    /**
+     * El servidor puede confirmar compras con Google Play. Si no, la app no
+     * ofrece comprar: cobrar algo que luego no se puede entregar es peor que
+     * no ofrecerlo. El folio de regalo no depende de esto.
+     */
+    val compraDisponible: Boolean = false
 ) {
     /** Sigue a alguien, sea creador o productora. */
     val sigueAAlguien: Boolean get() = favoritos.isNotEmpty() || productoras.isNotEmpty()
+
+    /** Ve anuncios: el equipo los tiene encendidos y la persona no los quitó. */
+    val veAnuncios: Boolean get() = anuncios && !sinAnuncios
 
     /** Ve los videos cortos: el equipo los permite y la persona no los apagó. */
     val veCortos: Boolean get() = cortosDisponibles && cortos

@@ -1,13 +1,20 @@
 package com.vocesdeizquierda.lefthub.ui
 
 import android.content.res.Configuration
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.tooling.preview.Preview
 import java.time.Instant
 import com.vocesdeizquierda.lefthub.EstadoApp
@@ -413,6 +420,75 @@ private fun PreviaAjustesConSesion() {
                 perfil = perfilConFavoritos,
                 esAnonimo = false,
                 correo = "juan.perez@gmail.com"
+            ),
+            onGuardarPreferencia = { _, _ -> },
+            onVincularGoogle = {},
+            onCerrarSesion = {},
+            onBorrarCuenta = {}
+        )
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Anuncios
+// -----------------------------------------------------------------------------
+
+/**
+ * La tarjeta de un anuncio junto a la de un video, para comprobar que no se
+ * confunden. El recuadro gris hace de anuncio: aquí no hay ninguno de verdad,
+ * porque las previews no tocan la red.
+ */
+@VistaPreviaTemas
+@VistaPreviaAccesible
+@Composable
+private fun PreviaTarjetaDeAnuncio() {
+    Marco {
+        Column(Modifier.padding(Espacio.md)) {
+            TarjetaPublicacion(publicacion = publicaciones.first(), onAbrir = {}, onReportar = {})
+            MarcoDeAnuncio(onQuitar = {}) {
+                Box(
+                    contentAlignment = Alignment.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(100.dp)
+                        .background(MaterialTheme.colorScheme.outline)
+                ) { Text("Aquí va el anuncio de Google") }
+            }
+        }
+    }
+}
+
+/** Ajustes con los anuncios encendidos: comprar, o canjear un folio de regalo. */
+@Preview(name = "Ajustes con anuncios", showBackground = true, heightDp = 1300)
+@Composable
+private fun PreviaAjustesConAnuncios() {
+    Marco(tema = "claro") {
+        AjustesPantalla(
+            estado = EstadoApp(
+                listo = true,
+                perfil = perfilConFavoritos.copy(tema = "claro", anuncios = true, compraDisponible = true),
+                esAnonimo = true,
+                precioSinAnuncios = "\$29.00"
+            ),
+            onGuardarPreferencia = { _, _ -> },
+            onVincularGoogle = {},
+            onCerrarSesion = {},
+            onBorrarCuenta = {}
+        )
+    }
+}
+
+/** Ajustes de quien ya quitó los anuncios, todavía como invitado. */
+@Preview(name = "Ajustes sin anuncios", showBackground = true, heightDp = 1100,
+    uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun PreviaAjustesSinAnuncios() {
+    Marco {
+        AjustesPantalla(
+            estado = EstadoApp(
+                listo = true,
+                perfil = perfilConFavoritos.copy(anuncios = true, sinAnuncios = true),
+                esAnonimo = true
             ),
             onGuardarPreferencia = { _, _ -> },
             onVincularGoogle = {},

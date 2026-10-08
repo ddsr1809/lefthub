@@ -225,6 +225,25 @@ object ApiRelay {
     }
 
     // -------------------------------------------------------------------------
+    // Anuncios: quitarlos con un folio de regalo o con una compra
+    // -------------------------------------------------------------------------
+    // Las dos devuelven la frase que el servidor escribió para la pantalla. Si
+    // no se puede, lanzan ErrorHttp con el motivo, también escrito para leerse.
+
+    /** Canjea un folio de regalo. Vale una sola vez: al usarlo se borra. */
+    suspend fun canjearFolio(codigo: String): String =
+        post("/api/anuncios/folio", JSONObject().put("codigo", codigo))
+            .optStringONull("mensaje") ?: "Listo. Ya no verás anuncios en esta cuenta."
+
+    /**
+     * Le pasa al servidor el comprobante de una compra de Google Play para
+     * que la confirme con Google y la apunte en la cuenta.
+     */
+    suspend fun registrarCompra(producto: String, token: String): String =
+        post("/api/anuncios/compra", JSONObject().put("producto", producto).put("token", token))
+            .optStringONull("mensaje") ?: "Gracias por tu compra. Ya no verás anuncios."
+
+    // -------------------------------------------------------------------------
     // Suscripciones de YouTube
     // -------------------------------------------------------------------------
 

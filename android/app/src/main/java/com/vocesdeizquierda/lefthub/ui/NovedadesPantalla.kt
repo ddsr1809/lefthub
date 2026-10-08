@@ -5,10 +5,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
@@ -27,6 +28,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.time.Instant
+import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
+import com.vocesdeizquierda.lefthub.anuncios.Huecos
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Publicacion
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -40,6 +43,10 @@ import java.util.Locale
 // Los videos cortos (Shorts) no van en esa lista. Si el equipo los permite y
 // la persona no los apagó, tienen su propio apartado, al que se entra a
 // propósito con un botón; si no, aquí no hay ni rastro de ellos.
+//
+// Los anuncios, cuando los hay, van entre los videos como una tarjeta más,
+// con otra forma y con la palabra "Publicidad" escrita arriba: nadie debe
+// tocar uno creyendo que es un video. Dónde cae cada uno lo decide Huecos.
 
 @Composable
 fun NovedadesPantalla(
@@ -54,7 +61,14 @@ fun NovedadesPantalla(
     /** El equipo permite los cortos y la persona no los apagó en Ajustes. */
     verCortos: Boolean = false,
     /** Los videos que ya abrió desde la app: su tarjeta se ve distinta. */
-    abiertos: Set<String> = emptySet()
+    abiertos: Set<String> = emptySet(),
+    /**
+     * Los anuncios de la lista. Null si esta persona no ve anuncios: el
+     * equipo los tiene apagados, los quitó, o todavía no se pueden pedir.
+     */
+    anuncios: BannersDelFeed? = null,
+    /** El botón "Quitar los anuncios" que va debajo de cada uno. */
+    onQuitarAnuncios: () -> Unit = {}
 ) {
     val contexto = LocalContext.current
 
@@ -72,6 +86,18 @@ fun NovedadesPantalla(
             accion = { BotonGrande("Ver el directorio", onClick = onIrAlDirectorio) }
         )
         return
+    }
+
+    // El anuncio ocupa el ancho de una tarjeta: la pantalla menos el margen
+    // de la lista a cada lado, y menos el borde de la tarjeta, que no debe
+    // pisar el anuncio ni un punto.
+    val anchoDeAnuncio = LocalConfiguration.current.screenWidthDp - 2 * Espacio.md.value.toInt() - 2
+    val cuantosAnuncios = if (anuncios != null) Huecos.cuantos(lista.size) else 0
+
+    // Se piden solo los que caben en esta lista, y una sola vez: los que ya
+    // están pedidos se quedan aunque la persona cambie de pestaña y vuelva.
+    LaunchedEffect(anuncios, cuantosAnuncios, anchoDeAnuncio) {
+        anuncios?.asegurar(contexto, cuantosAnuncios, anchoDeAnuncio)
     }
 
     LazyColumn(
@@ -108,23 +134,36 @@ fun NovedadesPantalla(
             }
         }
 
-        items(lista, key = { it.id }) { publicacion ->
-            TarjetaPublicacion(
-                publicacion = publicacion,
-                abierto = publicacion.videoId in abiertos,
-                onAbrir = {
-                    val destino = publicacion.destino
-                    Enrutador.abrirVideo(
-                        contexto,
-                        destino.plataforma,
-                        destino.videoId,
-                        destino.url,
-                        campana = "novedades"
-                    )
-                    Abiertos.marcar(contexto, publicacion.videoId)
-                },
-                onReportar = { onReportar(publicacion) }
-            )
+        lista.forEachIndexed { posicion, publicacion ->
+            item(key = publicacion.id) {
+                TarjetaPublicacion(
+                    publicacion = publicacion,
+                    abierto = publicacion.videoId in abiertos,
+                    onAbrir = {
+                        val destino = publicacion.destino
+                        Enrutador.abrirVideo(
+                            contexto,
+                            destino.plataforma,
+                            destino.videoId,
+                            destino.url,
+                            campana = "novedades"
+                        )
+                        Abiertos.marcar(contexto, publicacion.videoId)
+                    },
+                    onReportar = { onReportar(publicacion) }
+                )
+            }
+
+            // Después de este video, ¿toca anuncio? Solo se pinta si Google
+            // ya lo entregó: mientras carga, o si no hay ninguno que dar, la
+            // lista sigue como si nada, sin un recuadro vacío.
+            val hueco = Huecos.tras(posicion)
+            val banner = if (hueco != null) anuncios?.banners?.getOrNull(hueco) else null
+            if (banner != null && banner.cargado) {
+                item(key = "anuncio-$hueco") {
+                    TarjetaAnuncio(banner = banner, onQuitar = onQuitarAnuncios)
+                }
+            }
         }
     }
 }

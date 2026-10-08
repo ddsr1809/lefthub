@@ -66,6 +66,24 @@ Y en el IDE: `File → Invalidate Caches → Invalidate and Restart`.
 
 ---
 
+## Anuncios y compra
+
+Los sabores `developer` y `pruebas` llevan los identificadores de prueba de
+AdMob: con los anuncios encendidos en el panel de ese servidor, salen anuncios
+marcados «Test Ad». El sabor `produccion` no muestra ninguno hasta que pones
+los de tu cuenta en `admobApp` y `admobBanner`, dentro de
+`app/build.gradle.kts`.
+
+La compra que quita los anuncios solo funciona en una app instalada desde
+Google Play (la prueba interna vale). En una compilación instalada desde
+Android Studio, Google Play no devuelve el producto y el botón de comprar no
+aparece; el folio de regalo sí.
+
+El paso a paso completo está en el README, sección «Anuncios, y cómo
+quitarlos».
+
+---
+
 ## Firmar para Google Play
 
 Google Play no acepta apps firmadas con la llave de depuración. La variante
