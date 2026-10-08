@@ -261,7 +261,9 @@ private fun PreviaNovedades() {
             onIrAlDirectorio = {},
             onReportar = {},
             // El primero ya se abrió: se ven las dos tarjetas, la nueva y la vista.
-            abiertos = setOf("v1")
+            abiertos = setOf("v1"),
+            // Y arriba, la explicación de la tele, como la primera vez.
+            ayudaTele = true
         )
     }
 }

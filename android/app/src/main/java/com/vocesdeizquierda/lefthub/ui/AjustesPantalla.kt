@@ -125,6 +125,13 @@ fun AjustesPantalla(
             }
         }
 
+        // --- Ver en la tele -------------------------------------------------
+        // La misma explicación que sale una vez en Novedades. Aquí se queda
+        // para siempre, por si hace falta volver a leerla.
+        Seccion("Ver los videos en la tele") {
+            ComoVerEnLaTele()
+        }
+
         // --- Anuncios -------------------------------------------------------
         // Solo si el equipo los tiene encendidos. Apagados no hay nada que
         // quitar, y la sección desaparece entera.
