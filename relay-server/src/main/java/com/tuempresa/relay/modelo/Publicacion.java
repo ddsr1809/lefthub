@@ -14,6 +14,11 @@ public class Publicacion {
     public static final String MOVIDO = "moved";
     public static final String RETIRADO = "removed";
 
+    // Un video normal o un video corto (Short). Los cortos van aparte: ni en
+    // las novedades ni en los avisos de siempre.
+    public static final String TIPO_VIDEO = "video";
+    public static final String TIPO_CORTO = "short";
+
     // Ciclo de vida de un directo. Un video normal se queda en NO.
     public static final String DIRECTO_NO = "no";
     public static final String DIRECTO_PROGRAMADO = "programado";
@@ -121,6 +126,9 @@ public class Publicacion {
     public void setDuracion(String duracion) { this.duracion = duracion; }
 
     public String getTipo() { return tipo; }
+
+    @Transient
+    public boolean esCorto() { return TIPO_CORTO.equals(tipo); }
     public void setTipo(String tipo) { this.tipo = tipo; }
 
     public boolean isEnVivo() { return enVivo; }

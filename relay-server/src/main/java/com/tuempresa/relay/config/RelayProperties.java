@@ -36,7 +36,13 @@ public record RelayProperties(
             @DefaultValue("6") long antiguedadMaximaHoras
     ) {}
 
-    public record YouTube(@DefaultValue("") String apiKey) {}
+    public record YouTube(
+            @DefaultValue("") String apiKey,
+            // Las dos direcciones son las de YouTube y no hay por que tocarlas;
+            // estan aqui para poder apuntar las pruebas a un servidor de pega.
+            @DefaultValue("https://www.googleapis.com/youtube/v3") String apiBase,
+            @DefaultValue("https://www.youtube.com/shorts/") String urlShorts
+    ) {}
 
     public record Fcm(
             @DefaultValue("") String proyectoId,

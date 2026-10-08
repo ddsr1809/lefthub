@@ -192,7 +192,14 @@ public final class Dtos {
             String tema,
             boolean avisos,
             /** Productoras que sigue. */
-            List<UUID> productoras
+            List<UUID> productoras,
+            /** Quiere ver los videos cortos. Solo cuenta si están disponibles. */
+            boolean cortos,
+            /**
+             * El equipo permite los videos cortos. Con esto en false la app no
+             * enseña ni el apartado ni la opción, diga lo que diga {@code cortos}.
+             */
+            boolean cortosDisponibles
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -201,17 +208,18 @@ public final class Dtos {
          * "Siguiendo" y suscribe el teléfono a sus avisos. Quien sí las
          * conoce las tiene aparte en {@code productoras} y las descuenta.
          */
-        public static PerfilDto de(Usuario u) {
+        public static PerfilDto de(Usuario u, boolean cortosDisponibles) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
             return new PerfilDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
                     seguidos, u.getEscalaTexto(), u.getTema(), u.isAvisos(),
-                    List.copyOf(u.getProductorasSeguidas()));
+                    List.copyOf(u.getProductorasSeguidas()),
+                    u.isCortos(), cortosDisponibles);
         }
     }
 
-    public record Preferencias(String escalaTexto, String tema, Boolean avisos) {}
+    public record Preferencias(String escalaTexto, String tema, Boolean avisos, Boolean cortos) {}
 
     // -------------------------------------------------------------------------
     // Suscripciones de YouTube del usuario
@@ -338,6 +346,22 @@ public final class Dtos {
     ) {}
 
     public record CanalGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
+
+    /** Los ajustes generales del panel. Hoy uno: si la app muestra los videos cortos. */
+    public record AjustesDto(boolean cortos) {}
+
+    /** Lo que se cambia de los ajustes. Lo que no viene no se toca. */
+    public record CambiarAjustes(Boolean cortos) {}
+
+    /** Lo que salió de repasar los cortos guardados. */
+    public record RevisionDeCortos(int revisados, int corregidos, int sinRespuesta) {}
+
+    /** Corrige a mano si una publicación es un video normal o un corto. */
+    public record CambiarTipo(
+            @NotBlank(message = "Di si es un video o un corto.")
+            @Pattern(regexp = "video|short", message = "El tipo tiene que ser video o short.")
+            String tipo
+    ) {}
 
     public record GuardarProductora(
             UUID id,

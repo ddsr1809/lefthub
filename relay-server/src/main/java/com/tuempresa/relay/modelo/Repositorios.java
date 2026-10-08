@@ -129,6 +129,11 @@ public final class Repositorios {
 
         boolean existsByVideoId(String videoId);
 
+        /** Para el panel: solo los cortos, o todo menos los cortos. */
+        List<Publicacion> findByTipoOrderByPublicadoEnDesc(String tipo, Pageable pagina);
+
+        List<Publicacion> findByTipoNotOrderByPublicadoEnDesc(String tipo, Pageable pagina);
+
         /** Directos pendientes de arrancar o de terminar. */
         List<Publicacion> findByDirectoIn(Collection<String> estados);
 
@@ -139,15 +144,20 @@ public final class Repositorios {
          *
          * Ninguna de las dos colecciones puede llegar vacia; quien llama pone
          * un id que no existe en la que no tenga nada.
+         *
+         * Los videos cortos nunca van mezclados con los demas: `cortos` elige
+         * cual de las dos listas se pide.
          */
         @Query("""
                 select p from Publicacion p
                 where (p.creadorId in :creadores or p.canalId in :canales)
                   and p.estado <> 'removed'
+                  and ((:cortos = true and p.tipo = 'short') or (:cortos = false and p.tipo <> 'short'))
                 order by p.publicadoEn desc nulls last
                 """)
         List<Publicacion> delFeed(@Param("creadores") Collection<UUID> creadores,
                                   @Param("canales") Collection<UUID> canales,
+                                  @Param("cortos") boolean cortos,
                                   Pageable pagina);
 
         /**
@@ -165,10 +175,10 @@ public final class Repositorios {
 
         List<Publicacion> findAllByOrderByPublicadoEnDesc(Pageable pagina);
 
-        /** Lo último que salió en un canal, para su ficha en la app. */
+        /** Los últimos videos de un canal, para su ficha en la app. Sin los cortos. */
         @Query("""
                 select p from Publicacion p
-                where p.canalId = :canal and p.estado <> 'removed'
+                where p.canalId = :canal and p.estado <> 'removed' and p.tipo <> 'short'
                 order by p.publicadoEn desc nulls last
                 """)
         List<Publicacion> delCanal(@Param("canal") UUID canal, Pageable pagina);
@@ -262,6 +272,9 @@ public final class Repositorios {
                              @Param("soloAdmins") boolean soloAdmins,
                              @Param("soloBots") boolean soloBots,
                              Pageable pagina);
+    }
+
+    public interface Ajustes extends JpaRepository<Ajuste, String> {
     }
 
     public interface Suscripciones extends JpaRepository<Suscripcion, String> {

@@ -54,6 +54,13 @@ public class Usuario {
     private boolean avisos = true;
 
     /**
+     * Quiere ver los videos cortos (Shorts), en su propio apartado. Solo
+     * cuenta mientras el panel los tenga permitidos: ver AjustesService.
+     */
+    @Column(nullable = false)
+    private boolean cortos = true;
+
+    /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
      * 5.1.1(v).
@@ -131,6 +138,9 @@ public class Usuario {
 
     public boolean isAvisos() { return avisos; }
     public void setAvisos(boolean avisos) { this.avisos = avisos; }
+
+    public boolean isCortos() { return cortos; }
+    public void setCortos(boolean cortos) { this.cortos = cortos; }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

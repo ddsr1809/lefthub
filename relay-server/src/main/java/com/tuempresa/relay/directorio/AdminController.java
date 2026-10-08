@@ -48,6 +48,7 @@ public class AdminController {
     private final CanalesService canalesService;
     private final Catalogo catalogo;
     private final ReplicaService replica;
+    private final AjustesService ajustes;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -59,7 +60,7 @@ public class AdminController {
                            YouTubeClient youtube, PushService push, Emisores emisores,
                            CreadoresService servicio, ProductorasService servicioDeProductoras,
                            CanalesService canalesService, Catalogo catalogo,
-                           ReplicaService replica) {
+                           ReplicaService replica, AjustesService ajustes) {
         this.creadores = creadores;
         this.productoras = productoras;
         this.canales = canales;
@@ -75,6 +76,7 @@ public class AdminController {
         this.canalesService = canalesService;
         this.catalogo = catalogo;
         this.replica = replica;
+        this.ajustes = ajustes;
     }
 
     // -------------------------------------------------------------------------
@@ -411,11 +413,93 @@ public class AdminController {
 
     @GetMapping("/publicaciones")
     @Transactional(readOnly = true)
-    public List<Dtos.PublicacionDto> recientes(@RequestParam(defaultValue = "40") int limite) {
-        List<Publicacion> lista = publicaciones.findAllByOrderByPublicadoEnDesc(
-                PageRequest.of(0, Math.min(limite, 200)));
+    public List<Dtos.PublicacionDto> recientes(@RequestParam(defaultValue = "40") int limite,
+                                               @RequestParam(required = false) String tipo) {
+        PageRequest pagina = PageRequest.of(0, Math.max(1, Math.min(limite, 200)));
+
+        // Sin `tipo`, todo junto, como siempre: el panel marca cuáles son cortos.
+        List<Publicacion> lista =
+                "cortos".equals(tipo) ? publicaciones.findByTipoOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
+                : "videos".equals(tipo) ? publicaciones.findByTipoNotOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
+                : publicaciones.findAllByOrderByPublicadoEnDesc(pagina);
 
         return DirectorioController.aDtos(lista, catalogo.vista());
+    }
+
+    /**
+     * Corrige a mano si un video es corto o no.
+     *
+     * El servidor lo decide solo al recibir el video, y casi siempre acierta,
+     * pero la última palabra es de quien lo está viendo. No avisa a nadie:
+     * solo cambia en qué lista sale.
+     */
+    @PutMapping("/videos/{videoId}/tipo")
+    @Transactional
+    public Dtos.RespuestaSimple cambiarTipo(@PathVariable String videoId,
+                                            @Valid @RequestBody Dtos.CambiarTipo peticion) {
+
+        Publicacion p = publicaciones.findByVideoId(videoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Ese video no está en el directorio."));
+
+        // Se comprueba también aquí, no solo con la anotación: un tipo que no
+        // sea uno de estos dos dejaría el video fuera de las dos listas.
+        if (!Publicacion.TIPO_VIDEO.equals(peticion.tipo())
+                && !Publicacion.TIPO_CORTO.equals(peticion.tipo())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El tipo tiene que ser video o short.");
+        }
+
+        p.setTipo(peticion.tipo());
+        publicaciones.save(p);
+
+        return Dtos.RespuestaSimple.de(p.esCorto()
+                ? "Marcado como video corto." : "Marcado como video normal.");
+    }
+
+    /**
+     * Vuelve a preguntarle a YouTube por los últimos videos guardados como
+     * cortos, y corrige los que en realidad son videos normales.
+     *
+     * Hasta ahora se decidía solo por la duración, así que entre lo guardado
+     * hay videos normales de menos de tres minutos marcados como cortos. Los
+     * que YouTube no aclara se dejan como están.
+     */
+    @PostMapping("/videos/revisar-cortos")
+    public Dtos.RevisionDeCortos revisarCortos(@RequestParam(defaultValue = "40") int limite) {
+        List<Publicacion> lista = publicaciones.findByTipoOrderByPublicadoEnDesc(
+                Publicacion.TIPO_CORTO, PageRequest.of(0, Math.max(1, Math.min(limite, 100))));
+
+        int corregidos = 0;
+        int sinRespuesta = 0;
+
+        for (Publicacion p : lista) {
+            Boolean esShort = youtube.esShort(p.getVideoId());
+            if (esShort == null) {
+                sinRespuesta++;
+            } else if (!esShort) {
+                p.setTipo(Publicacion.TIPO_VIDEO);
+                publicaciones.save(p);
+                corregidos++;
+            }
+        }
+        return new Dtos.RevisionDeCortos(lista.size(), corregidos, sinRespuesta);
+    }
+
+    // -------------------------------------------------------------------------
+    // Ajustes generales
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/ajustes")
+    public Dtos.AjustesDto ajustes() {
+        return new Dtos.AjustesDto(ajustes.cortos());
+    }
+
+    /** Solo cambia lo que llega; lo demás se queda como estaba. */
+    @PutMapping("/ajustes")
+    public Dtos.AjustesDto cambiarAjustes(@RequestBody Dtos.CambiarAjustes peticion) {
+        if (peticion.cortos() != null) ajustes.ponerCortos(peticion.cortos());
+        return ajustes();
     }
 
     /**
@@ -438,12 +522,16 @@ public class AdminController {
         p.setDestinoPlataforma(peticion.plataformaDestino());
         publicaciones.save(p);
 
-        if (peticion.debeAvisar()) {
+        // De un video corto solo se avisa a quienes los ven; con los cortos
+        // apagados no lo vio nadie, y no hay a quién decirle que se movió.
+        boolean corto = p.esCorto();
+
+        if (peticion.debeAvisar() && (!corto || ajustes.cortos())) {
             // A quienes siguen a su creador y, si el canal es de una
             // productora, también a quienes la siguen a ella.
             emisores.paraAvisoManual(p).ifPresent(emisor ->
                     push.avisarContenidoMovido(emisor, videoId, p.getTitulo(),
-                            peticion.url(), peticion.plataformaDestino()));
+                            peticion.url(), peticion.plataformaDestino(), corto));
         }
 
         return Dtos.RespuestaSimple.de("Destino cambiado.");

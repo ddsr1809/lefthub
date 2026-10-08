@@ -135,6 +135,30 @@ class EmisorTest {
     }
 
     @Test
+    @DisplayName("Un video corto va por topics aparte: los de siempre no lo reciben")
+    void cortos() {
+        Creador juan = creador("Juan Pérez");
+        Emisor emisor = Emisor.de(juan);
+
+        assertEquals(List.of(new Destino("creator_" + juan.getId() + "_cortos", null)),
+                emisor.destinos(true));
+        assertEquals(emisor.destinos(), emisor.destinos(false), "lo demás no cambia");
+        assertTrue(emisor.topics().stream().noneMatch(t -> t.endsWith("_cortos")));
+    }
+
+    @Test
+    @DisplayName("El corto de un canal compartido llega a las mismas audiencias, menos a las apps que no conocen las productoras")
+    void cortosCompartidos() {
+        Productora gobierno = productora("Gobierno de México");
+        UUID claudia = UUID.randomUUID();
+
+        List<Destino> destinos = Emisor.de(null, gobierno, List.of(claudia)).destinos(true);
+
+        assertEquals(List.of(new Destino(null, o("productora_" + gobierno.getId() + "_cortos",
+                "creator_" + claudia + "_cortos"))), destinos);
+    }
+
+    @Test
     @DisplayName("Sin creador ni productora no hay aviso que mandar")
     void nadie() {
         assertThrows(IllegalArgumentException.class, () -> Emisor.de(null, null));

@@ -112,6 +112,14 @@ public class PushService {
     }
 
     /**
+     * Los videos cortos van por topics aparte: el de siempre con este final.
+     * Así cada teléfono decide si los quiere con solo suscribirse o no, y una
+     * versión de la app anterior a esto, que no conoce estos topics, no recibe
+     * ninguno.
+     */
+    public static final String SUFIJO_CORTOS = "_cortos";
+
+    /**
      * En nombre de quién sale un aviso y a quién le llega.
      *
      * Siempre hay creador, productora o los dos: es el dueño del canal. El
@@ -172,6 +180,21 @@ public class PushService {
         }
 
         /**
+         * Los topics de un video corto: los mismos, cada uno con su final.
+         *
+         * Aquí la productora lleva solo el suyo. El segundo existe para las
+         * versiones de la app que no conocen las productoras, y esas tampoco
+         * conocen los videos cortos.
+         */
+        public List<String> topicsDeCortos() {
+            Set<String> todos = new LinkedHashSet<>();
+            if (creadorId != null) todos.add(topicDe(creadorId) + SUFIJO_CORTOS);
+            if (productoraId != null) todos.add(topicDeProductora(productoraId) + SUFIJO_CORTOS);
+            tambien.forEach(id -> todos.add(topicDe(id) + SUFIJO_CORTOS));
+            return List.copyOf(todos);
+        }
+
+        /**
          * A quién se dirige cada mensaje: un topic suelto, o una condición de
          * FCM ("sigue a este O a aquel") cuando hay varias audiencias. Con
          * condición, quien sigue a dos de ellas recibe un solo aviso.
@@ -182,7 +205,12 @@ public class PushService {
          * segundo sustituya al primero en la pantalla.
          */
         public List<Destino> destinos() {
-            List<String> todos = topics();
+            return destinos(false);
+        }
+
+        /** Lo mismo, para un video corto si {@code cortos}. */
+        public List<Destino> destinos(boolean cortos) {
+            List<String> todos = cortos ? topicsDeCortos() : topics();
             if (todos.size() == 1) return List.of(new Destino(todos.get(0), null));
 
             List<Destino> destinos = new ArrayList<>();
@@ -248,13 +276,22 @@ public class PushService {
             return avisarDirecto(emisor, videoId, titulo, miniatura);
         }
 
-        String encabezado = (detalle != null && "short".equals(detalle.tipo()))
-                ? emisor.nombre() + " publicó un video corto"
-                : emisor.nombre() + " subió un video nuevo";
-
         // Un solo aviso por creador: si llegan tres videos seguidos, el último
         // reemplaza al anterior en vez de apilar tres tarjetas.
-        return enviarPublicacion(emisor, videoId, titulo, miniatura, encabezado, emisor.topic());
+        return enviarPublicacion(emisor, videoId, titulo, miniatura,
+                emisor.nombre() + " subió un video nuevo", emisor.topic(), false);
+    }
+
+    /**
+     * Avisa de un video corto, solo a quienes los quieren.
+     *
+     * Va por sus propios topics y con su propia etiqueta: un corto no borra de
+     * la pantalla el aviso del video largo que el mismo creador subió antes.
+     */
+    public boolean avisarCorto(Emisor emisor, String videoId, String titulo, String miniatura) {
+        return enviarPublicacion(emisor, videoId, titulo, miniatura,
+                emisor.nombre() + " publicó un video corto",
+                emisor.topic() + SUFIJO_CORTOS, true);
     }
 
     /**
@@ -266,13 +303,14 @@ public class PushService {
      */
     public boolean avisarDirecto(Emisor emisor, String videoId, String titulo, String miniatura) {
         return enviarPublicacion(emisor, videoId, titulo, miniatura,
-                emisor.nombre() + " está en vivo ahora", "directo_" + videoId);
+                emisor.nombre() + " está en vivo ahora", "directo_" + videoId, false);
     }
 
     private boolean enviarPublicacion(Emisor emisor, String videoId, String titulo,
-                                      String miniatura, String encabezado, String etiqueta) {
+                                      String miniatura, String encabezado, String etiqueta,
+                                      boolean corto) {
 
-        List<Destino> destinos = emisor.destinos();
+        List<Destino> destinos = emisor.destinos(corto);
         boolean todos = true;
 
         for (Destino destino : destinos) {
@@ -293,6 +331,7 @@ public class PushService {
             datos.put("videoId", videoId);
             datos.put("platform", "youtube");
             datos.put("url", "https://www.youtube.com/watch?v=" + videoId);
+            if (corto) datos.put("corto", "true");
 
             ObjectNode android = mensaje.putObject("android");
             android.put("priority", "HIGH");
@@ -328,6 +367,13 @@ public class PushService {
      */
     public boolean avisarContenidoMovido(Emisor emisor, String videoId, String tituloVideo,
                                          String destinoUrl, String destinoPlataforma) {
+        return avisarContenidoMovido(emisor, videoId, tituloVideo, destinoUrl, destinoPlataforma, false);
+    }
+
+    /** Si lo que se movió es un video corto, se avisa solo a quienes los ven. */
+    public boolean avisarContenidoMovido(Emisor emisor, String videoId, String tituloVideo,
+                                         String destinoUrl, String destinoPlataforma,
+                                         boolean corto) {
 
         String donde = nombreDePlataforma(destinoPlataforma);
         String cuerpo = (tituloVideo != null && !tituloVideo.isBlank())
@@ -336,7 +382,7 @@ public class PushService {
 
         boolean todos = true;
 
-        for (Destino destino : emisor.destinos()) {
+        for (Destino destino : emisor.destinos(corto)) {
             ObjectNode mensaje = json.createObjectNode();
             destino.dirigir(mensaje);
 

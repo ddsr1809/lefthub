@@ -312,6 +312,44 @@ En Novedades, un video de un canal de productora se firma "Creador · Productora
 
 ---
 
+## Videos cortos (Shorts)
+
+Los videos cortos van aparte de los demás, y son opcionales dos veces: para el
+equipo y para cada persona.
+
+- **El equipo decide si existen.** En el panel, sección **Publicaciones**, está
+  el interruptor *Mostrar los videos cortos en la app*. Viene **apagado**. Así,
+  el servidor guarda los Shorts que detecta pero no avisa de ellos ni los
+  enseña en ningún sitio, y la app no ofrece la opción. Al encenderlo, la app
+  muestra un apartado *Videos cortos* dentro de Novedades, con los que ya
+  estaban guardados y los que lleguen.
+- **Cada persona decide si los ve.** Con el interruptor encendido aparece en
+  los Ajustes de la app la sección *Videos cortos*, con *Verlos* / *No verlos*.
+  Si el equipo lo apaga, esa sección desaparece.
+
+Reglas que conviene saber:
+
+- Un corto **nunca** sale mezclado en Novedades ni en la ficha de un canal.
+- Sus avisos van por topics aparte (`creator_<id>_cortos`,
+  `productora_<id>_cortos`), a los que solo se suscribe el teléfono de quien
+  los ve. Las versiones de la app anteriores a esto no los conocen: dejan de
+  ver y de recibir Shorts del todo.
+- **Cómo se sabe que un video es un Short.** La Data API no lo dice. Si dura
+  más de tres minutos o es un directo, no lo es. Si dura menos, el servidor
+  pide `youtube.com/shorts/ID` (solo la cabecera, sin cuota): YouTube contesta
+  200 si es un Short y redirige a `/watch` si es un video normal. Si no
+  contesta con claridad, se queda como corto.
+- **Corregir a mano.** En la lista de Publicaciones cada video tiene *Es corto*
+  / *No es corto*. Y *Repasar los cortos guardados* vuelve a preguntarle a
+  YouTube por los últimos: sirve sobre todo la primera vez, porque lo guardado
+  antes de esta versión se clasificó solo por la duración.
+
+En la API: `GET /api/publicaciones` no trae cortos; `GET
+/api/publicaciones?tipo=cortos` trae solo cortos (vacío si están apagados o la
+persona no los quiere). `GET /api/perfil` dice `cortos` (lo que eligió la
+persona) y `cortosDisponibles` (lo que decidió el equipo). El interruptor es
+`GET`/`PUT /api/admin/ajustes`, y se guarda en la tabla `ajustes` (V8).
+
 ## "¿Estoy suscrito en YouTube?"
 
 Seguir a un creador en la app y estar suscrito a su canal son cosas distintas. Con la cuenta guardada con Google, la app puede decirle a cada persona en cuáles sí lo está.

@@ -42,17 +42,19 @@ public class DirectorioController {
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Usuarios usuarios;
     private final Catalogo catalogo;
+    private final AjustesService ajustes;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
                                 Repositorios.Publicaciones publicaciones,
                                 Repositorios.Usuarios usuarios,
-                                Catalogo catalogo) {
+                                Catalogo catalogo, AjustesService ajustes) {
         this.creadores = creadores;
         this.productoras = productoras;
         this.publicaciones = publicaciones;
         this.usuarios = usuarios;
         this.catalogo = catalogo;
+        this.ajustes = ajustes;
     }
 
     // -------------------------------------------------------------------------
@@ -164,8 +166,18 @@ public class DirectorioController {
      */
     @GetMapping("/publicaciones")
     @Transactional(readOnly = true)
-    public List<Dtos.PublicacionDto> feed(@RequestParam(defaultValue = "50") int limite) {
+    public List<Dtos.PublicacionDto> feed(@RequestParam(defaultValue = "50") int limite,
+                                          @RequestParam(required = false) String tipo) {
         Usuario usuario = usuarioActual();
+
+        // Los videos cortos van en su propia lista (?tipo=cortos), nunca
+        // mezclados. Y solo si el equipo los permite y la persona los quiere:
+        // si no, esa lista viene vacía.
+        boolean cortos = "cortos".equals(tipo);
+        if (cortos && !(ajustes.cortos() && usuario.isCortos())) {
+            return List.of();
+        }
+
         Catalogo.Vista vista = catalogo.vista();
 
         Collection<UUID> deCreadores = usuario.getFavoritos();
@@ -178,14 +190,16 @@ public class DirectorioController {
         List<Publicacion> lista = publicaciones.delFeed(
                 deCreadores.isEmpty() ? List.of(NINGUNO) : deCreadores,
                 deCanales.isEmpty() ? List.of(NINGUNO) : deCanales,
+                cortos,
                 PageRequest.of(0, Math.min(limite, 100)));
 
         return aDtos(lista, vista);
     }
 
     /**
-     * Lo último que publicó un canal, para su ficha en la app. No depende de
-     * a quién siga la persona: es lo que hay en ese canal.
+     * Los últimos videos de un canal, para su ficha en la app. No depende de
+     * a quién siga la persona: es lo que hay en ese canal. Sin los cortos,
+     * que solo salen en su apartado de Novedades.
      *
      * Solo canales con el dueño visible, como en el resto del directorio.
      */
@@ -255,7 +269,7 @@ public class DirectorioController {
     @GetMapping("/perfil")
     @Transactional(readOnly = true)
     public Dtos.PerfilDto perfil() {
-        return Dtos.PerfilDto.de(usuarioActual());
+        return Dtos.PerfilDto.de(usuarioActual(), ajustes.cortos());
     }
 
     /**
@@ -336,8 +350,9 @@ public class DirectorioController {
         if (peticion.escalaTexto() != null) usuario.setEscalaTexto(peticion.escalaTexto());
         if (peticion.tema() != null) usuario.setTema(peticion.tema());
         if (peticion.avisos() != null) usuario.setAvisos(peticion.avisos());
+        if (peticion.cortos() != null) usuario.setCortos(peticion.cortos());
 
-        return Dtos.PerfilDto.de(usuario);
+        return Dtos.PerfilDto.de(usuario, ajustes.cortos());
     }
 
     // -------------------------------------------------------------------------

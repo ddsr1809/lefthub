@@ -84,6 +84,10 @@ relay:
 
   youtube:
     api-key: ${YOUTUBE_API_KEY:}
+    # Las direcciones de YouTube. No hay que tocarlas: existen como variables
+    # solo para poder apuntar las pruebas a un servidor de pega.
+    api-base: ${YOUTUBE_API_BASE:https://www.googleapis.com/youtube/v3}
+    url-shorts: ${YOUTUBE_URL_SHORTS:https://www.youtube.com/shorts/}
 
   fcm:
     # ID del proyecto de Firebase y ruta al JSON de la cuenta de servicio.
