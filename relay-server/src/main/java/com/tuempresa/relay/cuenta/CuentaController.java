@@ -1,6 +1,5 @@
 package com.tuempresa.relay.cuenta;
 
-import com.tuempresa.relay.avisos.AvisosAdminService;
 import com.tuempresa.relay.config.SeguridadConfig.Sesion;
 import com.tuempresa.relay.modelo.Dtos;
 import com.tuempresa.relay.modelo.Reporte;
@@ -26,18 +25,15 @@ public class CuentaController {
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Reportes reportes;
     private final AppleService apple;
-    private final AvisosAdminService avisos;
 
     public CuentaController(Repositorios.Usuarios usuarios,
                             Repositorios.Publicaciones publicaciones,
                             Repositorios.Reportes reportes,
-                            AppleService apple,
-                            AvisosAdminService avisos) {
+                            AppleService apple) {
         this.usuarios = usuarios;
         this.publicaciones = publicaciones;
         this.reportes = reportes;
         this.apple = apple;
-        this.avisos = avisos;
     }
 
     /**
@@ -64,9 +60,6 @@ public class CuentaController {
         reporte.setCreadorId(peticion.creadorId());
         reporte.setMotivo(recortar(peticion.motivoSeguro(), 500));
         reportes.save(reporte);
-
-        // Al teléfono de quien administra, cuando esto ya quedó guardado.
-        avisos.reporteNuevo(reporte);
 
         // Contador rápido para que el panel muestre los casos calientes primero.
         if (!sinVideo) {
@@ -108,7 +101,6 @@ public class CuentaController {
                 incidencia.setMotivo("apple_revoke_failed");
                 incidencia.setDetalle(recortar(e.getMessage(), 300));
                 reportes.save(incidencia);
-                avisos.reporteNuevo(incidencia);
             }
         }
 

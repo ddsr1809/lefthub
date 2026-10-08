@@ -332,33 +332,5 @@ public final class Repositorios {
         void borrarDeUsuario(@Param("usuario") UUID usuario);
 
         long countByUsuarioId(UUID usuarioId);
-
-        /**
-         * Cuántos reportes del mismo video llegaron antes que este y siguen
-         * sin atender. Si hay alguno, al equipo ya se le avisó de ese video.
-         */
-        long countByVideoIdAndResueltoFalseAndIdLessThan(String videoId, Long id);
-
-        /** Lo mismo para los reportes de un creador que no señalan un video. */
-        long countByCreadorIdAndVideoIdIsNullAndResueltoFalseAndIdLessThan(UUID creadorId, Long id);
-    }
-
-    public interface DispositivosAdmin extends JpaRepository<DispositivoAdmin, UUID> {
-
-        Optional<DispositivoAdmin> findByEndpoint(String endpoint);
-
-        List<DispositivoAdmin> findByUsuarioIdOrderByCreadoEnAsc(UUID usuarioId);
-
-        /**
-         * A quién se le avisa: los dispositivos de las cuentas que hoy son
-         * administradoras. Quitarle el rol a alguien lo saca de aquí sin
-         * tener que borrar sus dispositivos.
-         */
-        @Query("""
-                select d from DispositivoAdmin d
-                where d.usuarioId in (select u.id from Usuario u where u.esAdmin = true)
-                order by d.creadoEn asc
-                """)
-        List<DispositivoAdmin> deAdministradores();
     }
 }
