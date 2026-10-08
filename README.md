@@ -312,6 +312,33 @@ En Novedades, un video de un canal de productora se firma "Creador · Productora
 
 ---
 
+## Foto de perfil
+
+En la ficha de un creador (y en la de una productora, para su logo) la sección
+**Foto de perfil** ofrece un botón por cada cuenta que tenga en el formulario:
+*YouTube · @canal*, *X · usuario*, *Instagram · usuario*… y **Manual**. Al
+pulsar uno, el panel trae la foto de esa cuenta, la enseña y la deja lista
+para guardarse con lo demás. Con *Manual* se pega la dirección de una imagen.
+
+- Al dar de alta a alguien buscando su canal de YouTube, el formulario se
+  rellena solo con el nombre, la descripción y la foto del canal (lo que esté
+  vacío). Después se puede cambiar la foto por la de otra red.
+- **De YouTube** se usa la dirección que da la Data API, que no caduca (1
+  unidad de cuota).
+- **De las demás redes** (X, Instagram, TikTok, Facebook, Threads, Telegram,
+  Twitch, Spotify, Patreon) el servidor se la pide a
+  [unavatar.io](https://unavatar.io) y **guarda una copia** (tabla `fotos`, V9)
+  que sirve él mismo en `/api/fotos/{id}`. Se guarda la copia y no la
+  dirección porque las de Instagram o TikTok caducan a los pocos días.
+- Sin clave, ese servicio da **25 fotos al día** por servidor, que sobra para
+  dar de alta creadores. Si hiciera falta más, se contrata un plan y se pone
+  la clave en `FOTOS_API_KEY` del `.env`.
+- La foto **no se actualiza sola**: si la persona la cambia en su red, se
+  vuelve a pulsar el botón y se guarda.
+- Si la red no entrega la foto (cuenta privada, usuario mal escrito, la red
+  bloquea la consulta), el panel lo dice y se puede probar con otra red o
+  pegarla a mano.
+
 ## Videos cortos (Shorts)
 
 Los videos cortos van aparte de los demás, y son opcionales dos veces: para el

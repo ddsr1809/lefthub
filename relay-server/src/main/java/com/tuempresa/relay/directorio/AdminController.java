@@ -49,6 +49,7 @@ public class AdminController {
     private final Catalogo catalogo;
     private final ReplicaService replica;
     private final AjustesService ajustes;
+    private final FotosService fotos;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -60,7 +61,8 @@ public class AdminController {
                            YouTubeClient youtube, PushService push, Emisores emisores,
                            CreadoresService servicio, ProductorasService servicioDeProductoras,
                            CanalesService canalesService, Catalogo catalogo,
-                           ReplicaService replica, AjustesService ajustes) {
+                           ReplicaService replica, AjustesService ajustes,
+                           FotosService fotos) {
         this.creadores = creadores;
         this.productoras = productoras;
         this.canales = canales;
@@ -77,6 +79,7 @@ public class AdminController {
         this.catalogo = catalogo;
         this.replica = replica;
         this.ajustes = ajustes;
+        this.fotos = fotos;
     }
 
     // -------------------------------------------------------------------------
@@ -405,6 +408,24 @@ public class AdminController {
                     "El canal existe pero YouTube no devolvió datos.");
         }
         return datos;
+    }
+
+    /**
+     * La foto de perfil de una cuenta del creador, para ponérsela.
+     *
+     * De YouTube devuelve la dirección de la foto del canal. De las demás
+     * redes guarda una copia aquí y devuelve la dirección de la copia. No
+     * cambia a ningún creador: el panel pone la dirección en el formulario y
+     * se guarda con lo demás.
+     */
+    @GetMapping("/foto")
+    public Dtos.FotoDto foto(@RequestParam(required = false) String plataforma,
+                             @RequestParam(required = false) String url,
+                             @RequestParam(required = false) String channelId) {
+        if (plataforma == null || plataforma.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta decir de qué red es la cuenta.");
+        }
+        return fotos.traer(plataforma, url, channelId);
     }
 
     // -------------------------------------------------------------------------

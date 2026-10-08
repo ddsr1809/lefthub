@@ -3,6 +3,7 @@ package com.tuempresa.relay.config;
 import com.tuempresa.relay.auth.ServicioJwt;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
@@ -51,6 +52,10 @@ public class SeguridadConfig {
                         // Tareas internas: cabecera compartida, validada en el
                         // propio controlador.
                         .requestMatchers("/internal/**").permitAll()
+
+                        // Las fotos de perfil guardadas aquí: las pide el
+                        // teléfono o el navegador al pintar una imagen, sin token.
+                        .requestMatchers(HttpMethod.GET, "/api/fotos/**").permitAll()
 
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/**").authenticated()

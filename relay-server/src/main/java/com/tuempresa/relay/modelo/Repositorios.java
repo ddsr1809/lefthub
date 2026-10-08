@@ -277,6 +277,12 @@ public final class Repositorios {
     public interface Ajustes extends JpaRepository<Ajuste, String> {
     }
 
+    public interface Fotos extends JpaRepository<Foto, UUID> {
+
+        /** La copia que ya hay de la foto de esa cuenta ("x/usuario"), si hay. */
+        Optional<Foto> findByOrigen(String origen);
+    }
+
     public interface Suscripciones extends JpaRepository<Suscripcion, String> {
 
         List<Suscripcion> findByEstado(String estado);

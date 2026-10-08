@@ -89,6 +89,13 @@ relay:
     api-base: ${YOUTUBE_API_BASE:https://www.googleapis.com/youtube/v3}
     url-shorts: ${YOUTUBE_URL_SHORTS:https://www.youtube.com/shorts/}
 
+  fotos:
+    # El servicio que encuentra la foto de perfil de una cuenta de X,
+    # Instagram, TikTok... Solo se usa desde el panel, al pulsar el botón.
+    # Sin clave da 25 fotos al día, que sobra para dar de alta creadores.
+    base: ${FOTOS_BASE:https://unavatar.io}
+    api-key: ${FOTOS_API_KEY:}
+
   fcm:
     # ID del proyecto de Firebase y ruta al JSON de la cuenta de servicio.
     # Es lo único que sigue siendo de Google, y no cuesta nada: FCM es

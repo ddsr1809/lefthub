@@ -39,6 +39,8 @@ services:
       WEBSUB_TOKEN_CALLBACK: ${WEBSUB_TOKEN_CALLBACK}
       TOKEN_INTERNO: ${TOKEN_INTERNO}
       YOUTUBE_API_KEY: ${YOUTUBE_API_KEY}
+      # Opcional. Sin clave, el servicio de fotos de perfil da 25 al dia.
+      FOTOS_API_KEY: ${FOTOS_API_KEY:-}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       FCM_PROYECTO_ID: ${FCM_PROYECTO_ID}
       FCM_CREDENCIALES: /secretos/fcm.json

@@ -19,7 +19,8 @@ public record RelayProperties(
         @DefaultValue Apple apple,
         @DefaultValue Renovacion renovacion,
         @DefaultValue Cors cors,
-        @DefaultValue Replica replica
+        @DefaultValue Replica replica,
+        @DefaultValue Fotos fotos
 ) {
 
     public record Jwt(
@@ -75,6 +76,17 @@ public record RelayProperties(
     ) {}
 
     public record Cors(@DefaultValue("") String origenes) {}
+
+    /**
+     * De dónde se toman las fotos de perfil de las redes sociales.
+     *
+     * @param base   el servicio que las encuentra. Sin clave da 25 fotos al día.
+     * @param apiKey opcional: la clave del servicio, si se contrata un plan
+     */
+    public record Fotos(
+            @DefaultValue("https://unavatar.io") String base,
+            @DefaultValue("") String apiKey
+    ) {}
 
     /**
      * Copia de creadores de produccion a testing.

@@ -583,5 +583,13 @@ public final class Dtos {
             String suscriptores
     ) {}
 
+    /**
+     * Una foto de perfil lista para guardarse en el creador.
+     *
+     * @param url    la dirección de la imagen
+     * @param origen de qué red salió
+     */
+    public record FotoDto(String url, String origen) {}
+
     public record ResultadoRenovacion(int renovados, int fallidos, List<String> errores) {}
 }
