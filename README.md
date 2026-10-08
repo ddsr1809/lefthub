@@ -254,6 +254,14 @@ Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlis
 
 ## Canales y productoras
 
+> **Nombre.** Lo que en el código, la base de datos y la API se llama
+> *productora* (tabla `productoras`, rutas `/api/productoras`, topic
+> `productora_<id>`), en el panel y en la app se llama **Medio**: la sección
+> *Medios* del panel, la lista *Medios* del Directorio. Solo cambió la palabra
+> que ve la gente; por dentro no se renombró nada, para que las versiones de la
+> app y del servidor ya publicadas sigan entendiéndose. En este documento,
+> «productora» y «medio» son lo mismo.
+
 Tres cosas distintas, cada una con su ficha en el panel:
 
 - **Creador**: una persona del directorio. Puede figurar en una o varias productoras, y tener uno o varios canales de YouTube, varias redes sociales, o solo redes y ningún canal de YouTube: se le puede dar de alta con un canal de YouTube o solo con una cuenta de X, Instagram, TikTok, Facebook, Threads, Telegram, Twitch, Spotify, Patreon o su página. Solo YouTube genera avisos de videos; las redes son enlaces de su perfil. En su ficha van primero sus datos y sus redes, que bastan para crearlo; los canales de YouTube son opcionales y se agregan cuando se quiera, ahí mismo o en la sección Canales, donde además se dice de qué productora es cada uno.

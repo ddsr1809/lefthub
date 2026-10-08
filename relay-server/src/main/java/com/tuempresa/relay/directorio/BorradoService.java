@@ -200,7 +200,10 @@ public class BorradoService {
 
         Integer version = null;
         if (deCreadores || deProductoras) {
-            version = versiones.cortar("Antes de borrar: " + String.join(", ", partes), quien, true);
+            // La nota la lee una persona en la sección Versiones: ahí las
+            // productoras se llaman medios.
+            version = versiones.cortar("Antes de borrar: "
+                    + String.join(", ", partes).replace(PRODUCTORAS, "medios"), quien, true);
         }
 
         long antesDePublicaciones = publicaciones.count();

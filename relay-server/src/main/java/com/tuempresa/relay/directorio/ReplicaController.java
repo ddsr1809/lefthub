@@ -69,7 +69,7 @@ public class ReplicaController {
         replica.sincronizarDespues(recibido);
 
         return ResponseEntity.ok(Dtos.RespuestaSimple.de(
-                recibido.nuevo() ? "Productora creada." : "Productora actualizada."));
+                recibido.nuevo() ? "Medio creado." : "Medio actualizado."));
     }
 
     /**

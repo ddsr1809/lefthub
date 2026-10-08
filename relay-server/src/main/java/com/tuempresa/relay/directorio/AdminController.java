@@ -222,10 +222,10 @@ public class AdminController {
     public Dtos.RespuestaSimple borrarProductora(@PathVariable UUID id) {
         Productora productora = productoras.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
-                        "Esa productora ya no existe."));
+                        "Ese medio ya no existe."));
 
         darDeBaja(servicioDeProductoras.retirar(productora));
-        return Dtos.RespuestaSimple.de("Productora retirada del directorio.");
+        return Dtos.RespuestaSimple.de("Medio retirado del directorio.");
     }
 
     // -------------------------------------------------------------------------
