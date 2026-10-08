@@ -1,5 +1,6 @@
 package com.tuempresa.relay.websub;
 
+import com.tuempresa.relay.avisos.AvisosAdminService;
 import com.tuempresa.relay.config.RelayProperties;
 import com.tuempresa.relay.modelo.Dtos;
 import org.slf4j.Logger;
@@ -32,10 +33,12 @@ public class RenovacionProgramada {
     private static final Logger log = LoggerFactory.getLogger(RenovacionProgramada.class);
 
     private final WebSubService servicio;
+    private final AvisosAdminService avisos;
     private final RelayProperties config;
 
-    public RenovacionProgramada(WebSubService servicio, RelayProperties config) {
+    public RenovacionProgramada(WebSubService servicio, AvisosAdminService avisos, RelayProperties config) {
         this.servicio = servicio;
+        this.avisos = avisos;
         this.config = config;
     }
 
@@ -56,6 +59,21 @@ public class RenovacionProgramada {
     public void repescarPendientes() {
         if (!config.renovacion().programada()) return;
         servicio.reintentarNoActivas();
+    }
+
+    /**
+     * Avisa a quien administra de los canales que siguen sin suscripción
+     * activa después de varias repescas. Va desfasada de la repesca de arriba
+     * para mirar cuando esa ya tuvo tiempo de arreglar lo que podía.
+     */
+    @Scheduled(fixedDelay = 15, timeUnit = TimeUnit.MINUTES, initialDelay = 10)
+    public void avisarDeCanalesParados() {
+        if (!config.renovacion().programada()) return;
+        try {
+            avisos.revisarCanales();
+        } catch (Exception e) {
+            log.warn("No se pudo revisar si hay canales parados: {}", e.getMessage());
+        }
     }
 
     /** Detecta cuándo arranca o termina un directo sin depender del hub. */

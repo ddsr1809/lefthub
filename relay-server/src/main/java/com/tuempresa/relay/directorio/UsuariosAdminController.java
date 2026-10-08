@@ -194,8 +194,10 @@ public class UsuariosAdminController {
      * El rol viaja dentro del token de sesión, así que el cambio surte efecto
      * cuando esa persona vuelve a entrar. Ojo al quitarlo: un token ya emitido
      * sigue valiendo hasta que caduca (relay.jwt.dias-validez). El panel lo
-     * guarda solo mientras el navegador está abierto, pero quien lo haya
-     * copiado conserva el acceso hasta entonces.
+     * guarda solo mientras el navegador está abierto; instalado como app lo
+     * conserva hasta que caduca. En los dos casos, quien lo tenga conserva el
+     * acceso hasta entonces. Los avisos del panel sí se cortan al momento: se
+     * mandan solo a cuentas que hoy son administradoras.
      */
     @PostMapping("/{id}/admin")
     @Transactional
