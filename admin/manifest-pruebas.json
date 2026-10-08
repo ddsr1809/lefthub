@@ -1,0 +1,46 @@
+{
+  "name": "Voces Admin (pruebas)",
+  "short_name": "Admin pruebas",
+  "description": "Panel de administración de Voces de Izquierda, ambiente de pruebas.",
+  "lang": "es",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#25467C",
+  "theme_color": "#25467C",
+  "icons": [
+    {
+      "src": "iconos/icono-pruebas-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/icono-pruebas-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "iconos/mascara-pruebas-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Reportes",
+      "url": "./#reportes"
+    },
+    {
+      "name": "Canales",
+      "url": "./#canales"
+    },
+    {
+      "name": "Creadores",
+      "url": "./#creadores"
+    }
+  ]
+}
