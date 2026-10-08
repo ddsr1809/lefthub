@@ -276,7 +276,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onConectarYouTube = { modelo.conectarYouTube(contexto) },
                     onVolver = { nav.popBackStack() },
                     productoras = estado.productoras,
-                    onAbrirProductora = { nav.navigate("productora/$it") }
+                    onAbrirProductora = { nav.navigate("productora/$it") },
+                    creadores = estado.creadores
                 )
             }
 

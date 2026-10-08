@@ -35,7 +35,8 @@ internal fun creadorDe(json: JSONObject): Creador {
         platforms = conexiones,
         active = true,
         canales = json.optJSONArray("canales")?.mapJson { canalDe(it) } ?: emptyList(),
-        productoras = json.optJSONArray("productoras").mapJsonStrings()
+        productoras = json.optJSONArray("productoras").mapJsonStrings(),
+        esProductora = json.optBoolean("esProductora", false)
     )
 }
 
@@ -47,7 +48,8 @@ internal fun canalDe(json: JSONObject) = Canal(
     handle = json.optStringONull("handle"),
     channelId = json.optStringONull("channelId"),
     creadorId = json.optStringONull("creadorId"),
-    productoraId = json.optStringONull("productoraId")
+    productoraId = json.optStringONull("productoraId"),
+    tambien = json.optJSONArray("creadores").mapJsonStrings()
 )
 
 internal fun productoraDe(json: JSONObject) = Productora(
@@ -56,7 +58,8 @@ internal fun productoraDe(json: JSONObject) = Productora(
     descripcion = json.optStringONull("descripcion"),
     logoUrl = json.optStringONull("logoUrl"),
     canales = json.optJSONArray("canales")?.mapJson { canalDe(it) } ?: emptyList(),
-    creadores = json.optJSONArray("creadores").mapJsonStrings()
+    creadores = json.optJSONArray("creadores").mapJsonStrings(),
+    enDirectorio = json.optBoolean("enDirectorio", false)
 )
 
 internal fun publicacionDe(json: JSONObject): Publicacion {
@@ -84,13 +87,20 @@ internal fun publicacionDe(json: JSONObject): Publicacion {
     )
 }
 
-internal fun perfilDe(json: JSONObject) = Perfil(
-    favoritos = json.optJSONArray("favoritos").mapJsonStrings(),
-    escalaTexto = json.optString("escalaTexto", "normal"),
-    tema = json.optString("tema", "sistema"),
-    avisos = json.optBoolean("avisos", true),
-    productoras = json.optJSONArray("productoras").mapJsonStrings()
-)
+internal fun perfilDe(json: JSONObject): Perfil {
+    val productoras = json.optJSONArray("productoras").mapJsonStrings()
+
+    return Perfil(
+        // El servidor repite en `favoritos` las productoras que se siguen,
+        // para las versiones de la app que las ven como un creador más. Aquí
+        // van aparte, así que se descuentan: si no, se contarían dos veces.
+        favoritos = json.optJSONArray("favoritos").mapJsonStrings() - productoras.toSet(),
+        escalaTexto = json.optString("escalaTexto", "normal"),
+        tema = json.optString("tema", "sistema"),
+        avisos = json.optBoolean("avisos", true),
+        productoras = productoras
+    )
+}
 
 internal fun suscripcionesDe(json: JSONObject) = SuscripcionesYouTube(
     suscritos = json.optJSONArray("suscritos").mapJsonStrings().toSet(),

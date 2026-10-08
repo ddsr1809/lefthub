@@ -16,8 +16,10 @@ data class Conexion(
  * Un canal del directorio: el YouTube de alguien, su TikTok, su página.
  *
  * Un creador puede tener varios, también en la misma plataforma, y cada uno
- * puede pertenecer a una productora. `creadorId` falta en el canal propio de
- * una productora; `productoraId` falta en el canal que es solo de su creador.
+ * puede pertenecer a una productora. `creadorId` es el dueño y falta en el
+ * canal propio de una productora; `productoraId` falta en el canal que es solo
+ * de su creador. `tambien` son los demás creadores con los que aparece: lo que
+ * publica el canal les llega también a quienes los siguen.
  */
 data class Canal(
     val id: String = "",
@@ -28,7 +30,8 @@ data class Canal(
     val handle: String? = null,
     val channelId: String? = null,
     val creadorId: String? = null,
-    val productoraId: String? = null
+    val productoraId: String? = null,
+    val tambien: List<String> = emptyList()
 ) {
     val esDeYouTube: Boolean get() = plataforma == "youtube" && !channelId.isNullOrBlank()
 }
@@ -42,10 +45,16 @@ data class Creador(
     /** Un enlace por plataforma: el canal principal de cada una. */
     val platforms: Map<String, Conexion> = emptyMap(),
     val active: Boolean = true,
-    /** Todos sus canales, en el orden en que se muestran. */
+    /** Sus canales, en el orden en que se muestran, y después los de otros en los que aparece. */
     val canales: List<Canal> = emptyList(),
     /** Productoras en las que figura. */
-    val productoras: List<String> = emptyList()
+    val productoras: List<String> = emptyList(),
+    /**
+     * La fila no es un creador sino una productora que aparece en el
+     * directorio como uno más: su id es el de la productora, y al tocarla se
+     * abre su ficha y se la sigue como productora.
+     */
+    val esProductora: Boolean = false
 ) {
     /** Plataformas en el orden en que se muestran, filtrando las vacías. */
     val conexionesOrdenadas: List<Pair<String, Conexion>>
@@ -85,7 +94,9 @@ data class Productora(
     val descripcion: String? = null,
     val logoUrl: String? = null,
     val canales: List<Canal> = emptyList(),
-    val creadores: List<String> = emptyList()
+    val creadores: List<String> = emptyList(),
+    /** Aparece también en el listado de creadores, como una fila más. */
+    val enDirectorio: Boolean = false
 ) {
     /** Los que no son de ningún creador: el canal oficial de la casa. */
     val canalesPropios: List<Canal> get() = canales.filter { it.creadorId == null }

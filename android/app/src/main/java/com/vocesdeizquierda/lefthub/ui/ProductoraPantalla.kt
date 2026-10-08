@@ -117,9 +117,13 @@ fun ProductoraPantalla(
                 )
             }
 
+            // De quién es, o con quién sale si es un canal propio de la casa.
+            val con = creadores.filter { it.id in canal.tambien }.map { it.name }
+
             BotonCanal(
                 canal = canal,
-                dueno = dueno?.let { "Canal de ${it.name}" },
+                dueno = dueno?.let { "Canal de ${it.name}" }
+                    ?: con.takeIf { it.isNotEmpty() }?.let { "Con ${enumerar(it)}" },
                 suscrito = suscrito,
                 campana = "ficha_productora"
             )
@@ -151,4 +155,11 @@ fun ProductoraPantalla(
             modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.xxl)
         )
     }
+}
+
+/** "Ana", "Ana y Luis", "Ana, Luis y Juan". */
+private fun enumerar(nombres: List<String>): String = when (nombres.size) {
+    0 -> ""
+    1 -> nombres[0]
+    else -> nombres.dropLast(1).joinToString(", ") + " y " + nombres.last()
 }

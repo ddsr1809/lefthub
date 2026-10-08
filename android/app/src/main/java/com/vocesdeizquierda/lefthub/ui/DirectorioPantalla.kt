@@ -140,13 +140,25 @@ fun DirectorioPantalla(
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(visibles, key = { it.id }) { creador ->
-                    FilaCreador(
-                        creador = creador,
-                        siguiendo = creador.id in favoritos,
-                        onAbrir = { onAbrirCreador(creador.id) },
-                        onSeguir = { onSeguir(creador.id) },
-                        suscritoEnYouTube = youtube.suscritoA(creador.id)
-                    )
+                    if (creador.esProductora) {
+                        // Una productora que aparece entre los creadores: se
+                        // abre su ficha y se la sigue como productora.
+                        FilaProductora(
+                            productora = productoras.firstOrNull { it.id == creador.id }
+                                ?: creador.comoProductora(),
+                            siguiendo = creador.id in productorasSeguidas,
+                            onAbrir = { onAbrirProductora(creador.id) },
+                            onSeguir = { onSeguirProductora(creador.id) }
+                        )
+                    } else {
+                        FilaCreador(
+                            creador = creador,
+                            siguiendo = creador.id in favoritos,
+                            onAbrir = { onAbrirCreador(creador.id) },
+                            onSeguir = { onSeguir(creador.id) },
+                            suscritoEnYouTube = youtube.suscritoA(creador.id)
+                        )
+                    }
                 }
             }
         }
@@ -170,7 +182,9 @@ fun CreadorPantalla(
     esAnonimo: Boolean = true,
     onConectarYouTube: () -> Unit = {},
     productoras: List<Productora> = emptyList(),
-    onAbrirProductora: (String) -> Unit = {}
+    onAbrirProductora: (String) -> Unit = {},
+    // El directorio: para decir de quién es un canal ajeno en el que aparece.
+    creadores: List<Creador> = emptyList()
 ) {
     val esquema = MaterialTheme.colorScheme
 
@@ -258,11 +272,16 @@ fun CreadorPantalla(
                 )
             }
 
+            // En su propio perfil no hace falta decir de quién es un canal
+            // suyo, pero sí si es de una productora o de otro creador con el
+            // que aparece.
+            val deOtro = creadores.firstOrNull {
+                it.id == canal.creadorId && it.id != creador.id
+            }
+
             BotonCanal(
                 canal = canal,
-                // En su propio perfil no hace falta decir de quién es el canal,
-                // pero sí si además es de una productora.
-                dueno = productora?.let { "De ${it.nombre}" },
+                dueno = deOtro?.let { "Canal de ${it.name}" } ?: productora?.let { "De ${it.nombre}" },
                 suscrito = suscrito,
                 campana = "perfil_creador"
             )
@@ -383,3 +402,12 @@ internal fun BotonCanal(
         }
     )
 }
+
+/**
+ * La productora que hay detrás de una fila del listado, armada con lo que
+ * trae la propia fila. Solo hace falta mientras llega la lista de productoras.
+ */
+private fun Creador.comoProductora() = Productora(
+    id = id, nombre = name, descripcion = bio, logoUrl = photoUrl,
+    canales = canales, enDirectorio = true
+)

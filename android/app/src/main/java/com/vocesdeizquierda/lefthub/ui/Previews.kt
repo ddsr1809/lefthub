@@ -82,7 +82,11 @@ private val juan = Creador(
         Canal(id = "c4", plataforma = "tiktok", url = "https://www.tiktok.com/@juanperez",
             handle = "juanperez", creadorId = "juan"),
         Canal(id = "c5", plataforma = "instagram", url = "https://www.instagram.com/juanperez",
-            creadorId = "juan")
+            creadorId = "juan"),
+        // El canal oficial de la productora, en el que también aparece él.
+        Canal(id = "c9", plataforma = "youtube", nombre = "Oficial",
+            url = "https://www.youtube.com/channel/UC900", channelId = "UC900",
+            productoraId = "estudio", tambien = listOf("juan", "ana"))
     ),
     productoras = listOf("estudio")
 )
@@ -94,12 +98,19 @@ private val estudio = Productora(
     canales = listOf(
         Canal(id = "c9", plataforma = "youtube", nombre = "Oficial",
             url = "https://www.youtube.com/channel/UC900", channelId = "UC900",
-            productoraId = "estudio"),
+            productoraId = "estudio", tambien = listOf("juan", "ana")),
         Canal(id = "c3", plataforma = "youtube", nombre = "Cocina con Juan",
             url = "https://www.youtube.com/channel/UC125", channelId = "UC125",
             creadorId = "juan", productoraId = "estudio")
     ),
-    creadores = listOf("juan", "ana")
+    creadores = listOf("juan", "ana"),
+    enDirectorio = true
+)
+
+/** La misma productora tal como llega en el listado de creadores. */
+private val estudioEnElDirectorio = Creador(
+    id = "estudio", name = "Estudio X", category = "cine",
+    bio = estudio.descripcion, canales = estudio.canales, esProductora = true
 )
 
 private val ana = Creador(
@@ -252,11 +263,12 @@ private fun PreviaNovedadesVacio() {
 private fun PreviaDirectorio() {
     Marco {
         DirectorioPantalla(
-            creadores = creadores,
+            creadores = creadores + estudioEnElDirectorio,
             favoritos = listOf("juan"),
             onSeguir = {},
             onAbrirCreador = {},
-            productoras = listOf(estudio)
+            productoras = listOf(estudio),
+            productorasSeguidas = listOf("estudio")
         )
     }
 }
