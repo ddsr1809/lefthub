@@ -156,8 +156,17 @@ object ApiRelay {
         if (e.codigo == 404) emptyList() else throw e
     }
 
-    suspend fun publicaciones(limite: Int = 50): List<Publicacion> =
-        getArray("/api/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    /**
+     * Las novedades de la persona: los videos normales o, con `cortos`, los
+     * videos cortos. Son dos listas distintas y nunca se mezclan.
+     *
+     * El filtro de después es por si el servidor es anterior a esto: ese no
+     * entiende `tipo` y lo manda todo junto.
+     */
+    suspend fun publicaciones(limite: Int = 50, cortos: Boolean = false): List<Publicacion> =
+        getArray("/api/publicaciones?limite=$limite" + if (cortos) "&tipo=cortos" else "")
+            .mapJson { publicacionDe(it) }
+            .filter { it.esCorto == cortos }
 
     /**
      * Lo último que publicó un canal. Un servidor anterior a las fichas de

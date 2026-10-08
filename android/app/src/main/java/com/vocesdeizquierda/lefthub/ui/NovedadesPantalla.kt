@@ -9,12 +9,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -28,6 +33,10 @@ import java.util.Locale
 // Nada de scroll infinito ni recomendaciones. Aquí solo aparece lo que
 // publicaron las personas que el usuario eligió seguir, en orden de tiempo.
 // Esa previsibilidad es la propuesta de valor entera.
+//
+// Los videos cortos (Shorts) no van en esa lista. Si el equipo los permite y
+// la persona no los apagó, tienen su propio apartado, al que se entra a
+// propósito con un botón; si no, aquí no hay ni rastro de ellos.
 
 @Composable
 fun NovedadesPantalla(
@@ -36,9 +45,20 @@ fun NovedadesPantalla(
     cuantosFavoritos: Int,
     onIrAlDirectorio: () -> Unit,
     onReportar: (Publicacion) -> Unit,
-    cuantasProductoras: Int = 0
+    cuantasProductoras: Int = 0,
+    /** Los videos cortos de quienes sigue. Solo se enseñan con `verCortos`. */
+    cortos: List<Publicacion> = emptyList(),
+    /** El equipo permite los cortos y la persona no los apagó en Ajustes. */
+    verCortos: Boolean = false
 ) {
     val contexto = LocalContext.current
+
+    // En qué apartado está. Sobrevive a girar el teléfono; al abrir la app
+    // siempre se empieza por los videos de siempre.
+    var enCortos by rememberSaveable { mutableStateOf(false) }
+    // Si los cortos se apagan mientras se estaban viendo, se vuelve a los videos.
+    val viendoCortos = verCortos && enCortos
+    val lista = if (viendoCortos) cortos else publicaciones
 
     if (!hayFavoritos) {
         Vacio(
@@ -62,17 +82,28 @@ fun NovedadesPantalla(
             )
         }
 
-        if (publicaciones.isEmpty()) {
+        if (verCortos) {
             item {
-                Vacio(
-                    titulo = "Sin novedades por ahora",
-                    mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras)}. " +
-                        "En cuanto publiquen algo, el aviso llega a este teléfono."
+                SelectorDeApartado(
+                    enCortos = viendoCortos,
+                    onElegir = { enCortos = it }
                 )
             }
         }
 
-        items(publicaciones, key = { it.id }) { publicacion ->
+        if (lista.isEmpty()) {
+            item {
+                Vacio(
+                    titulo = if (viendoCortos) "Sin videos cortos por ahora"
+                    else "Sin novedades por ahora",
+                    mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras)}. " +
+                        if (viendoCortos) "En cuanto publiquen un video corto, aparece aquí."
+                        else "En cuanto publiquen algo, el aviso llega a este teléfono."
+                )
+            }
+        }
+
+        items(lista, key = { it.id }) { publicacion ->
             TarjetaPublicacion(
                 publicacion = publicacion,
                 onAbrir = {
@@ -88,6 +119,37 @@ fun NovedadesPantalla(
                 onReportar = { onReportar(publicacion) }
             )
         }
+    }
+}
+
+/**
+ * Los dos apartados de Novedades. Dos botones grandes con su nombre escrito,
+ * uno al lado del otro; el que está elegido va relleno.
+ */
+@Composable
+private fun SelectorDeApartado(enCortos: Boolean, onElegir: (Boolean) -> Unit) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Espacio.md)
+    ) {
+        BotonGrande(
+            titulo = "Videos",
+            modifier = Modifier
+                .weight(1f)
+                .semantics { selected = !enCortos },
+            variante = if (!enCortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+            onClick = { onElegir(false) }
+        )
+        BotonGrande(
+            titulo = "Videos cortos",
+            modifier = Modifier
+                .weight(1f)
+                .semantics { selected = enCortos },
+            variante = if (enCortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+            onClick = { onElegir(true) }
+        )
     }
 }
 
@@ -160,7 +222,11 @@ internal fun TarjetaPublicacion(
 
         Column(Modifier.padding(horizontal = Espacio.md).padding(bottom = Espacio.sm)) {
             BotonGrande(
-                titulo = if (publicacion.esEnVivo) "Ver en vivo" else "Ver el video",
+                titulo = when {
+                    publicacion.esEnVivo -> "Ver en vivo"
+                    publicacion.esCorto -> "Ver el video corto"
+                    else -> "Ver el video"
+                },
                 subtitulo = "Se abre en ${Enrutador.nombreDe(destino.plataforma)}",
                 onClick = onAbrir
             )

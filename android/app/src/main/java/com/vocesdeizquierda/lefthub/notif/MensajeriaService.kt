@@ -96,7 +96,11 @@ class MensajeriaService : FirebaseMessagingService() {
 
                 // Creadores y productoras: cada uno tiene su topic.
                 val perfil = ApiRelay.perfil()
-                DirectorioRepo().sincronizarTopics(perfil.favoritos, perfil.productoras)
+                // Y, si la persona ve los videos cortos, los de esos también.
+                DirectorioRepo.olvidarCortos()
+                DirectorioRepo().sincronizarTopics(
+                    perfil.favoritos, perfil.productoras, perfil.veCortos
+                )
 
                 Log.d(TAG, "Suscripciones rehechas: ${perfil.favoritos.size + perfil.productoras.size}")
             }.onFailure { error ->

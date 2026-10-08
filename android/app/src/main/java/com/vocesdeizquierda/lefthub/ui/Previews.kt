@@ -257,6 +257,23 @@ private fun PreviaNovedades() {
     }
 }
 
+/** Con los videos cortos encendidos: aparecen los dos apartados. */
+@VistaPreviaTemas
+@Composable
+private fun PreviaNovedadesConCortos() {
+    Marco {
+        NovedadesPantalla(
+            publicaciones = publicaciones,
+            hayFavoritos = true,
+            cuantosFavoritos = 2,
+            onIrAlDirectorio = {},
+            onReportar = {},
+            cortos = publicaciones.take(1).map { it.copy(tipo = "short") },
+            verCortos = true
+        )
+    }
+}
+
 /** El caso vacío importa tanto como el lleno: es la primera pantalla que ve alguien. */
 @VistaPreviaTemas
 @Composable
@@ -353,6 +370,25 @@ private fun PreviaAjustes() {
                 listo = true,
                 creadores = creadores,
                 perfil = perfilConFavoritos,
+                esAnonimo = true
+            ),
+            onGuardarPreferencia = { _, _ -> },
+            onVincularGoogle = {},
+            onCerrarSesion = {},
+            onBorrarCuenta = {}
+        )
+    }
+}
+
+/** Ajustes cuando el equipo permite los videos cortos: aparece su sección. */
+@Preview(name = "Ajustes con videos cortos", showBackground = true, heightDp = 1100)
+@Composable
+private fun PreviaAjustesConCortos() {
+    Marco(tema = "claro") {
+        AjustesPantalla(
+            estado = EstadoApp(
+                listo = true,
+                perfil = perfilConFavoritos.copy(tema = "claro", cortosDisponibles = true),
                 esAnonimo = true
             ),
             onGuardarPreferencia = { _, _ -> },

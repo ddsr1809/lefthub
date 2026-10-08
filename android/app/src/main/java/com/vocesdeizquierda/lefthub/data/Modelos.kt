@@ -136,6 +136,9 @@ data class Publicacion(
 ) {
     val fueMovido: Boolean get() = status == "moved" && !overrideUrl.isNullOrBlank()
 
+    /** Un video corto (un Short). Nunca va mezclado con los demás. */
+    val esCorto: Boolean get() = tipo == "short"
+
     /**
      * A nombre de quién se muestra: "Juan Pérez · Estudio X" cuando su canal
      * es de una productora, y solo la productora en su canal propio (ahí el
@@ -182,10 +185,21 @@ data class Perfil(
     val tema: String = "sistema",
     val avisos: Boolean = true,
     /** Productoras que sigue. Los creadores van en `favoritos`. */
-    val productoras: List<String> = emptyList()
+    val productoras: List<String> = emptyList(),
+    /** Quiere ver los videos cortos. Solo cuenta si están disponibles. */
+    val cortos: Boolean = true,
+    /**
+     * El equipo permite los videos cortos. Si no, la app no enseña ni el
+     * apartado ni la opción de Ajustes, diga lo que diga `cortos`. Un servidor
+     * anterior no lo manda, y entonces es que no.
+     */
+    val cortosDisponibles: Boolean = false
 ) {
     /** Sigue a alguien, sea creador o productora. */
     val sigueAAlguien: Boolean get() = favoritos.isNotEmpty() || productoras.isNotEmpty()
+
+    /** Ve los videos cortos: el equipo los permite y la persona no los apagó. */
+    val veCortos: Boolean get() = cortosDisponibles && cortos
 }
 
 // --- Suscripciones de YouTube ------------------------------------------------

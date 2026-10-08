@@ -80,6 +80,34 @@ fun AjustesPantalla(
             )
         }
 
+        // --- Videos cortos --------------------------------------------------
+        // Solo si el equipo los permite. Si los apaga desde el panel, esta
+        // sección desaparece entera: no hay nada que elegir.
+        if (estado.perfil.cortosDisponibles) {
+            Seccion("Videos cortos") {
+                Text(
+                    "Son los videos de menos de tres minutos que se ven en vertical " +
+                        "(los Shorts de YouTube). Van aparte, en su propio apartado de " +
+                        "Novedades, y nunca se mezclan con los demás videos.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                BotonGrande(
+                    titulo = "Verlos",
+                    subtitulo = "En su apartado, y con aviso cuando publiquen uno",
+                    variante = if (estado.perfil.cortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+                    onClick = { onGuardarPreferencia("cortos", true) }
+                )
+                BotonGrande(
+                    titulo = "No verlos",
+                    subtitulo = "Solo los videos de siempre, sin avisos de cortos",
+                    variante = if (!estado.perfil.cortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+                    onClick = { onGuardarPreferencia("cortos", false) }
+                )
+            }
+        }
+
         // --- Cuenta ---------------------------------------------------------
         Seccion("Tu cuenta") {
             if (estado.esAnonimo) {

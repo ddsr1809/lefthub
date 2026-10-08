@@ -98,7 +98,9 @@ internal fun perfilDe(json: JSONObject): Perfil {
         escalaTexto = json.optString("escalaTexto", "normal"),
         tema = json.optString("tema", "sistema"),
         avisos = json.optBoolean("avisos", true),
-        productoras = productoras
+        productoras = productoras,
+        cortos = json.optBoolean("cortos", true),
+        cortosDisponibles = json.optBoolean("cortosDisponibles", false)
     )
 }
 

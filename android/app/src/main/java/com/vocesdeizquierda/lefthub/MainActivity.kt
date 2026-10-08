@@ -243,6 +243,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     hayFavoritos = estado.perfil.sigueAAlguien,
                     cuantosFavoritos = estado.perfil.favoritos.size,
                     cuantasProductoras = estado.perfil.productoras.size,
+                    cortos = estado.cortos,
+                    verCortos = estado.perfil.veCortos,
                     onIrAlDirectorio = { nav.navigate("directorio") },
                     // El canal propio de una productora no tiene creador.
                     onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }

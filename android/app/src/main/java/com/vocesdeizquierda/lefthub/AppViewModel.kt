@@ -19,6 +19,8 @@ data class EstadoApp(
     val creadores: List<Creador> = emptyList(),
     val productoras: List<Productora> = emptyList(),
     val publicaciones: List<Publicacion> = emptyList(),
+    /** Los videos cortos, que van en su propio apartado de Novedades. */
+    val cortos: List<Publicacion> = emptyList(),
     val perfil: Perfil = Perfil(),
     val esAnonimo: Boolean = true,
     val correo: String? = null,
@@ -110,6 +112,18 @@ class AppViewModel(
                 .flatMapLatest { (favoritos, productoras) -> directorio.publicaciones(favoritos, productoras) }
                 .collect { lista -> _estado.update { it.copy(publicaciones = lista) } }
         }
+
+        viewModelScope.launch {
+            perfilFlow
+                // Los cortos dependen además de si la persona los ve: al
+                // apagarlos, o si el equipo los apaga, la lista se vacía.
+                .map { Triple(it.favoritos, it.productoras, it.veCortos) }
+                .distinctUntilChanged()
+                .flatMapLatest { (favoritos, productoras, losVe) ->
+                    directorio.cortos(favoritos, productoras, losVe)
+                }
+                .collect { lista -> _estado.update { it.copy(cortos = lista) } }
+        }
     }
 
     fun creador(id: String) = _estado.value.creadores.firstOrNull { it.id == id }
@@ -165,7 +179,7 @@ class AppViewModel(
         _estado.update { it.copy(perfil = p) }
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
-        directorio.sincronizarTopics(p.favoritos, p.productoras)
+        directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos)
     }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
@@ -187,7 +201,9 @@ class AppViewModel(
         _estado.update { it.copy(perfil = it.perfil.conFavorito(id, !siguiendo)) }
 
         val resultado = escrituras.withLock {
-            runCatching { directorio.alternarFavorito(id, siguiendo) }
+            runCatching {
+                directorio.alternarFavorito(id, siguiendo, _estado.value.perfil.veCortos)
+            }
         }
         versionPerfil++
 
@@ -207,7 +223,9 @@ class AppViewModel(
         _estado.update { it.copy(perfil = it.perfil.conProductora(id, !siguiendo)) }
 
         val resultado = escrituras.withLock {
-            runCatching { directorio.alternarProductora(id, siguiendo) }
+            runCatching {
+                directorio.alternarProductora(id, siguiendo, _estado.value.perfil.veCortos)
+            }
         }
         versionPerfil++
 
@@ -219,7 +237,7 @@ class AppViewModel(
             }
     }
 
-    /** Tema, tamaño de letra y avisos: mismo trato que los favoritos. */
+    /** Tema, tamaño de letra, avisos y videos cortos: mismo trato que los favoritos. */
     fun guardarPreferencia(clave: String, valor: Any) = viewModelScope.launch {
         val anterior = _estado.value.perfil.preferencia(clave)
 
@@ -230,6 +248,17 @@ class AppViewModel(
             runCatching { directorio.guardarPreferencia(clave, valor) }
         }
         versionPerfil++
+
+        resultado.onSuccess {
+            if (clave == "cortos") {
+                // Ver o no los cortos cambia dos cosas más que la pantalla:
+                // la lista que se pide al servidor y los avisos que llegan a
+                // este aparato.
+                perfilFlow.update { p -> p.conPreferencia(clave, valor) }
+                val p = _estado.value.perfil
+                directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos)
+            }
+        }
 
         resultado.onFailure {
             // Solo se deshace si en pantalla sigue este cambio; si el usuario
@@ -481,6 +510,7 @@ private fun Perfil.preferencia(clave: String): Any? = when (clave) {
     "tema" -> tema
     "escalaTexto" -> escalaTexto
     "avisos" -> avisos
+    "cortos" -> cortos
     else -> null
 }
 
@@ -488,5 +518,6 @@ private fun Perfil.conPreferencia(clave: String, valor: Any?): Perfil = when (cl
     "tema" -> copy(tema = valor as? String ?: tema)
     "escalaTexto" -> copy(escalaTexto = valor as? String ?: escalaTexto)
     "avisos" -> copy(avisos = valor as? Boolean ?: avisos)
+    "cortos" -> copy(cortos = valor as? Boolean ?: cortos)
     else -> this
 }
