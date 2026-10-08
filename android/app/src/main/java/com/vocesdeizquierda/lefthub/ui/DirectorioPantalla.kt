@@ -17,6 +17,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.data.Canal
@@ -104,6 +105,10 @@ fun DirectorioPantalla(
     val canalesVisibles = remember(canales, tema) {
         if (tema == "todos") canales else canales.filter { it.categoria == tema }
     }
+
+    // El anuncio que explica la etiqueta verde solo sale cuando hay etiquetas
+    // que explicar: con YouTube conectado y ya comprobado.
+    val verLeyendaYouTube = BuildConfig.SUSCRIPCIONES_YOUTUBE && youtube.haySuscripciones
 
     Column(Modifier.fillMaxSize()) {
         Text(
@@ -196,6 +201,11 @@ fun DirectorioPantalla(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
+                if (verLeyendaYouTube) {
+                    item(key = "leyenda-youtube") {
+                        LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+                    }
+                }
                 items(canalesVisibles, key = { it.canal.id }) { listado ->
                     FilaCanal(
                         listado = listado,
@@ -214,6 +224,11 @@ fun DirectorioPantalla(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
+                if (verLeyendaYouTube) {
+                    item(key = "leyenda-youtube") {
+                        LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+                    }
+                }
                 items(creadoresVisibles, key = { it.id }) { creador ->
                     FilaCreador(
                         creador = creador,
@@ -454,10 +469,15 @@ internal fun SuscripcionEnYouTube(
     }
 
     if (frase != null) {
+        // Suscrito: en el mismo verde que la etiqueta del Directorio, y con
+        // su palomita, para que sea la misma señal en todas las pantallas.
         Text(
-            frase,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (suscrito == true) esquema.onBackground else esquema.onSurfaceVariant,
+            if (suscrito == true) "✓ $frase" else frase,
+            style = if (suscrito == true)
+                MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+            else
+                MaterialTheme.typography.bodyLarge,
+            color = if (suscrito == true) esquema.tertiary else esquema.onSurfaceVariant,
             modifier = Modifier.padding(bottom = Espacio.md)
         )
     } else if (youtube.permiso == PermisoYouTube.SIN_PERMISO) {

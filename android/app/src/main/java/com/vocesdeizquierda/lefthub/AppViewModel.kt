@@ -29,6 +29,8 @@ data class EstadoApp(
     val mensaje: String? = null,
     val conflicto: AuthRepo.Resultado.Conflicto? = null,
     val youtube: EstadoYouTube = EstadoYouTube(),
+    /** Dejó de estar suscrito en YouTube a alguien: hay un aviso por enseñar. */
+    val bajasDeYouTube: BajasDeYouTube? = null,
     val videos: VideosDeCanal = VideosDeCanal(),
     /**
      * Lo que cuesta quitar los anuncios, ya escrito con su moneda. Null
@@ -397,13 +399,19 @@ class AppViewModel(
         // Si mientras tanto se cerró sesión o se cambió de cuenta, esta
         // respuesta es de otra persona y no se pinta.
         if (autenticacion.esAnonimo || autenticacion.usuario?.uid != usuario) {
-            _estado.update { it.copy(youtube = EstadoYouTube()) }
+            _estado.update { it.copy(youtube = EstadoYouTube(), bajasDeYouTube = null) }
             return
         }
 
         when (resultado) {
-            is YouTubeRepo.Resultado.Verificado -> _estado.update {
-                it.copy(youtube = EstadoYouTube(PermisoYouTube.CONCEDIDO, resultado.suscripciones))
+            is YouTubeRepo.Resultado.Verificado -> {
+                // Lo que se sabía hasta ahora: lo de la comprobación anterior
+                // o, recién abierta la app, lo que el servidor tenía guardado.
+                val antes = _estado.value.youtube.suscripciones
+                _estado.update {
+                    it.copy(youtube = EstadoYouTube(PermisoYouTube.CONCEDIDO, resultado.suscripciones))
+                }
+                anotarBajasDeYouTube(antes, resultado.suscripciones)
             }
 
             is YouTubeRepo.Resultado.FaltaPermiso -> {
@@ -429,9 +437,50 @@ class AppViewModel(
         }
     }
 
+    /**
+     * Si entre la comprobación anterior y esta la persona dejó de estar
+     * suscrita a algún canal del directorio, deja el aviso listo.
+     *
+     * Vale igual para el canal de un creador que para el de una productora:
+     * los nombres salen del mismo listado de canales del Directorio.
+     */
+    private fun anotarBajasDeYouTube(antes: SuscripcionesYouTube, ahora: SuscripcionesYouTube) {
+        val directorioHoy = _estado.value
+        val nombres: List<String>
+        var canalId: String? = null
+
+        if (ahora.sabeDeCanales) {
+            val perdidos = ahora.canalesPerdidosDesde(antes)
+            if (perdidos.isEmpty()) return
+            val listados = canalesDelDirectorio(directorioHoy.creadores, directorioHoy.productoras)
+                .filter { it.canal.id in perdidos }
+            nombres = listados.map { it.titulo }
+            canalId = listados.singleOrNull()?.canal?.id
+        } else {
+            // Un servidor anterior solo contesta por creador.
+            val perdidos = ahora.creadoresPerdidosDesde(antes)
+            nombres = directorioHoy.creadores.filter { it.id in perdidos }.map { it.name }
+        }
+        if (nombres.isEmpty()) return
+
+        _estado.update { actual ->
+            // Si el aviso anterior sigue sin leerse, se juntan en uno.
+            val pendientes = actual.bajasDeYouTube
+            actual.copy(
+                bajasDeYouTube = BajasDeYouTube(
+                    nombres = (pendientes?.nombres.orEmpty() + nombres).distinct(),
+                    canalId = canalId.takeIf { pendientes == null }
+                )
+            )
+        }
+    }
+
+    /** La persona ya leyó el aviso de que dejó de estar suscrita. */
+    fun bajasDeYouTubeVistas() = _estado.update { it.copy(bajasDeYouTube = null) }
+
     private fun reiniciarYouTube() {
         ultimaComprobacionYouTube = 0L
-        _estado.update { it.copy(youtube = EstadoYouTube()) }
+        _estado.update { it.copy(youtube = EstadoYouTube(), bajasDeYouTube = null) }
     }
 
     // -------------------------------------------------------------------------

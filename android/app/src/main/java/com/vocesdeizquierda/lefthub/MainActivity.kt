@@ -416,6 +416,34 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         }
     }
 
+    // Dejó de estar suscrito en YouTube a alguien del directorio. Es una
+    // ventana y no el aviso de abajo, que se va solo a los pocos segundos:
+    // esto hay que poder leerlo con calma, y a lo mejor fue sin querer.
+    estado.bajasDeYouTube?.let { bajas ->
+        AlertDialog(
+            onDismissRequest = { modelo.bajasDeYouTubeVistas() },
+            title = { Text("Ya no estás suscrito en YouTube") },
+            text = { Text(bajas.texto) },
+            confirmButton = {
+                TextButton(
+                    onClick = { modelo.bajasDeYouTubeVistas() },
+                    modifier = Modifier.heightIn(min = Tactil.minimo)
+                ) { Text("Entendido") }
+            },
+            dismissButton = {
+                // Con un solo canal, a su ficha, que tiene el botón para
+                // abrirlo en YouTube; con varios, al Directorio.
+                TextButton(
+                    onClick = {
+                        modelo.bajasDeYouTubeVistas()
+                        nav.navigate(bajas.canalId?.let { "canal/$it" } ?: "directorio")
+                    },
+                    modifier = Modifier.heightIn(min = Tactil.minimo)
+                ) { Text(if (bajas.canalId != null) "Ver el canal" else "Ir al Directorio") }
+            }
+        )
+    }
+
     // Colisión de cuentas: en vez de un código de error, explicamos qué botón
     // tocar. Este diálogo es el que evita que alguien se quede fuera de su
     // propia cuenta al cambiar de teléfono.

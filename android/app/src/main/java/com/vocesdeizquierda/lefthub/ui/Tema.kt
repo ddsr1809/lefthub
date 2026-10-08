@@ -41,7 +41,8 @@ object Colores {
     val TextoSuave = Color(0xFFA8B0BA) //  8.1:1
     val Ambar = Color(0xFFFFB020)      //  9.4:1
     val AmbarTexto = Color(0xFF241A05)
-    val Exito = Color(0xFF4FD1A5)
+    val Exito = Color(0xFF4FD1A5)      //  9.3:1 sobre Carbon
+    val ExitoTexto = Color(0xFF06281C) //  8.3:1 sobre Exito
     val Peligro = Color(0xFFFF7A69)
 
     val FondoClaro = Color(0xFFFAFAF8)
@@ -51,6 +52,7 @@ object Colores {
     val TextoSuaveClaro = Color(0xFF525A64) //  7.6:1
     val AmbarOscuro = Color(0xFF8A4B00)     //  7.2:1 sobre fondo claro
     val PeligroClaro = Color(0xFFA32316)
+    val ExitoOscuro = Color(0xFF0A5C3D)     //  7.7:1 sobre fondo claro, 8.0:1 con texto blanco
 }
 
 /** Objetivos táctiles. 24dp es el mínimo legal; nosotros partimos de 48. */
@@ -108,7 +110,11 @@ private val esquemaOscuro = darkColorScheme(
     surfaceVariant = Colores.SuperficieAlta,
     onSurfaceVariant = Colores.TextoSuave,
     outline = Colores.Borde,
-    error = Colores.Peligro
+    error = Colores.Peligro,
+    // El verde es de una sola cosa: "ya estás suscrito en YouTube". El ámbar
+    // queda para lo que se sigue aquí, y así no se confunden.
+    tertiary = Colores.Exito,
+    onTertiary = Colores.ExitoTexto
 )
 
 private val esquemaClaro = lightColorScheme(
@@ -121,7 +127,9 @@ private val esquemaClaro = lightColorScheme(
     surfaceVariant = Color(0xFFF0F1F3),
     onSurfaceVariant = Colores.TextoSuaveClaro,
     outline = Colores.BordeClaro,
-    error = Colores.PeligroClaro
+    error = Colores.PeligroClaro,
+    tertiary = Colores.ExitoOscuro,
+    onTertiary = Color.White
 )
 
 @Composable

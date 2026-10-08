@@ -21,6 +21,9 @@ import com.vocesdeizquierda.lefthub.EstadoApp
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Conexion
 import com.vocesdeizquierda.lefthub.data.Creador
+import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.PermisoYouTube
+import com.vocesdeizquierda.lefthub.data.SuscripcionesYouTube
 import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.Publicacion
@@ -309,6 +312,12 @@ private fun PreviaDirectorio() {
             favoritos = listOf("juan"),
             onSeguir = {},
             onAbrirCreador = {},
+            // Con YouTube conectado: sale la leyenda arriba, Juan con su
+            // etiqueta verde y Ana sin suscripción.
+            youtube = EstadoYouTube(
+                PermisoYouTube.CONCEDIDO,
+                SuscripcionesYouTube(suscritos = setOf("juan"), noSuscritos = setOf("ana"))
+            ),
             productoras = listOf(estudio),
             productorasSeguidas = listOf("estudio")
         )
