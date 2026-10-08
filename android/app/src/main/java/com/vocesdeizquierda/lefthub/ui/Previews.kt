@@ -252,7 +252,9 @@ private fun PreviaNovedades() {
             hayFavoritos = true,
             cuantosFavoritos = 2,
             onIrAlDirectorio = {},
-            onReportar = {}
+            onReportar = {},
+            // El primero ya se abrió: se ven las dos tarjetas, la nueva y la vista.
+            abiertos = setOf("v1")
         )
     }
 }

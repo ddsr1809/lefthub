@@ -104,6 +104,8 @@ extension AppDelegate: UNUserNotificationCenterDelegate {
                 url: url,
                 campana: tipo == "movido" ? "contenido_movido" : "aviso_publicacion"
             )
+            // Tocar el aviso también cuenta: al volver, su tarjeta ya no es nueva.
+            Abiertos.marcar(videoId)
         }
     }
 }

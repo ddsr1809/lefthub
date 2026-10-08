@@ -24,6 +24,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -42,6 +43,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Aceptacion.vigente(this)) solicitarPermisoDeAvisos()
+        Abiertos.cargar(this)
 
         setContent {
             var aceptado by remember { mutableStateOf(Aceptacion.vigente(this@MainActivity)) }
@@ -125,6 +127,8 @@ class MainActivity : ComponentActivity() {
             url = url,
             campana = if (tipo == "movido") "contenido_movido" else "aviso_publicacion"
         )
+        // Tocar el aviso también cuenta: al volver, su tarjeta ya no es nueva.
+        Abiertos.marcar(this, videoId)
 
         // Consumido: que no se repita al recrear la Activity.
         intent.replaceExtras(Bundle())
@@ -256,6 +260,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     cuantasProductoras = estado.perfil.productoras.size,
                     cortos = estado.cortos,
                     verCortos = estado.perfil.veCortos,
+                    abiertos = Abiertos.videos,
                     onIrAlDirectorio = { nav.navigate("directorio") },
                     // El canal propio de una productora no tiene creador.
                     onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
@@ -316,6 +321,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onAbrirProductora = { nav.navigate("productora/$it") },
                     onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) },
                     onReintentar = { modelo.cargarVideosDeCanal(id) },
+                    abiertos = Abiertos.videos,
                     onVolver = { nav.popBackStack() }
                 )
             }

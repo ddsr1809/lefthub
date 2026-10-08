@@ -15,16 +15,19 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import java.time.Instant
+import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Publicacion
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import java.text.SimpleDateFormat
@@ -49,7 +52,9 @@ fun NovedadesPantalla(
     /** Los videos cortos de quienes sigue. Solo se enseñan con `verCortos`. */
     cortos: List<Publicacion> = emptyList(),
     /** El equipo permite los cortos y la persona no los apagó en Ajustes. */
-    verCortos: Boolean = false
+    verCortos: Boolean = false,
+    /** Los videos que ya abrió desde la app: su tarjeta se ve distinta. */
+    abiertos: Set<String> = emptySet()
 ) {
     val contexto = LocalContext.current
 
@@ -106,6 +111,7 @@ fun NovedadesPantalla(
         items(lista, key = { it.id }) { publicacion ->
             TarjetaPublicacion(
                 publicacion = publicacion,
+                abierto = publicacion.videoId in abiertos,
                 onAbrir = {
                     val destino = publicacion.destino
                     Enrutador.abrirVideo(
@@ -115,6 +121,7 @@ fun NovedadesPantalla(
                         destino.url,
                         campana = "novedades"
                     )
+                    Abiertos.marcar(contexto, publicacion.videoId)
                 },
                 onReportar = { onReportar(publicacion) }
             )
@@ -153,12 +160,20 @@ private fun SelectorDeApartado(enCortos: Boolean, onElegir: (Boolean) -> Unit) {
     }
 }
 
-/** La tarjeta de un video. La usan Novedades y la ficha de un canal. */
+/**
+ * La tarjeta de un video. La usan Novedades y la ficha de un canal.
+ *
+ * Un video que la persona ya abrió se distingue de uno que no por tres cosas
+ * a la vez, para que no dependa solo del color: la leyenda escrita ("Nuevo" o
+ * "Ya lo abriste"), el fondo de la tarjeta con la miniatura apagada, y el
+ * botón, que deja de ir relleno.
+ */
 @Composable
 internal fun TarjetaPublicacion(
     publicacion: Publicacion,
     onAbrir: () -> Unit,
-    onReportar: () -> Unit
+    onReportar: () -> Unit,
+    abierto: Boolean = false
 ) {
     val esquema = MaterialTheme.colorScheme
     val destino = publicacion.destino
@@ -168,7 +183,7 @@ internal fun TarjetaPublicacion(
             .fillMaxWidth()
             .padding(bottom = Espacio.lg)
             .clip(RoundedCornerShape(20.dp))
-            .background(esquema.surface)
+            .background(if (abierto) esquema.surfaceVariant else esquema.surface)
             .border(1.dp, esquema.outline, RoundedCornerShape(20.dp))
     ) {
         Column(
@@ -176,7 +191,8 @@ internal fun TarjetaPublicacion(
                 .clickable(onClick = onAbrir)
                 .semantics {
                     contentDescription =
-                        "Abrir el video ${publicacion.title} de ${publicacion.firma}"
+                        "Abrir el video ${publicacion.title} de ${publicacion.firma}. " +
+                        if (abierto) "Ya lo abriste." else "Nuevo."
                 }
         ) {
             if (!publicacion.thumbnailUrl.isNullOrBlank()) {
@@ -188,10 +204,12 @@ internal fun TarjetaPublicacion(
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
                         .background(esquema.surfaceVariant)
+                        .alpha(if (abierto) 0.45f else 1f)
                 )
             }
 
             Column(Modifier.padding(Espacio.md)) {
+                EtiquetaDeEstado(abierto)
                 Text(
                     // Quién lo publicó y, si su canal es de una productora, cuál.
                     listOf(publicacion.firma, tiempoRelativo(publicacion.publishedAt))
@@ -228,6 +246,10 @@ internal fun TarjetaPublicacion(
                     else -> "Ver el video"
                 },
                 subtitulo = "Se abre en ${Enrutador.nombreDe(destino.plataforma)}",
+                // Un directo que sigue al aire conserva el botón relleno
+                // aunque ya se haya abierto: es lo único que no puede esperar.
+                variante = if (abierto && !publicacion.esEnVivo) VarianteBoton.SECUNDARIO
+                else VarianteBoton.PRIMARIO,
                 onClick = onAbrir
             )
 
@@ -245,6 +267,28 @@ internal fun TarjetaPublicacion(
             }
         }
     }
+}
+
+/**
+ * La leyenda que dice si el video ya se abrió. Va escrita, no solo pintada:
+ * quien no distingue bien los colores la lee igual.
+ */
+@Composable
+private fun EtiquetaDeEstado(abierto: Boolean) {
+    val esquema = MaterialTheme.colorScheme
+    val forma = RoundedCornerShape(8.dp)
+
+    Text(
+        if (abierto) "✓ Ya lo abriste" else "Nuevo",
+        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+        color = if (abierto) esquema.onSurface else esquema.onPrimary,
+        modifier = Modifier
+            .padding(bottom = Espacio.sm)
+            .clip(forma)
+            .background(if (abierto) esquema.surface else esquema.primary)
+            .then(if (abierto) Modifier.border(1.dp, esquema.outline, forma) else Modifier)
+            .padding(horizontal = Espacio.sm, vertical = Espacio.xs)
+    )
 }
 
 /** "2 creadores", "1 productora" o "2 creadores y 1 productora". */

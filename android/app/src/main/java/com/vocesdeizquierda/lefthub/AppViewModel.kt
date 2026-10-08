@@ -476,6 +476,8 @@ class AppViewModel(
                 if (teniaYouTube) youtube.desconectar(contexto.applicationContext, correo)
                 youtube.alCerrarSesion(contexto)
                 reiniciarYouTube()
+                // Borrar la cuenta es empezar de cero también en el teléfono.
+                Abiertos.olvidar(contexto)
                 avisar("Cuenta borrada. Puedes seguir usando la app como invitado.")
             }
             .onFailure { avisar("No se pudo borrar la cuenta: ${it.localizedMessage}") }

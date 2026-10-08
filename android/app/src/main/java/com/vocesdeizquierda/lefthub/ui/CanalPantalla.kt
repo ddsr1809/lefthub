@@ -10,6 +10,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
@@ -41,7 +42,9 @@ fun CanalPantalla(
     onAbrirCreador: (String) -> Unit = {},
     onAbrirProductora: (String) -> Unit = {},
     onReportar: (Publicacion) -> Unit = {},
-    onReintentar: () -> Unit = {}
+    onReintentar: () -> Unit = {},
+    /** Los videos que ya abrió desde la app: su tarjeta se ve distinta. */
+    abiertos: Set<String> = emptySet()
 ) {
     val contexto = LocalContext.current
     val esquema = MaterialTheme.colorScheme
@@ -165,6 +168,7 @@ fun CanalPantalla(
             videos.lista.isNotEmpty() -> videos.lista.forEach { publicacion ->
                 TarjetaPublicacion(
                     publicacion = publicacion,
+                    abierto = publicacion.videoId in abiertos,
                     onAbrir = {
                         val destino = publicacion.destino
                         Enrutador.abrirVideo(
@@ -174,6 +178,7 @@ fun CanalPantalla(
                             destino.url,
                             campana = "ficha_canal"
                         )
+                        Abiertos.marcar(contexto, publicacion.videoId)
                     },
                     onReportar = { onReportar(publicacion) }
                 )
