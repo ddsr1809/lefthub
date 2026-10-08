@@ -195,6 +195,11 @@ a:focus-visible {
   color: var(--suave);
 }
 
+/* --- Contacto (portada) ------------------------------------------------- */
+.contacto { margin-top: 3.5rem; }
+.contacto p { margin-top: 0.9rem; max-width: 36em; color: var(--suave); }
+.contacto a { overflow-wrap: anywhere; }
+
 /* --- Privacidad y condiciones ------------------------------------------- */
 .legal {
   width: min(43rem, 100% - 3rem);
