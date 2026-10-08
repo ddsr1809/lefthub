@@ -255,7 +255,7 @@ Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlis
 
 Tres cosas distintas, cada una con su ficha en el panel:
 
-- **Creador**: una persona del directorio. Puede figurar en una o varias productoras, y tener uno o varios canales de YouTube, varias redes sociales, o solo redes y ningún canal de YouTube.
+- **Creador**: una persona del directorio. Puede figurar en una o varias productoras, y tener uno o varios canales de YouTube, varias redes sociales, o solo redes y ningún canal de YouTube: se le puede dar de alta con un canal de YouTube o solo con una cuenta de X, Instagram, TikTok, Facebook, Threads, Telegram, Twitch, Spotify, Patreon o su página. Solo YouTube genera avisos de videos; las redes son enlaces de su perfil.
 - **Canal de YouTube**: de donde salen los videos. Es de un creador (su dueño) o, si no tiene, de una productora: su canal oficial. Además puede ser de una productora aunque tenga creador, y **aparecer con otros creadores**.
 - **Productora**: la casa detrás de varios creadores. Tiene sus canales propios y puede **aparecer en el directorio como un creador más**.
 
@@ -286,6 +286,7 @@ Figurar en una productora no basta para recibir los videos de sus canales: son l
 |---|---|
 | `GET /api/creadores` | Cada creador trae `canales` (los suyos y después los de otros en los que aparece) y `productoras`. `conexiones` sigue viniendo, con el primer canal de cada plataforma. Incluye las productoras que aparecen en el directorio. |
 | `GET /api/productoras`, `GET /api/productoras/{id}` | Productoras visibles, con sus canales y los ids de sus creadores. |
+| `GET /api/canales/{id}/publicaciones` | Lo último que publicó un canal, para su ficha en la app. No depende de a quién se siga. |
 | `PUT` / `DELETE /api/favoritos/productoras/{id}` | Seguir y dejar de seguir. `GET /api/perfil` las devuelve en `productoras`. |
 | `GET` / `POST /api/admin/canales`, `DELETE /api/admin/canales/{id}` | Panel: la ficha de cada canal de YouTube. Dueño (`creadorId`), `productoraId` y `creadores` (con quién más aparece). Es el único sitio donde un canal cambia de dueño. |
 | `GET` / `POST /api/admin/productoras`, `DELETE /api/admin/productoras/{id}` | Panel: listar, guardar (con sus canales propios, sus creadores, `enDirectorio` y `categoria`) y retirar. |
@@ -293,15 +294,21 @@ Figurar en una productora no basta para recibir los videos de sus canales: son l
 
 **En el panel**
 
-- **Creadores.** La ficha tiene dos listas: *Canales de YouTube* (con el buscador) y *Redes sociales* (un enlace por red). Cualquiera de las dos puede quedar vacía, no las dos. Más abajo, las productoras en las que figura y, solo para verlos, los canales de otros en los que aparece.
+- **Creadores.** La ficha tiene dos listas: *Canales de YouTube* (con el buscador) y *Redes sociales* (un enlace por red; basta escribir el usuario, `@claudia`, y el panel arma el enlace). Cualquiera de las dos puede quedar vacía, no las dos. Más abajo, las productoras en las que figura y, solo para verlos, los canales de otros en los que aparece.
 - **Canales.** Una fila por canal de YouTube, con su suscripción al hub (antes era la sección Suscripciones) y su ficha: etiqueta, creador dueño, productora y *También aparece con estos creadores*.
 - **Productoras.** Sus canales propios, sus redes, los creadores que figuran en ella y la casilla *Aparece en el directorio como un creador más*, con el tema en el que sale.
 
 El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mismo para testing y producción: se actualiza con `git -C /opt/vocesleft pull`, no con el pipeline. Si el servidor al que apunta es anterior a esta versión, el panel no ofrece las fichas de canal ni la casilla del directorio, y lo demás funciona igual.
 
-**En la app de Android.** El perfil de un creador lista todos sus canales, con su etiqueta, y dice de quién es cada uno cuando no es suyo (de qué productora, o de qué otro creador). El directorio tiene una pestaña **Productoras** (solo si hay alguna), y las que aparecen en el directorio salen además entre los creadores; al tocarlas se abre su ficha, con sus canales, sus creadores y el botón para seguirla. En Novedades, un video de un canal de productora se firma "Creador · Productora". "¿Estoy suscrito en YouTube?" se contesta canal por canal. La app nueva también funciona contra un servidor anterior: sin `canales` usa `conexiones`, y sin la ruta de productoras no muestra la pestaña.
+**En la app de Android.** Las mismas tres fichas que en el panel:
 
-**Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Para ellas, un canal compartido es un video más en Novedades y un aviso más, y una productora en el directorio es un creador más. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
+- **Creador.** *Canales de YouTube* y *Redes sociales* van en apartados distintos, y después sus productoras. De un canal que no es suyo dice de quién es. Si no tiene canal de YouTube lo dice, porque entonces no hay avisos de videos suyos.
+- **Canal de YouTube.** Se llega con "Ver los últimos videos de este canal", debajo del botón del canal (que sigue abriendo YouTube de un toque). Dice de quién es, de qué productora y con qué otros creadores aparece, cada uno con el camino a su ficha para seguirlo, y lista sus últimos videos.
+- **Productora.** Sus canales, con quién sale cada uno, sus creadores y el botón para seguirla. Está en la pestaña **Productoras** del directorio (solo si hay alguna) y, si aparece en el directorio, también entre los creadores.
+
+En Novedades, un video de un canal de productora se firma "Creador · Productora". "¿Estoy suscrito en YouTube?" se contesta canal por canal. La app nueva también funciona contra un servidor anterior: sin `canales` usa `conexiones`, sin la ruta de productoras no muestra la pestaña y sin la de videos la ficha del canal sale sin lista.
+
+**Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Para ellas, un canal compartido es un video más en Novedades y un aviso más, y una productora en el directorio es un creador más. Las redes que no conocen (X, Facebook, Threads, Telegram) no las enseñan: un creador que solo tenga esas les sale sin enlaces. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
 
 ---
 

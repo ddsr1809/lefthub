@@ -165,6 +165,14 @@ public final class Repositorios {
 
         List<Publicacion> findAllByOrderByPublicadoEnDesc(Pageable pagina);
 
+        /** Lo último que salió en un canal, para su ficha en la app. */
+        @Query("""
+                select p from Publicacion p
+                where p.canalId = :canal and p.estado <> 'removed'
+                order by p.publicadoEn desc nulls last
+                """)
+        List<Publicacion> delCanal(@Param("canal") UUID canal, Pageable pagina);
+
         @Modifying
         @Query("update Publicacion p set p.reportes = p.reportes + 1 where p.videoId = :videoId")
         void sumarReporte(@Param("videoId") String videoId);

@@ -184,6 +184,27 @@ public class DirectorioController {
     }
 
     /**
+     * Lo último que publicó un canal, para su ficha en la app. No depende de
+     * a quién siga la persona: es lo que hay en ese canal.
+     *
+     * Solo canales con el dueño visible, como en el resto del directorio.
+     */
+    @GetMapping("/canales/{id}/publicaciones")
+    @Transactional(readOnly = true)
+    public List<Dtos.PublicacionDto> delCanal(@PathVariable UUID id,
+                                              @RequestParam(defaultValue = "20") int limite) {
+        Catalogo.Vista vista = catalogo.vista();
+
+        Canal canal = vista.canal(id);
+        if (canal == null || !vista.vivo(canal)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Ese canal ya no está en el directorio.");
+        }
+
+        return aDtos(publicaciones.delCanal(id, PageRequest.of(0, Math.max(1, Math.min(limite, 50)))), vista);
+    }
+
+    /**
      * Los canales que entran en las novedades de la persona sin ser de un
      * creador que sigue: los de las productoras visibles que sigue, y los de
      * otros en los que aparece alguno de sus creadores. Un canal con el dueño

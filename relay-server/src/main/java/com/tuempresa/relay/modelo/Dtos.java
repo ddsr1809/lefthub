@@ -22,8 +22,14 @@ public final class Dtos {
 
     private Dtos() {}
 
+    /**
+     * En el orden en que se muestran. Solo YouTube genera avisos de videos;
+     * las demás son enlaces del perfil. Una app que no conozca alguna de las
+     * nuevas (x, facebook, threads, telegram) simplemente no la enseña.
+     */
     public static final List<String> PLATAFORMAS =
-            List.of("youtube", "tiktok", "twitch", "instagram", "spotify", "patreon", "web");
+            List.of("youtube", "tiktok", "twitch", "instagram", "x", "facebook", "threads",
+                    "telegram", "spotify", "patreon", "web");
 
     public static final List<String> CATEGORIAS =
             List.of("cine", "comida", "politica", "musica", "salud", "noticias", "tecnologia", "otros");

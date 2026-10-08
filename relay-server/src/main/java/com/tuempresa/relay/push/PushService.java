@@ -222,6 +222,10 @@ public class PushService {
             case "tiktok" -> "TikTok";
             case "twitch" -> "Twitch";
             case "instagram" -> "Instagram";
+            case "x" -> "X";
+            case "facebook" -> "Facebook";
+            case "threads" -> "Threads";
+            case "telegram" -> "Telegram";
             case "spotify" -> "Spotify";
             case "patreon" -> "Patreon";
             case "web" -> "su página";
