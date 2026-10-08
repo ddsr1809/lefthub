@@ -48,6 +48,12 @@ TABLAS = [
     "fotos",
 ]
 
+# Columnas que no son datos del directorio y no van a los archivos:
+# `sincronizado` es la huella con la que pruebas sabe qué fichas cambiaron
+# desde la última vez que coincidió con producción (ver V10__versiones.sql).
+# Cambia sola con cada copia y, si se pierde, se vuelve a calcular.
+SIN_GUARDAR = {"creadores": ["sincronizado"], "productoras": ["sincronizado"]}
+
 EXTENSIONES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/gif": "gif"}
 
 # Las claves que se leen primero en un archivo; el resto va por orden alfabetico.
@@ -142,8 +148,11 @@ def leer_base(ambiente):
     if "canales" in tablas and "conexiones" in tablas:
         tablas.remove("conexiones")
 
+    def fila(tabla):
+        return "to_jsonb(t)" + "".join(" - '%s'" % c for c in SIN_GUARDAR.get(tabla, []))
+
     partes = ",\n".join(
-        "  '%s', (select coalesce(jsonb_agg(to_jsonb(t)), '[]'::jsonb) from public.%s t)" % (t, t)
+        "  '%s', (select coalesce(jsonb_agg(%s), '[]'::jsonb) from public.%s t)" % (t, fila(t), t)
         for t in tablas)
     # En UTC para que las fechas se escriban igual en cualquier maquina.
     return psql(ambiente, "set timezone = 'UTC';\nselect jsonb_build_object(\n%s\n)::text;\n" % partes)

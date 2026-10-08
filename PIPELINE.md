@@ -121,8 +121,13 @@ Lo que conviene saber:
   produccion en `creadores.origen_id` para reconocer al creador cuando cambia.
 - **Los borrados no se copian.** Retirar un creador en produccion lo deja como
   esta en testing; alli se borra desde su propio panel.
-- **Produccion manda.** Un cambio hecho a mano en testing sobre un creador
-  copiado se pierde la siguiente vez que ese creador se guarde en produccion.
+- **Produccion manda, salvo sobre lo que testing tiene sin migrar.** Un creador
+  o una productora que se cambio en el panel de testing queda protegido: la
+  copia de produccion no lo pisa, produccion guarda igual y su panel avisa de
+  que no se copio. Se resuelve al migrar esa version a produccion, o
+  descartando el cambio en el panel de testing (seccion Versiones). Lo que
+  testing no ha tocado se sigue copiando como siempre. Ver "Versiones y
+  migracion de pruebas a produccion" en `README.md`.
 - **Si testing no responde, produccion guarda igual** y el panel avisa de que
   la copia fallo. Para ponerse al dia basta repetir el script.
 - Si en testing ya existia un creador con ese canal de YouTube, la copia lo
