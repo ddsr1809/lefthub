@@ -535,19 +535,30 @@
   // lista en memoria. Dentro de cada una, el orden en pantalla es el orden en
   // que se guarda, y el primero de cada plataforma es el principal: el que ven
   // las versiones de la app anteriores a los canales múltiples.
+  // Las dos listas van por separado para que cada formulario las ponga en su
+  // orden: el de un creador empieza por sus redes, que es lo que siempre
+  // tiene; sus canales de YouTube son opcionales y se pueden agregar después.
   function seccionesDeCanales(conProductora) {
-    const otras = Object.keys(PLATAFORMAS).filter((p) => p !== 'youtube');
+    return seccionYouTube(conProductora) + seccionRedes(conProductora);
+  }
+
+  function seccionYouTube(conProductora) {
     return `
-      <fieldset><legend>${conProductora ? 'Canales de YouTube' : 'Canales propios de YouTube'}</legend>
+      <fieldset><legend>${conProductora ? 'Canales de YouTube <span class="opcional">opcional</span>' : 'Canales propios de YouTube'}</legend>
         <div class="canales" id="fCanalesYT"></div>
         <div class="agregar" style="margin-top:10px">
           <input class="input" id="fBuscarCanal" placeholder="@handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
           <button class="btn" type="button" id="btnBuscarCanal">Buscar y agregar</button>
         </div>
         <p class="hint" style="margin:10px 0 0">${conProductora
-          ? 'Puede tener varios o ninguno: un creador se puede dar de alta con un canal de YouTube o solo con una red social. De cada canal puedes decir si es de una productora. Con qué otros creadores aparece se elige en su ficha, en la sección Canales.'
+          ? 'No hace falta para dar de alta al creador: déjalo vacío y agrégalos cuando quieras, aquí o en la sección Canales. Puede tener varios, y de cada uno puedes decir si es de una productora. Guardar los demás datos del creador no cambia sus canales.'
           : 'Solo los canales que son de la productora y de ningún creador. Con qué creadores aparece cada uno se elige en su ficha, en la sección Canales.'}</p>
-      </fieldset>
+      </fieldset>`;
+  }
+
+  function seccionRedes(conProductora) {
+    const otras = Object.keys(PLATAFORMAS).filter((p) => p !== 'youtube');
+    return `
       <fieldset><legend>Redes sociales</legend>
         <div class="canales" id="fRedes"></div>
         <div class="agregar" style="margin-top:10px">
@@ -556,7 +567,7 @@
           <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
         </div>
         <p class="hint" style="margin:10px 0 0">${conProductora
-          ? 'X, Instagram, TikTok, Facebook, su página… Basta con su usuario. Un creador puede darse de alta solo con una red, sin canal de YouTube; la app lo muestra en el directorio con sus enlaces, pero los avisos de videos nuevos solo salen de YouTube.'
+          ? 'Elige la red, escribe su usuario (o pega el enlace) y pulsa Agregar; repítelo con cada una. Con una sola red ya se puede crear el creador: la app lo muestra en el directorio con sus enlaces. Los avisos de videos nuevos solo salen de sus canales de YouTube.'
           : 'X, Instagram, TikTok, Facebook, su página… Basta con su usuario.'}</p>
       </fieldset>`;
   }
@@ -658,6 +669,20 @@
       // Sin `creadores`: así el servidor deja a cada canal apareciendo con
       // quien ya aparecía.
       valores() {
+        // Lo que quedó escrito sin pulsar "Agregar" también cuenta: es fácil
+        // escribir el usuario y darle directamente a guardar.
+        const red = $('#fOtraUrl');
+        if (red && red.value.trim()) {
+          $('#btnOtraPlat').click();
+          if (red.value.trim()) return null;      // no valía; ya se avisó
+        }
+        // Un canal de YouTube no se puede agregar solo: hay que buscarlo.
+        const yt = $('#fBuscarCanal');
+        if (yt && yt.value.trim()) {
+          toast('Escribiste un canal de YouTube pero falta agregarlo: pulsa «Buscar y agregar», o borra ese texto.', true);
+          yt.focus();
+          return null;
+        }
         for (const k of lista) {
           if (!/^https?:\/\//i.test((k.url || '').trim())) {
             toast('El enlace de ' + (PLATAFORMAS[k.plataforma] || k.plataforma) + ' debe empezar por https://', true);
@@ -728,11 +753,6 @@
     const compartidos = c.canalesCompartidos || [];
     return `
       <div class="stack" style="gap:14px">
-        ${seccionesDeCanales(!estado.sinProductoras)}
-        ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
-          <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
-          <p class="hint" style="margin:10px 0 0">Los videos de estos canales también les llegan a quienes lo siguen. Se cambia en la ficha de cada canal, en la sección Canales.</p>
-        </fieldset>` : ''}
         <div class="form">
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
           <label class="f">Categoría<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
@@ -740,6 +760,12 @@
           <label class="f full">Foto (URL)<input class="input" id="fFoto" value="${esc(c.fotoUrl)}" placeholder="https://"></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
+        ${seccionRedes(true)}
+        ${seccionYouTube(true)}
+        ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
+          <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
+          <p class="hint" style="margin:10px 0 0">Los videos de estos canales también les llegan a quienes lo siguen. Se cambia en la ficha de cada canal, en la sección Canales.</p>
+        </fieldset>` : ''}
         ${estado.sinProductoras ? '' : `<fieldset><legend>Productoras en las que figura</legend>
           ${casillas('productoras', estado.productoras || [], c.productoras || [], 'Todavía no hay productoras. Se dan de alta en la sección Productoras.')}
         </fieldset>`}
@@ -758,7 +784,7 @@
         if (nombre.length < 2) { toast('El nombre necesita al menos 2 letras.', true); return false; }
         const canales = editor.valores();
         if (!canales) return false;
-        if (!canales.length) { toast('Agrega al menos un canal de YouTube o una red social.', true); return false; }
+        if (!canales.length) { toast('Agrega al menos una red social (o un canal de YouTube).', true); return false; }
         const cuerpo = {
           id: c ? c.id : null, nombre, categoria: $('#fCategoria').value, bio: $('#fBio').value.trim() || null,
           fotoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
