@@ -74,9 +74,19 @@ data class Creador(
             }
         }
 
+    /** Sus canales de YouTube: de donde salen los videos y los avisos. */
+    val canalesDeYouTube: List<Canal>
+        get() = canalesVisibles.filter { it.plataforma == "youtube" }
+
+    /** Todo lo demás: X, Instagram, TikTok, su página. Son enlaces, no avisan. */
+    val redes: List<Canal>
+        get() = canalesVisibles.filter { it.plataforma != "youtube" }
+
     companion object {
+        // El mismo orden que usa el servidor (Dtos.PLATAFORMAS).
         val ORDEN_PLATAFORMAS = listOf(
-            "youtube", "tiktok", "twitch", "instagram", "spotify", "patreon", "web"
+            "youtube", "tiktok", "twitch", "instagram", "x", "facebook", "threads",
+            "telegram", "spotify", "patreon", "web"
         )
     }
 }
@@ -148,6 +158,17 @@ data class Publicacion(
             Destino(platform, url, videoId)
         }
 }
+
+/**
+ * Los últimos videos de un canal, para su ficha. Se piden al abrirla; no son
+ * las novedades de la persona, sino lo que hay en ese canal.
+ */
+data class VideosDeCanal(
+    val canalId: String = "",
+    val cargando: Boolean = false,
+    val lista: List<Publicacion> = emptyList(),
+    val fallo: Boolean = false
+)
 
 data class Destino(
     val plataforma: String,

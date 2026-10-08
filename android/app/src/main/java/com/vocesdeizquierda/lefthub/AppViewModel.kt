@@ -25,8 +25,14 @@ data class EstadoApp(
     val ocupado: Boolean = false,
     val mensaje: String? = null,
     val conflicto: AuthRepo.Resultado.Conflicto? = null,
-    val youtube: EstadoYouTube = EstadoYouTube()
-)
+    val youtube: EstadoYouTube = EstadoYouTube(),
+    val videos: VideosDeCanal = VideosDeCanal()
+) {
+    /** Un canal por su id, sea de un creador o propio de una productora. */
+    fun canal(id: String): Canal? =
+        (creadores.flatMap { it.canales } + productoras.flatMap { it.canales })
+            .firstOrNull { it.id == id }
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class AppViewModel(
@@ -109,6 +115,34 @@ class AppViewModel(
     fun creador(id: String) = _estado.value.creadores.firstOrNull { it.id == id }
 
     fun productora(id: String) = _estado.value.productoras.firstOrNull { it.id == id }
+
+    /**
+     * Trae los últimos videos de un canal para su ficha.
+     *
+     * Al volver a la misma ficha se ve lo que ya había mientras llega lo
+     * nuevo; al abrir la de otro canal, la lista empieza vacía.
+     */
+    fun cargarVideosDeCanal(canalId: String) = viewModelScope.launch {
+        if (canalId.isBlank()) return@launch
+
+        _estado.update { e ->
+            val previos = if (e.videos.canalId == canalId) e.videos.lista else emptyList()
+            e.copy(videos = VideosDeCanal(canalId, cargando = true, lista = previos))
+        }
+
+        val resultado = runCatching { directorio.videosDeCanal(canalId) }
+
+        _estado.update { e ->
+            // Si mientras tanto se abrió la ficha de otro canal, esta
+            // respuesta ya no es la que hay que pintar.
+            if (e.videos.canalId != canalId) e
+            else e.copy(videos = VideosDeCanal(
+                canalId = canalId,
+                lista = resultado.getOrDefault(e.videos.lista),
+                fallo = resultado.isFailure
+            ))
+        }
+    }
 
     fun sigue(id: String) = _estado.value.perfil.favoritos.contains(id)
 

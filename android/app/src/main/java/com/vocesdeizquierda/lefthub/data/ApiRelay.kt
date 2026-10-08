@@ -159,6 +159,16 @@ object ApiRelay {
     suspend fun publicaciones(limite: Int = 50): List<Publicacion> =
         getArray("/api/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
 
+    /**
+     * Lo último que publicó un canal. Un servidor anterior a las fichas de
+     * canal no tiene la ruta: para la app eso es "nada que mostrar".
+     */
+    suspend fun publicacionesDeCanal(canalId: String, limite: Int = 20): List<Publicacion> = try {
+        getArray("/api/canales/$canalId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
     suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
 
     suspend fun seguir(creadorId: String) {

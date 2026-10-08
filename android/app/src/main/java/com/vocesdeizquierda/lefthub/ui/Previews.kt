@@ -17,6 +17,7 @@ import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.Publicacion
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 
 
 // Previews.
@@ -128,6 +129,19 @@ private val luis = Creador(
     platforms = mapOf(
         "youtube" to Conexion(url = "https://www.youtube.com/channel/UC789"),
         "twitch" to Conexion(url = "https://www.twitch.tv/luismendoza")
+    )
+)
+
+/** Alguien que solo tiene redes: una cuenta de X y otra de Instagram, sin YouTube. */
+private val rosa = Creador(
+    id = "rosa",
+    name = "Rosa Luna",
+    category = "politica",
+    bio = "Columnista. Escribe todos los días.",
+    canales = listOf(
+        Canal(id = "r1", plataforma = "x", url = "https://x.com/rosaluna", creadorId = "rosa"),
+        Canal(id = "r2", plataforma = "instagram", url = "https://www.instagram.com/rosaluna",
+            creadorId = "rosa")
     )
 )
 
@@ -283,6 +297,34 @@ private fun PreviaPerfilDeCreador() {
             onSeguir = {},
             onVolver = {},
             productoras = listOf(estudio)
+        )
+    }
+}
+
+/** Un creador sin canal de YouTube: se dice, y se enseñan sus redes. */
+@VistaPreviaTemas
+@Composable
+private fun PreviaPerfilSoloConRedes() {
+    Marco {
+        CreadorPantalla(
+            creador = rosa,
+            siguiendo = false,
+            onSeguir = {},
+            onVolver = {}
+        )
+    }
+}
+
+@VistaPreviaAccesible
+@Composable
+private fun PreviaFichaDeCanal() {
+    Marco {
+        CanalPantalla(
+            canal = estudio.canales.first(),
+            creadores = creadores,
+            productoras = listOf(estudio),
+            videos = VideosDeCanal(canalId = "c9", lista = publicaciones),
+            onVolver = {}
         )
     }
 }

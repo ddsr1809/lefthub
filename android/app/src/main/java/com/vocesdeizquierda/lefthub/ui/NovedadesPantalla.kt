@@ -91,8 +91,9 @@ fun NovedadesPantalla(
     }
 }
 
+/** La tarjeta de un video. La usan Novedades y la ficha de un canal. */
 @Composable
-private fun TarjetaPublicacion(
+internal fun TarjetaPublicacion(
     publicacion: Publicacion,
     onAbrir: () -> Unit,
     onReportar: () -> Unit

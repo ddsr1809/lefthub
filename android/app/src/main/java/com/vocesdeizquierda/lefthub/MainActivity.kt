@@ -25,6 +25,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vocesdeizquierda.lefthub.data.Aceptacion
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import com.vocesdeizquierda.lefthub.ui.*
 
@@ -277,7 +278,32 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onVolver = { nav.popBackStack() },
                     productoras = estado.productoras,
                     onAbrirProductora = { nav.navigate("productora/$it") },
-                    creadores = estado.creadores
+                    creadores = estado.creadores,
+                    onAbrirCanal = { nav.navigate("canal/$it") }
+                )
+            }
+
+            composable(
+                "canal/{canalId}",
+                arguments = listOf(navArgument("canalId") { type = NavType.StringType })
+            ) { entrada ->
+                val id = entrada.arguments?.getString("canalId").orEmpty()
+
+                // Los videos del canal se piden al abrir su ficha.
+                LaunchedEffect(id) { modelo.cargarVideosDeCanal(id) }
+
+                CanalPantalla(
+                    canal = estado.canal(id),
+                    creadores = estado.creadores,
+                    productoras = estado.productoras,
+                    // Mientras llegan los de este canal, no se pintan los del anterior.
+                    videos = estado.videos.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    youtube = estado.youtube,
+                    onAbrirCreador = { nav.navigate("creador/$it") },
+                    onAbrirProductora = { nav.navigate("productora/$it") },
+                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) },
+                    onReintentar = { modelo.cargarVideosDeCanal(id) },
+                    onVolver = { nav.popBackStack() }
                 )
             }
 
@@ -297,6 +323,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onSeguir = { modelo.alternarProductora(id) },
                     onSeguirCreador = { modelo.alternarFavorito(it) },
                     onAbrirCreador = { nav.navigate("creador/$it") },
+                    onAbrirCanal = { nav.navigate("canal/$it") },
                     onVolver = { nav.popBackStack() }
                 )
             }

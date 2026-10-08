@@ -32,7 +32,8 @@ fun ProductoraPantalla(
     favoritos: List<String> = emptyList(),
     youtube: EstadoYouTube = EstadoYouTube(),
     onSeguirCreador: (String) -> Unit = {},
-    onAbrirCreador: (String) -> Unit = {}
+    onAbrirCreador: (String) -> Unit = {},
+    onAbrirCanal: (String) -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
 
@@ -125,7 +126,9 @@ fun ProductoraPantalla(
                 dueno = dueno?.let { "Canal de ${it.name}" }
                     ?: con.takeIf { it.isNotEmpty() }?.let { "Con ${enumerar(it)}" },
                 suscrito = suscrito,
-                campana = "ficha_productora"
+                campana = "ficha_productora",
+                onVerFicha = canal.id.takeIf { it.isNotBlank() && canal.esDeYouTube }
+                    ?.let { id -> { onAbrirCanal(id) } }
             )
         }
 
@@ -158,7 +161,7 @@ fun ProductoraPantalla(
 }
 
 /** "Ana", "Ana y Luis", "Ana, Luis y Juan". */
-private fun enumerar(nombres: List<String>): String = when (nombres.size) {
+internal fun enumerar(nombres: List<String>): String = when (nombres.size) {
     0 -> ""
     1 -> nombres[0]
     else -> nombres.dropLast(1).joinToString(", ") + " y " + nombres.last()

@@ -171,6 +171,10 @@ fun DirectorioPantalla(
  * Aquí se materializa la idea del "Creador" como entidad, no del canal. Una
  * persona publica en varios lugares; la app los junta bajo un solo perfil y
  * cada botón dice en palabras qué va a pasar al tocarlo.
+ *
+ * Tiene las mismas partes que su ficha del panel: sus canales de YouTube, sus
+ * redes sociales y sus productoras. Puede faltar cualquiera: hay quien solo
+ * tiene una cuenta de X o de Instagram.
  */
 @Composable
 fun CreadorPantalla(
@@ -184,7 +188,8 @@ fun CreadorPantalla(
     productoras: List<Productora> = emptyList(),
     onAbrirProductora: (String) -> Unit = {},
     // El directorio: para decir de quién es un canal ajeno en el que aparece.
-    creadores: List<Creador> = emptyList()
+    creadores: List<Creador> = emptyList(),
+    onAbrirCanal: (String) -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
 
@@ -237,27 +242,46 @@ fun CreadorPantalla(
             onClick = onSeguir
         )
 
-        Text(
-            "Dónde publica",
-            style = MaterialTheme.typography.headlineMedium,
-            color = esquema.onBackground,
-            modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
-        )
-
+        // La misma división que en su ficha del panel: de un lado sus
+        // canales de YouTube, que es de donde salen los videos y los avisos;
+        // del otro sus redes, que son enlaces.
         val canales = creador.canalesVisibles
+        val deYouTube = creador.canalesDeYouTube
+        val redes = creador.redes
+
         if (canales.isEmpty()) {
             Text(
                 "Todavía no hemos agregado sus enlaces.",
                 style = MaterialTheme.typography.bodyLarge,
-                color = esquema.onSurfaceVariant
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(top = Espacio.lg)
+            )
+        }
+
+        if (deYouTube.isNotEmpty()) {
+            Text(
+                if (deYouTube.size == 1) "Canal de YouTube" else "Canales de YouTube",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+        } else if (redes.isNotEmpty()) {
+            // Sin canal de YouTube no hay de dónde avisar: mejor decirlo que
+            // dejar a alguien esperando una notificación que no va a llegar.
+            Text(
+                "No tiene canal de YouTube, así que no hay avisos de videos suyos. " +
+                    "Puedes verlo en sus redes.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(top = Espacio.md)
             )
         }
 
         // Con varios canales de YouTube, el botón para dar el permiso y las
         // frases de "todavía no se sabe" salen una sola vez, en el primero.
-        val primeroDeYouTube = canales.firstOrNull { it.esDeYouTube }
+        val primeroDeYouTube = deYouTube.firstOrNull { it.esDeYouTube }
 
-        canales.forEach { canal ->
+        deYouTube.forEach { canal ->
             val suscrito = youtube.suscritoAlCanal(canal)
             val productora = productoras.firstOrNull { it.id == canal.productoraId }
 
@@ -283,8 +307,22 @@ fun CreadorPantalla(
                 canal = canal,
                 dueno = deOtro?.let { "Canal de ${it.name}" } ?: productora?.let { "De ${it.nombre}" },
                 suscrito = suscrito,
-                campana = "perfil_creador"
+                campana = "perfil_creador",
+                onVerFicha = canal.id.takeIf { it.isNotBlank() && canal.esDeYouTube }
+                    ?.let { id -> { onAbrirCanal(id) } }
             )
+        }
+
+        if (redes.isNotEmpty()) {
+            Text(
+                "Redes sociales",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            redes.forEach { red ->
+                BotonCanal(canal = red, dueno = null, suscrito = null, campana = "perfil_creador")
+            }
         }
 
         // Las casas con las que trabaja: donde figura y las dueñas de alguno
@@ -375,13 +413,17 @@ internal fun SuscripcionEnYouTube(
  *
  * @param dueno una frase corta sobre de quién es el canal ("De Estudio X",
  *              "Canal de Juan Pérez"), o null si no hace falta decirlo.
+ * @param onVerFicha abre la ficha del canal, con sus últimos videos. El botón
+ *              grande sigue llevando directo a YouTube, de un toque; la ficha
+ *              es un enlace aparte, debajo, para quien quiera ver más.
  */
 @Composable
 internal fun BotonCanal(
     canal: Canal,
     dueno: String?,
     suscrito: Boolean?,
-    campana: String
+    campana: String,
+    onVerFicha: (() -> Unit)? = null
 ) {
     val contexto = LocalContext.current
 
@@ -401,6 +443,22 @@ internal fun BotonCanal(
             Enrutador.abrirCanal(contexto, canal.plataforma, canal.url, campana = campana)
         }
     )
+
+    if (onVerFicha != null) {
+        TextButton(
+            onClick = onVerFicha,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = Tactil.minimo)
+                .padding(bottom = Tactil.separacion)
+        ) {
+            Text(
+                "Ver los últimos videos de este canal",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
 }
 
 /**
