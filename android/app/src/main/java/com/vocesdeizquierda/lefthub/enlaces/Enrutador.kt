@@ -36,6 +36,12 @@ object Enrutador {
         "tiktok" to listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"),
         "twitch" to listOf("tv.twitch.android.app"),
         "instagram" to listOf("com.instagram.android"),
+        "x" to listOf("com.twitter.android"),
+        // Facebook normal y Facebook Lite, que es el que tiene mucha gente
+        // con teléfonos de poca memoria.
+        "facebook" to listOf("com.facebook.katana", "com.facebook.lite"),
+        "threads" to listOf("com.instagram.barcelona"),
+        "telegram" to listOf("org.telegram.messenger"),
         "spotify" to listOf("com.spotify.music")
     )
 
@@ -44,6 +50,10 @@ object Enrutador {
         "tiktok" to "TikTok",
         "twitch" to "Twitch",
         "instagram" to "Instagram",
+        "x" to "X",
+        "facebook" to "Facebook",
+        "threads" to "Threads",
+        "telegram" to "Telegram",
         "spotify" to "Spotify",
         "patreon" to "Patreon",
         "web" to "su página"
@@ -55,6 +65,10 @@ object Enrutador {
         "tiktok" -> "Ver videos cortos"
         "twitch" -> "Ver transmisiones en vivo"
         "instagram" -> "Ver fotos y reels"
+        "x" -> "Ver lo que escribe en X"
+        "facebook" -> "Ver su página de Facebook"
+        "threads" -> "Ver lo que escribe en Threads"
+        "telegram" -> "Entrar a su canal de Telegram"
         "spotify" -> "Escuchar el pódcast"
         "patreon" -> "Apoyar al creador"
         else -> "Abrir su página"

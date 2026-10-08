@@ -114,6 +114,8 @@ class ReplicaTest {
         Canal clips = canal("youtube", "https://www.youtube.com/@OnceClips", CLIPS);
         clips.setNombre("Clips");
         clips.setProductoraId(productora);
+        UUID invitada = UUID.randomUUID();
+        clips.getVinculados().add(invitada);
 
         Dtos.GuardarCreador cuerpo = ReplicaService.cuerpoDe(c, List.of(principal, clips));
 
@@ -126,6 +128,9 @@ class ReplicaTest {
         assertEquals(2, cuerpo.canales().size());
         assertEquals("Clips", cuerpo.canales().get(1).nombre());
         assertEquals(productora, cuerpo.canales().get(1).productoraId());
+        assertEquals(List.of(), cuerpo.canales().get(0).creadores());
+        assertEquals(List.of(invitada), cuerpo.canales().get(1).creadores(),
+                "con qué otros creadores aparece cada canal viaja con el canal");
         assertEquals(List.of(CANAL, CLIPS), ReplicaService.canalesDe(cuerpo));
     }
 
@@ -150,6 +155,8 @@ class ReplicaTest {
         Productora p = new Productora();
         p.setId(UUID.randomUUID());
         p.setNombre("Estudio X");
+        p.setEnDirectorio(true);
+        p.setCategoria("noticias");
 
         Canal oficial = canal("youtube", "https://www.youtube.com/@EstudioX", CANAL);
         oficial.setProductoraId(p.getId());
@@ -160,6 +167,8 @@ class ReplicaTest {
         assertEquals("Estudio X", cuerpo.nombre());
         assertEquals(CANAL, cuerpo.canales().get(0).channelId());
         assertNull(cuerpo.creadores(), "quién figura en ella viaja con cada creador");
+        assertEquals(Boolean.TRUE, cuerpo.enDirectorio());
+        assertEquals("noticias", cuerpo.categoria());
     }
 
     @Test
@@ -172,8 +181,8 @@ class ReplicaTest {
                 new Dtos.ConexionDto("youtube", "https://youtube.com/@x", "x", " ")))).isEmpty());
 
         assertTrue(ReplicaService.canalesDe(peticionConCanales(
-                new Dtos.GuardarCanal(null, "tiktok", null, "https://tiktok.com/@x", null, null, null),
-                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@x", "x", " ", null)
+                new Dtos.GuardarCanal(null, "tiktok", null, "https://tiktok.com/@x", null, null, null, null),
+                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@x", "x", " ", null, null)
         )).isEmpty());
     }
 
@@ -184,9 +193,9 @@ class ReplicaTest {
                 new Dtos.ConexionDto("youtube", "https://youtube.com/@x", "x", CANAL)))));
 
         assertEquals(List.of(CANAL, CLIPS), ReplicaService.canalesDe(peticionConCanales(
-                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@x", "x", CANAL, null),
-                new Dtos.GuardarCanal(null, "youtube", "Clips", "https://youtube.com/@y", "y", CLIPS, null),
-                new Dtos.GuardarCanal(null, "web", null, "https://ejemplo.mx", null, null, null))));
+                new Dtos.GuardarCanal(null, "youtube", null, "https://youtube.com/@x", "x", CANAL, null, null),
+                new Dtos.GuardarCanal(null, "youtube", "Clips", "https://youtube.com/@y", "y", CLIPS, null, null),
+                new Dtos.GuardarCanal(null, "web", null, "https://ejemplo.mx", null, null, null, null))));
     }
 
     // -------------------------------------------------------------------------

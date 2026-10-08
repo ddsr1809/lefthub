@@ -20,6 +20,18 @@ val firma = Properties().apply {
 }
 val hayFirma = !firma.getProperty("archivo").isNullOrBlank()
 
+// -----------------------------------------------------------------------------
+// Anuncios (AdMob)
+// -----------------------------------------------------------------------------
+// Estos dos son los identificadores DE PRUEBA que publica Google. Con ellos
+// salen anuncios de mentira, marcados "Test Ad", que se pueden tocar sin
+// riesgo. developer y pruebas los usan siempre: tocar anuncios de verdad
+// desde tu propio teléfono es justo lo que hace que AdMob cierre una cuenta.
+//
+// Los de verdad van solo en el sabor produccion, más abajo.
+val admobAppDePrueba = "ca-app-pub-3940256099942544~3347511713"
+val admobBannerDePrueba = "ca-app-pub-3940256099942544/9214589741"
+
 android {
     namespace = "com.vocesdeizquierda.lefthub"
     compileSdk = 35
@@ -43,6 +55,12 @@ android {
             "WEB_CLIENT_ID",
             "\"445243795956-jso91c84gsepuukis0h5dr91r9a0t4eu.apps.googleusercontent.com\""
         )
+
+        // El ID del producto de pago único que quita los anuncios. Tiene que
+        // ser letra por letra el que se dio de alta en Play Console
+        // (Monetizar con Play > Productos > Productos únicos) y el COMPRAS_PRODUCTO
+        // del servidor.
+        buildConfigField("String", "PRODUCTO_SIN_ANUNCIOS", "\"sin_anuncios\"")
 
         // API_BASE NO se define aqui a proposito. Vive solo en los sabores, de
         // modo que sea imposible compilar una variante sin decidir contra que
@@ -85,6 +103,9 @@ android {
             // src/developer/AndroidManifest.xml).
             buildConfigField("String", "API_BASE", "\"http://localhost:8080\"")
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
+
+            manifestPlaceholders["admobAppId"] = admobAppDePrueba
+            buildConfigField("String", "ADMOB_BANNER", "\"$admobBannerDePrueba\"")
         }
 
         create("pruebas") {
@@ -95,6 +116,9 @@ android {
             // Tiene que coincidir con RELAY_URL_PUBLICA de .env.test en el VPS.
             buildConfigField("String", "API_BASE", "\"https://testapp.vocesdeizquierda.com\"")
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
+
+            manifestPlaceholders["admobAppId"] = admobAppDePrueba
+            buildConfigField("String", "ADMOB_BANNER", "\"$admobBannerDePrueba\"")
         }
 
         create("produccion") {
@@ -111,6 +135,24 @@ android {
             // Por eso en producción sale apagado: cámbialo a "true" el día que
             // Google apruebe la verificación, no antes.
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "false")
+
+            // Los identificadores de TU cuenta de AdMob (admob.google.com):
+            //
+            //   admobApp    -> el de la app:    ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY
+            //   admobBanner -> el del bloque de anuncios de tipo Banner:
+            //                                   ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
+            //
+            // Mientras estén vacíos, la app de producción NO muestra anuncios,
+            // aunque el panel los tenga encendidos: no se cuela ningún anuncio
+            // de prueba a la gente. (El manifiesto necesita siempre un ID de
+            // app o la biblioteca de Google tumba la app al arrancar; por eso
+            // ahí se pone el de prueba, que sin bloque no pide nada.)
+            val admobApp = ""
+            val admobBanner = ""
+
+            manifestPlaceholders["admobAppId"] = admobApp.ifBlank { admobAppDePrueba }
+            buildConfigField("String", "ADMOB_BANNER",
+                "\"${if (admobApp.isBlank()) "" else admobBanner}\"")
         }
     }
 
@@ -203,6 +245,11 @@ dependencies {
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
     implementation(libs.play.services.auth)
+
+    // Anuncios en Novedades y la compra que los quita.
+    implementation(libs.play.services.ads)
+    implementation(libs.ump)
+    implementation(libs.billing)
 
     implementation(libs.okhttp)
     implementation(libs.coil.compose)

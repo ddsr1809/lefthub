@@ -21,7 +21,40 @@
   const BASE = (CONFIG.apiBase || '').replace(/\/$/, '');
 
   const CATEGORIAS = { cine: 'Cine', comida: 'Comida', politica: 'Política', musica: 'Música', salud: 'Salud', noticias: 'Noticias', tecnologia: 'Tecnología', otros: 'Otros' };
-  const PLATAFORMAS = { youtube: 'YouTube', tiktok: 'TikTok', twitch: 'Twitch', instagram: 'Instagram', spotify: 'Spotify', patreon: 'Patreon', web: 'Web' };
+  // En el orden en que se ofrecen. Solo YouTube genera avisos de videos; las
+  // demás son enlaces del perfil.
+  const PLATAFORMAS = { youtube: 'YouTube', tiktok: 'TikTok', twitch: 'Twitch', instagram: 'Instagram', x: 'X', facebook: 'Facebook', threads: 'Threads', telegram: 'Telegram', spotify: 'Spotify', patreon: 'Patreon', web: 'Web' };
+
+  // Para no obligar a pegar el enlace entero: con el usuario basta.
+  const PERFILES = {
+    tiktok: (u) => 'https://www.tiktok.com/@' + u,
+    twitch: (u) => 'https://www.twitch.tv/' + u,
+    instagram: (u) => 'https://www.instagram.com/' + u,
+    x: (u) => 'https://x.com/' + u,
+    facebook: (u) => 'https://www.facebook.com/' + u,
+    threads: (u) => 'https://www.threads.net/@' + u,
+    telegram: (u) => 'https://t.me/' + u,
+    patreon: (u) => 'https://www.patreon.com/' + u
+  };
+
+  /**
+   * El enlace de una red a partir de lo que se escribió: un enlace completo,
+   * un dominio sin el https, o solo el usuario ("@claudia"). Devuelve null si
+   * no se puede armar un enlace con eso.
+   */
+  function enlaceDeRed(plataforma, texto) {
+    const t = (texto || '').trim();
+    if (!t) return null;
+    if (/^https?:\/\//i.test(t)) return t;
+    if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t) && !t.startsWith('@')) {
+      // "instagram.com/claudia", "claudia.mx". Un usuario con punto y sin
+      // barra ("ana.lopez") es un usuario, no un dominio, si la red los admite.
+      if (t.includes('/') || !PERFILES[plataforma]) return 'https://' + t;
+    }
+    const usuario = t.replace(/^@/, '');
+    if (PERFILES[plataforma] && /^[\w.-]+$/.test(usuario)) return PERFILES[plataforma](usuario);
+    return null;
+  }
   const ESTADOS_SUSC = {
     ACTIVA: ['Activa', 'b-ok'],
     PENDIENTE_VERIFICACION: ['Pendiente', 'b-warn'],
@@ -227,10 +260,15 @@
   const estado = {
     vista: (location.hash || '#resumen').slice(1),
     creadores: null,        // caché compartida: formularios, nombres en reportes, avisos
-    productoras: null,      // igual: las usan el formulario de creador y las suscripciones
+    productoras: null,      // igual: las usan el formulario de creador y los canales
     filtroCreadores: { q: '', categoria: '' },
     publicaciones: null,
+    filtroPubs: 'todos',    // todos | videos | cortos
+    ajustes: null,          // null: el servidor es anterior a los ajustes
+    anuncios: null,         // lo último que dijo /api/admin/anuncios
+    foliosNuevos: [],       // los folios recién creados, para copiarlos
     usuarios: null,         // la página que está en pantalla
+    migracion: null,        // la revisión de una migración que está en pantalla
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
   };
 
@@ -238,14 +276,20 @@
     resumen: vistaResumen,
     creadores: vistaCreadores,
     productoras: vistaProductoras,
-    suscripciones: vistaSuscripciones,
+    canales: vistaCanales,
+    versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
+    anuncios: vistaAnuncios,
     usuarios: vistaUsuarios,
     administradores: vistaAdministradores
   };
 
+  // La sección se llamaba Suscripciones: los enlaces guardados siguen valiendo.
+  const ALIAS = { suscripciones: 'canales' };
+
   function ir(vista) {
+    vista = ALIAS[vista] || vista;
     if (!VISTAS[vista]) vista = 'resumen';
     estado.vista = vista;
     if (location.hash !== '#' + vista) history.replaceState(null, '', '#' + vista);
@@ -318,6 +362,17 @@
   const conProblema = (v) => v.dueno.activo && v.canal.estadoSuscripcion !== 'ACTIVA';
   const vencePronto = (k) => k.estadoSuscripcion === 'ACTIVA' && k.expiraEn && (new Date(k.expiraEn) - Date.now()) < 2 * 864e5;
   const nombreProductora = (id) => { const p = (estado.productoras || []).find((x) => x.id === id); return p ? p.nombre : null; };
+  const nombreCreador = (id) => { const c = (estado.creadores || []).find((x) => x.id === id); return c ? c.nombre : null; };
+  const nombresDe = (ids) => (ids || []).map(nombreCreador).filter(Boolean);
+
+  // ¿El servidor ya tiene fichas de canal y productoras en el directorio? Un
+  // servidor anterior no manda esos campos, y entonces el panel no los ofrece.
+  function servidorConFichas() {
+    const c = (estado.creadores || [])[0], p = (estado.productoras || [])[0];
+    if (c) return c.canalesCompartidos !== undefined;
+    if (p) return p.enDirectorio !== undefined;
+    return !estado.sinProductoras;
+  }
 
   // ---------------------------------------------------------------------------
   // Modal
@@ -383,8 +438,8 @@
     const movidos = pubs.filter((p) => p.estado === 'moved').length;
 
     const alertas = [];
-    if (problemas) alertas.push(['b-warn', (problemas === 1 ? '1 canal visible no tiene la suscripción de YouTube activa, así que no genera avisos.' : num(problemas) + ' canales visibles no tienen la suscripción de YouTube activa, así que no generan avisos.'), 'suscripciones']);
-    if (porVencer) alertas.push(['b-warn', (porVencer === 1 ? '1 suscripción vence' : num(porVencer) + ' suscripciones vencen') + ' en menos de 2 días. El servidor las renueva solo cada 4 días; si no se renuevan, revisa los registros.', 'suscripciones']);
+    if (problemas) alertas.push(['b-warn', (problemas === 1 ? '1 canal visible no tiene la suscripción de YouTube activa, así que no genera avisos.' : num(problemas) + ' canales visibles no tienen la suscripción de YouTube activa, así que no generan avisos.'), 'canales']);
+    if (porVencer) alertas.push(['b-warn', (porVencer === 1 ? '1 suscripción vence' : num(porVencer) + ' suscripciones vencen') + ' en menos de 2 días. El servidor las renueva solo cada 4 días; si no se renuevan, revisa los registros.', 'canales']);
     if (reportes.length) alertas.push(['b-info', plural(reportes.length, 'reporte pendiente', 'reportes pendientes') + ' de enlaces rotos.', 'reportes']);
 
     main.innerHTML = `
@@ -426,19 +481,29 @@
     return `<a class="badge ${productora && !conDueno ? 'b-info' : 'b-mute'}" href="${esc(k.url)}" target="_blank" rel="noopener"${productora && !conDueno ? ` title="De ${esc(productora)}"` : ''}>${esc(texto)}</a>`;
   }
 
+  // De quién es un canal: su creador o, si no tiene, su productora.
+  const duenoDe = (k) => k.creadorNombre || nombreCreador(k.creadorId) || nombreProductora(k.productoraId) || 'otro';
+
+  // Un canal de otro en el que también aparece este creador.
+  function chipCompartido(k) {
+    const texto = duenoDe(k) + ' · ' + (PLATAFORMAS[k.plataforma] || k.plataforma) + (k.nombre ? ' · ' + k.nombre : '');
+    return `<a class="badge b-comp" href="${esc(k.url)}" target="_blank" rel="noopener" title="Canal de ${esc(duenoDe(k))} en el que también aparece">${esc(texto)}</a>`;
+  }
+
   function filasCreadores() {
     const { q, categoria } = estado.filtroCreadores;
     const t = q.trim().toLowerCase();
     const lista = (estado.creadores || []).filter((c) =>
       (!t || c.nombre.toLowerCase().includes(t)) && (!categoria || c.categoria === categoria));
     if (!lista.length) {
-      return `<tr><td colspan="6"><div class="empty">${estado.creadores && estado.creadores.length ? 'Ningún creador coincide.' : 'Todavía no hay creadores. Agrega el primero con su canal de YouTube.'}</div></td></tr>`;
+      return `<tr><td colspan="6"><div class="empty">${estado.creadores && estado.creadores.length ? 'Ningún creador coincide.' : 'Todavía no hay creadores. Agrega el primero con su canal de YouTube o sus redes.'}</div></td></tr>`;
     }
     return lista.map((c) => {
       const casas = (c.productoras || []).map(nombreProductora).filter(Boolean);
+      const chips = canalesDe(c).map((k) => chipCanal(k)).concat((c.canalesCompartidos || []).map(chipCompartido));
       return `<tr>
       <td><div class="who">${avatar(c.fotoUrl)}<div><b>${esc(c.nombre)}</b><span>${esc(CATEGORIAS[c.categoria] || c.categoria)}${casas.length ? ' · ' + esc(casas.join(', ')) : ''}</span></div></div></td>
-      <td><div class="chips">${canalesDe(c).map((k) => chipCanal(k)).join('') || '<span class="muted">—</span>'}</div></td>
+      <td><div class="chips">${chips.join('') || '<span class="muted">—</span>'}</div></td>
       <td>${badgeSusc(c.estadoSuscripcion)}${c.expiraEn ? `<div class="muted" style="font-size:12.5px">vence ${esc(relativo(c.expiraEn))}</div>` : ''}</td>
       <td class="num">${num(c.seguidores)}</td>
       <td>${c.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculto</span>'}</td>
@@ -454,14 +519,14 @@
     await Promise.all([cargarCreadores(true), cargarProductoras(false)]);
     const f = estado.filtroCreadores;
     main.innerHTML = `
-      <div class="head"><div><h1>Creadores</h1><p class="sub">El directorio que ven las apps. Un creador puede tener varios canales; al guardarlo, el servidor suscribe al hub cada canal de YouTube para recibir sus videos nuevos.</p></div>
+      <div class="head"><div><h1>Creadores</h1><p class="sub">El directorio que ven las apps. Un creador puede figurar en varias productoras y tener varios canales de YouTube, varias redes sociales, o solo redes. Al guardarlo, el servidor suscribe al hub cada canal de YouTube para recibir sus videos nuevos.</p></div>
         <button class="btn primary" data-accion="nuevo-creador">Nuevo creador</button></div>
       <section class="panel">
         <div class="panel-head"><div class="toolbar">
           <input class="input buscar" id="qCreadores" type="search" placeholder="Buscar por nombre" value="${esc(f.q)}" aria-label="Buscar creadores">
           <select class="input" id="catCreadores" aria-label="Categoría"><option value="">Todas las categorías</option>${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${f.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select>
         </div><span class="muted" style="font-size:13px">${estado.creadores.length} en total</span></div>
-        <div class="tablewrap"><table><thead><tr><th>Creador</th><th>Canales</th><th>Suscripción</th><th>Seguidores</th><th>En la app</th><th></th></tr></thead>
+        <div class="tablewrap"><table><thead><tr><th>Creador</th><th>Canales y redes</th><th>Suscripción</th><th>Seguidores</th><th>En la app</th><th></th></tr></thead>
         <tbody id="filasCreadores">${filasCreadores()}</tbody></table></div>
       </section>`;
     $('#qCreadores').addEventListener('input', (e) => { f.q = e.target.value; $('#filasCreadores').innerHTML = filasCreadores(); });
@@ -469,59 +534,105 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Editor de canales (lo comparten el creador y la productora)
+  // Editor de canales y redes (lo comparten el creador y la productora)
   // ---------------------------------------------------------------------------
-  // La lista vive en memoria mientras el formulario está abierto; el orden de
-  // la lista es el orden en que se guarda. El primer canal de cada plataforma
-  // es el principal: el que ven las versiones de la app anteriores a los
-  // canales múltiples.
-  function controlesDeCanales(conProductora) {
+  // Dos listas en pantalla, canales de YouTube y redes sociales, sobre una sola
+  // lista en memoria. Dentro de cada una, el orden en pantalla es el orden en
+  // que se guarda, y el primero de cada plataforma es el principal: el que ven
+  // las versiones de la app anteriores a los canales múltiples.
+  // Las dos listas van por separado para que cada formulario las ponga en su
+  // orden: el de un creador empieza por sus redes, que es lo que siempre
+  // tiene; sus canales de YouTube son opcionales y se pueden agregar después.
+  function seccionesDeCanales(conProductora) {
+    return seccionYouTube(conProductora) + seccionRedes(conProductora);
+  }
+
+  function seccionYouTube(conProductora) {
+    return `
+      <fieldset><legend>${conProductora ? 'Canales de YouTube <span class="opcional">opcional</span>' : 'Canales propios de YouTube'}</legend>
+        <div class="canales" id="fCanalesYT"></div>
+        <div class="agregar" style="margin-top:10px">
+          <input class="input" id="fBuscarCanal" placeholder="@handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
+          <button class="btn" type="button" id="btnBuscarCanal">Buscar y agregar</button>
+        </div>
+        <p class="hint" style="margin:10px 0 0">${conProductora
+          ? 'No hace falta para dar de alta al creador: déjalo vacío y agrégalos cuando quieras, aquí o en la sección Canales. Puede tener varios, y de cada uno puedes decir si es de una productora. Guardar los demás datos del creador no cambia sus canales.'
+          : 'Solo los canales que son de la productora y de ningún creador. Con qué creadores aparece cada uno se elige en su ficha, en la sección Canales.'}</p>
+      </fieldset>`;
+  }
+
+  function seccionRedes(conProductora) {
     const otras = Object.keys(PLATAFORMAS).filter((p) => p !== 'youtube');
     return `
-      <div class="canales" id="fCanales"></div>
-      <div class="agregar" style="margin-top:10px">
-        <input class="input" id="fBuscarCanal" placeholder="YouTube: @handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
-        <button class="btn" type="button" id="btnBuscarCanal">Buscar y agregar</button>
-      </div>
-      <div class="agregar" style="margin-top:8px">
-        <select class="input" id="fOtraPlat" aria-label="Otra plataforma">${otras.map((p) => `<option value="${p}">${PLATAFORMAS[p]}</option>`).join('')}</select>
-        <input class="input" id="fOtraUrl" placeholder="https://" aria-label="Enlace">
-        <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
-      </div>
-      <p class="hint" style="margin:10px 0 0">${conProductora
-        ? 'El primero de cada plataforma es el principal. En cada canal puedes decir si es de una productora.'
-        : 'Solo los canales propios de la productora. Si un canal es de un creador, se marca al editar a ese creador.'}</p>`;
+      <fieldset><legend>Redes sociales</legend>
+        <div class="canales" id="fRedes"></div>
+        <div class="agregar" style="margin-top:10px">
+          <select class="input" id="fOtraPlat" aria-label="Red social">${otras.map((p) => `<option value="${p}">${PLATAFORMAS[p]}</option>`).join('')}</select>
+          <input class="input" id="fOtraUrl" placeholder="@usuario o enlace" aria-label="Usuario o enlace">
+          <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
+        </div>
+        <p class="hint" style="margin:10px 0 0">${conProductora
+          ? 'Elige la red, escribe su usuario (o pega el enlace) y pulsa Agregar; repítelo con cada una. Al agregar la primera, el nombre, la descripción y la foto de abajo se llenan solos con lo que tenga en esa cuenta. Con una sola red ya se puede crear el creador. Los avisos de videos nuevos solo salen de sus canales de YouTube.'
+          : 'X, Instagram, TikTok, Facebook, su página… Basta con su usuario.'}</p>
+      </fieldset>`;
   }
 
   function editorDeCanales(inicial, conProductora) {
-    const caja = $('#fCanales');
+    const cajas = { yt: $('#fCanalesYT'), redes: $('#fRedes') };
+    const grupo = (k) => (k.plataforma === 'youtube' ? 'yt' : 'redes');
     const lista = (inicial || []).map((k) => ({
       id: k.id || null, plataforma: k.plataforma, nombre: k.nombre || '', url: k.url || '',
-      handle: k.handle || null, channelId: k.channelId || null, productoraId: k.productoraId || ''
+      handle: k.handle || null, channelId: k.channelId || null, productoraId: k.productoraId || '',
+      // Solo para enseñarlo: con quién aparece un canal se cambia en su ficha.
+      creadores: k.creadores || []
     }));
 
-    function pintar() {
-      if (!lista.length) {
-        caja.innerHTML = '<div class="hint">Todavía no tiene canales. Agrega el primero aquí abajo.</div>';
-        return;
-      }
-      const vistas = {};
-      caja.innerHTML = lista.map((k, i) => {
-        const principal = !vistas[k.plataforma];
-        vistas[k.plataforma] = true;
-        const yt = k.plataforma === 'youtube';
-        const quien = yt
-          ? `<span class="mono">${esc(k.handle ? '@' + k.handle.replace(/^@/, '') : (k.channelId || k.url))}</span>`
-          : `<input class="input" data-campo="url" value="${esc(k.url)}" placeholder="https://" aria-label="Enlace de ${esc(PLATAFORMAS[k.plataforma] || k.plataforma)}">`;
+    // El índice del anterior de su misma lista, o -1 si es el primero.
+    const anterior = (i) => {
+      for (let j = i - 1; j >= 0; j--) if (grupo(lista[j]) === grupo(lista[i])) return j;
+      return -1;
+    };
+
+    function fila(k, i) {
+      const yt = k.plataforma === 'youtube';
+      const nombrePlat = PLATAFORMAS[k.plataforma] || k.plataforma;
+      // "Principal" solo se dice cuando hay con qué confundirlo.
+      const varios = lista.filter((x) => x.plataforma === k.plataforma).length > 1;
+      const principal = varios && lista.findIndex((x) => x.plataforma === k.plataforma) === i;
+      const con = nombresDe(k.creadores);
+      const botones = `<button class="btn sm" type="button" data-fila="subir" ${anterior(i) < 0 ? 'disabled' : ''} title="Subir en la lista" aria-label="Subir">↑</button>
+          <button class="btn sm danger" type="button" data-fila="quitar">Quitar</button>`;
+      // Una red social es un enlace y nada más: cabe en un renglón.
+      if (!yt) {
         return `<div class="canal-fila" data-i="${i}">
-          <div class="canal-quien"><span class="badge b-mute">${esc(PLATAFORMAS[k.plataforma] || k.plataforma)}</span>${principal ? '<span class="badge b-ok">Principal</span>' : ''}${quien}</div>
-          <div class="canal-datos">
-            <input class="input" data-campo="nombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Etiqueta: Clips, Directos… (opcional)" aria-label="Etiqueta del canal">
-            ${conProductora ? `<select class="input" data-campo="productoraId" aria-label="Productora del canal"><option value="">Solo del creador</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>De ${esc(p.nombre)}</option>`).join('')}</select>` : ''}
-            <button class="btn sm" type="button" data-fila="subir" ${i === 0 ? 'disabled' : ''} title="Subir en la lista" aria-label="Subir">↑</button>
-            <button class="btn sm danger" type="button" data-fila="quitar">Quitar</button>
-          </div></div>`;
-      }).join('');
+        <div class="canal-datos"><span class="badge b-mute">${esc(nombrePlat)}</span>${principal ? '<span class="badge b-ok">Principal</span>' : ''}
+          <input class="input" data-campo="url" value="${esc(k.url)}" placeholder="https://" aria-label="Enlace de ${esc(nombrePlat)}">
+          ${botones}
+        </div></div>`;
+      }
+      return `<div class="canal-fila" data-i="${i}">
+        <div class="canal-quien"><span class="badge b-mute">${esc(nombrePlat)}</span>${principal ? '<span class="badge b-ok">Principal</span>' : ''}<span class="mono">${esc(k.handle ? '@' + k.handle.replace(/^@/, '') : (k.channelId || k.url))}</span></div>
+        ${con.length ? `<div class="hint">También aparece con: ${esc(con.join(', '))}</div>` : ''}
+        <div class="canal-datos">
+          <input class="input" data-campo="nombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Etiqueta: Clips, Directos… (opcional)" aria-label="Etiqueta">
+          ${conProductora ? `<select class="input" data-campo="productoraId" aria-label="Productora del canal"><option value="">Solo del creador</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>De ${esc(p.nombre)}</option>`).join('')}</select>` : ''}
+          ${botones}
+        </div></div>`;
+    }
+
+    // Quien quiera enterarse de que la lista cambió (la sección de la foto,
+    // que ofrece una fuente por cada cuenta).
+    const oyentes = [];
+    // Y quien quiera saber que se acaba de agregar una red a mano (para
+    // rellenar la ficha con sus datos).
+    let alAgregarRed = null;
+
+    function pintar() {
+      const html = { yt: [], redes: [] };
+      lista.forEach((k, i) => html[grupo(k)].push(fila(k, i)));
+      cajas.yt.innerHTML = html.yt.join('') || '<div class="hint">Sin canales de YouTube.</div>';
+      cajas.redes.innerHTML = html.redes.join('') || '<div class="hint">Sin redes sociales.</div>';
+      oyentes.forEach((fn) => fn());
     }
 
     const anotar = (e) => {
@@ -529,48 +640,81 @@
       const campo = e.target.dataset.campo;
       if (fila && campo) lista[Number(fila.dataset.i)][campo] = e.target.value;
     };
-    caja.addEventListener('input', anotar);
-    caja.addEventListener('change', anotar);
-    caja.addEventListener('click', (e) => {
+    const alPulsar = (e) => {
       const b = e.target.closest('[data-fila]');
       if (!b) return;
       const i = Number(b.closest('[data-i]').dataset.i);
       if (b.dataset.fila === 'quitar') lista.splice(i, 1);
-      else if (i > 0) lista.splice(i - 1, 0, lista.splice(i, 1)[0]);
+      else if (anterior(i) >= 0) lista.splice(anterior(i), 0, lista.splice(i, 1)[0]);
       pintar();
+    };
+    Object.values(cajas).forEach((caja) => {
+      caja.addEventListener('input', anotar);
+      caja.addEventListener('change', anotar);
+      caja.addEventListener('click', alPulsar);
     });
 
     $('#btnOtraPlat').addEventListener('click', () => {
-      const url = $('#fOtraUrl').value.trim();
       const plataforma = $('#fOtraPlat').value;
-      if (!/^https?:\/\//i.test(url)) { toast('El enlace de ' + PLATAFORMAS[plataforma] + ' debe empezar por https://', true); $('#fOtraUrl').focus(); return; }
-      lista.push({ id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '' });
+      const url = enlaceDeRed(plataforma, $('#fOtraUrl').value);
+      if (!url) {
+        toast(PERFILES[plataforma] ? 'Escribe su usuario de ' + PLATAFORMAS[plataforma] + ' o pega el enlace.' : 'Pega el enlace completo, empezando por https://', true);
+        $('#fOtraUrl').focus();
+        return;
+      }
+      const nueva = { id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '', creadores: [] };
+      lista.push(nueva);
       $('#fOtraUrl').value = '';
       pintar();
+      if (alAgregarRed) alAgregarRed(nueva);
     });
 
     pintar();
     return {
+      // Las cuentas que hay ahora en el formulario, guardadas o no.
+      cuentas: () => lista.slice(),
+      // Llama a `fn` ahora y cada vez que la lista cambie.
+      escuchar(fn) { oyentes.push(fn); fn(); },
+      // Llama a `fn` con la red que se acaba de agregar con el botón.
+      alAgregarRed(fn) { alAgregarRed = fn; },
       // Devuelve false si el canal ya estaba en la lista.
       agregarYouTube(d) {
         if (lista.some((k) => k.plataforma === 'youtube' && k.channelId === d.channelId)) return false;
         const handle = d.handle ? d.handle.replace(/^@/, '') : null;
-        lista.push({ id: null, plataforma: 'youtube', nombre: '', productoraId: '', handle, channelId: d.channelId,
+        lista.push({ id: null, plataforma: 'youtube', nombre: '', productoraId: '', handle, channelId: d.channelId, creadores: [],
           url: handle ? 'https://www.youtube.com/@' + handle : 'https://www.youtube.com/channel/' + d.channelId });
         pintar();
         return true;
       },
       // La lista lista para mandar, o null si algún enlace no vale (ya avisó).
+      // Sin `creadores`: así el servidor deja a cada canal apareciendo con
+      // quien ya aparecía.
       valores() {
+        // Lo que quedó escrito sin pulsar "Agregar" también cuenta: es fácil
+        // escribir el usuario y darle directamente a guardar.
+        const red = $('#fOtraUrl');
+        if (red && red.value.trim()) {
+          $('#btnOtraPlat').click();
+          if (red.value.trim()) return null;      // no valía; ya se avisó
+        }
+        // Un canal de YouTube no se puede agregar solo: hay que buscarlo.
+        const yt = $('#fBuscarCanal');
+        if (yt && yt.value.trim()) {
+          toast('Escribiste un canal de YouTube pero falta agregarlo: pulsa «Buscar y agregar», o borra ese texto.', true);
+          yt.focus();
+          return null;
+        }
         for (const k of lista) {
           if (!/^https?:\/\//i.test((k.url || '').trim())) {
             toast('El enlace de ' + (PLATAFORMAS[k.plataforma] || k.plataforma) + ' debe empezar por https://', true);
             return null;
           }
         }
-        return lista.map((k) => ({
+        // Como en pantalla: primero los canales de YouTube y después las redes.
+        return lista.filter((k) => grupo(k) === 'yt').concat(lista.filter((k) => grupo(k) === 'redes')).map((k) => ({
           id: k.id, plataforma: k.plataforma, nombre: k.nombre.trim() || null, url: k.url.trim(),
-          handle: k.handle, channelId: k.channelId, productoraId: conProductora ? (k.productoraId || null) : null
+          handle: k.handle, channelId: k.channelId,
+          productoraId: conProductora && k.plataforma === 'youtube' ? (k.productoraId || null) : null
         }));
       }
     };
@@ -581,6 +725,7 @@
     const q = $('#fBuscarCanal').value.trim();
     if (!q) { toast('Escribe un @handle, una URL o un ID de canal.', true); return; }
     const btn = $('#btnBuscarCanal');
+    const texto = btn.textContent;
     btn.disabled = true; btn.textContent = 'Buscando…';
     try {
       const d = await api('/api/admin/canal?query=' + encodeURIComponent(q));
@@ -589,20 +734,205 @@
     } catch (e) {
       toast(e.message, true);
     } finally {
-      btn.disabled = false; btn.textContent = 'Buscar y agregar';
+      // Quien recibe el canal puede haberle cambiado el texto al botón.
+      btn.disabled = false; if (btn.textContent === 'Buscando…') btn.textContent = texto;
     }
   }
 
   function rellenarDesdeCanal(d) {
     if (!$('#fNombre').value.trim()) $('#fNombre').value = (d.titulo || '').slice(0, 60);
     if (!$('#fBio').value.trim() && d.descripcion) $('#fBio').value = d.descripcion.slice(0, 600);
-    if (!$('#fFoto').value.trim() && d.fotoUrl) $('#fFoto').value = d.fotoUrl;
+    if (!$('#fFoto').value.trim() && d.fotoUrl) ponerFoto(d.fotoUrl);
+  }
+
+  // ---------------------------------------------------------------------------
+  // La foto de perfil: de una de sus cuentas, o a mano
+  // ---------------------------------------------------------------------------
+  // De qué redes sabe el servidor traer la foto. De una página web, no.
+  const REDES_CON_FOTO = ['youtube', 'x', 'instagram', 'tiktok', 'facebook', 'threads', 'telegram', 'twitch', 'spotify', 'patreon'];
+
+  function seccionFoto(titulo, url) {
+    return `
+      <fieldset><legend>${esc(titulo)}</legend>
+        <div class="foto">
+          <span class="foto-previa" id="fFotoPrevia"></span>
+          <div class="foto-datos">
+            <input class="input" id="fFoto" value="${esc(url)}" placeholder="https://… dirección de la imagen" aria-label="Dirección de la imagen">
+            <div class="foto-fuentes" id="fFotoFuentes"></div>
+          </div>
+        </div>
+        <p class="hint" style="margin:10px 0 0">Elige de cuál de sus cuentas tomarla, o «Manual» para pegar la dirección de una imagen. No cambia sola: si la persona cambia su foto en esa red, vuelve a pulsar el botón.</p>
+      </fieldset>`;
+  }
+
+  /** Pone la dirección en el campo y la enseña. */
+  function ponerFoto(url) {
+    $('#fFoto').value = url || '';
+    pintarFoto();
+  }
+
+  function pintarFoto() {
+    const caja = $('#fFotoPrevia');
+    if (!caja) return;
+    const url = $('#fFoto').value.trim();
+    caja.classList.remove('rota');
+    caja.innerHTML = /^https?:\/\//i.test(url) ? `<img src="${esc(url)}" alt="Foto de perfil" referrerpolicy="no-referrer">` : '';
+    const img = caja.querySelector('img');
+    // Una dirección que no carga se nota aquí, antes de guardar.
+    if (img) img.addEventListener('error', () => { caja.innerHTML = ''; caja.classList.add('rota'); });
+  }
+
+  // Cómo se nombra una cuenta en su botón: "@usuario" o lo último del enlace.
+  function nombreDeCuenta(k) {
+    if (k.handle) return '@' + k.handle.replace(/^@/, '');
+    const fin = ((k.url || '').split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || '').replace(/^@/, '');
+    return fin.length > 26 ? fin.slice(0, 25) + '…' : fin;
+  }
+
+  /**
+   * Una fila de botones, uno por cada cuenta del formulario, y «Manual».
+   * Se repinta sola cuando se agregan o se quitan cuentas.
+   *
+   * @param caja      dónde van los botones
+   * @param opciones  etiqueta: el texto de delante; redes: de cuáles se ofrece;
+   *                  ocupado: el texto del botón mientras trabaja;
+   *                  alElegir(cuenta): async, lo que hace el botón;
+   *                  alManual(): lo que hace «Manual»
+   */
+  function botonesDeCuentas(caja, editor, opciones) {
+    let cuentas = [];
+
+    editor.escuchar(() => {
+      const todas = editor.cuentas().filter((k) => opciones.redes.includes(k.plataforma) && (k.plataforma !== 'youtube' || k.channelId));
+      // YouTube primero: es la fuente más segura y no gasta del cupo diario.
+      cuentas = todas.filter((k) => k.plataforma === 'youtube').concat(todas.filter((k) => k.plataforma !== 'youtube'));
+      caja.innerHTML = `<span class="hint">${esc(opciones.etiqueta)}</span>`
+        + cuentas.map((k, i) => `<button class="btn sm" type="button" data-fuente="${i}">${esc(PLATAFORMAS[k.plataforma] || k.plataforma)} · ${esc(nombreDeCuenta(k))}</button>`).join('')
+        + '<button class="btn sm" type="button" data-fuente="manual">Manual</button>'
+        + (cuentas.length ? '' : '<span class="hint">Agrega una red o un canal y aparecerá aquí.</span>');
+    });
+
+    caja.addEventListener('click', async (e) => {
+      const b = e.target.closest('[data-fuente]');
+      if (!b) return;
+      if (b.dataset.fuente === 'manual') { opciones.alManual(); return; }
+
+      const texto = b.textContent;
+      b.disabled = true; b.textContent = opciones.ocupado;
+      try {
+        await opciones.alElegir(cuentas[Number(b.dataset.fuente)]);
+      } finally {
+        // La lista pudo repintarse mientras tanto; entonces el botón ya es otro.
+        if (b.isConnected) { b.disabled = false; b.textContent = texto; }
+      }
+    });
+  }
+
+  const paraCuenta = (k) => {
+    const p = new URLSearchParams({ plataforma: k.plataforma, url: k.url || '' });
+    if (k.channelId) p.set('channelId', k.channelId);
+    return p.toString();
+  };
+  // Un servidor anterior a esto no tiene estas rutas.
+  const avisoDeRuta = (err, queNoSabe) => (err.message === 'Esa ruta no existe.'
+    ? 'Este servidor todavía no sabe ' + queNoSabe + '. Actualízalo, o escríbelo a mano.'
+    : err.message);
+
+  /** Los botones de la sección de la foto: de qué cuenta tomarla. */
+  function prepararFoto(editor) {
+    botonesDeCuentas($('#fFotoFuentes'), editor, {
+      etiqueta: 'Tomarla de:', redes: REDES_CON_FOTO, ocupado: 'Trayendo…',
+      alManual: () => { $('#fFoto').focus(); $('#fFoto').select(); },
+      alElegir: async (k) => {
+        try {
+          const r = await api('/api/admin/foto?' + paraCuenta(k));
+          ponerFoto(r.url);
+          toast('Foto tomada de ' + (PLATAFORMAS[k.plataforma] || k.plataforma) + '. Se guarda al guardar el formulario.');
+        } catch (err) {
+          toast(avisoDeRuta(err, 'tomar fotos de las redes'), true);
+        }
+      }
+    });
+
+    $('#fFoto').addEventListener('input', pintarFoto);
+    pintarFoto();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Llenar la ficha con los datos de una cuenta
+  // ---------------------------------------------------------------------------
+  // De una página web también se puede leer el nombre y la descripción.
+  const REDES_CON_DATOS = REDES_CON_FOTO.concat('web');
+
+  function filaDeLlenado() {
+    return `<div class="llenar"><div class="foto-fuentes" id="fLlenarFuentes"></div>
+      <p class="hint" style="margin:6px 0 0">Pone el nombre, la descripción y la foto que tenga en esa cuenta. Revísalos antes de guardar: se pueden corregir a mano.</p></div>`;
+  }
+
+  const juntar = (partes) => (partes.length > 1 ? partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1] : partes[0] || '');
+
+  /**
+   * Trae los datos de la cuenta y los pone en el formulario.
+   *
+   * @param soloVacios true: solo rellena lo que esté vacío (al agregar una
+   *                   cuenta). false: pone todo lo que venga, que para eso se
+   *                   eligió esa cuenta.
+   */
+  async function llenarDesde(k, soloVacios) {
+    const red = PLATAFORMAS[k.plataforma] || k.plataforma;
+    let r;
+    try {
+      r = await api('/api/admin/cuenta?' + paraCuenta(k));
+    } catch (err) {
+      // Al agregar una cuenta nadie pidió nada: si el servidor no sabe, se calla.
+      if (!(soloVacios && err.message === 'Esa ruta no existe.')) toast(avisoDeRuta(err, 'leer los datos de una cuenta'), true);
+      return;
+    }
+    // El formulario pudo cerrarse mientras llegaba la respuesta.
+    if (!$('#fNombre')) return;
+
+    const puestos = [];
+    const poner = (campo, valor, que, alPoner) => {
+      if (!valor || (soloVacios && campo.value.trim())) return;
+      if (alPoner) alPoner(valor); else campo.value = valor;
+      puestos.push(que);
+    };
+    poner($('#fNombre'), r.nombre && r.nombre.slice(0, 60), 'el nombre');
+    poner($('#fBio'), r.descripcion && r.descripcion.slice(0, 600), 'la descripción');
+    poner($('#fFoto'), r.fotoUrl, 'la foto', ponerFoto);
+
+    const avisos = (r.avisos || []).join(' ');
+    // Con avisos se deja más tiempo en pantalla, para que dé tiempo a leerlos.
+    if (puestos.length) toast('De ' + red + ' se puso ' + juntar(puestos) + '.' + (avisos ? ' ' + avisos : ''), !!avisos);
+    else if (!soloVacios) toast(avisos || 'En ' + red + ' no había nada que poner.', true);
+  }
+
+  /** Los botones «Llenar con los datos de», y el llenado solo al agregar la primera cuenta. */
+  function prepararLlenado(editor, esAlta) {
+    const caja = $('#fLlenarFuentes');
+    if (!caja) return;
+
+    botonesDeCuentas(caja, editor, {
+      etiqueta: 'Llenar con los datos de:', redes: REDES_CON_DATOS, ocupado: 'Leyendo…',
+      alManual: () => { $('#fNombre').focus(); $('#fNombre').select(); },
+      alElegir: (k) => llenarDesde(k, false)
+    });
+
+    // En un alta, la primera cuenta que se agrega rellena la ficha sola. Si
+    // ya hay nombre, no: o lo escribió alguien o ya se llenó con otra cuenta.
+    // Al editar nunca: ahí los datos ya están y cambiarlos es cosa del botón.
+    if (esAlta) {
+      editor.alAgregarRed((k) => {
+        if (REDES_CON_DATOS.includes(k.plataforma) && !$('#fNombre').value.trim()) llenarDesde(k, true);
+      });
+    }
   }
 
   function prepararBusqueda(alEncontrar) {
     $('#btnBuscarCanal').addEventListener('click', () => buscarCanal(alEncontrar));
     $('#fBuscarCanal').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); buscarCanal(alEncontrar); } });
-    $('#fOtraUrl').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#btnOtraPlat').click(); } });
+    const otra = $('#fOtraUrl');
+    if (otra) otra.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); $('#btnOtraPlat').click(); } });
   }
 
   // Lo que entiende un servidor anterior a los canales múltiples: el canal
@@ -624,16 +954,25 @@
 
   function formularioCreador(c) {
     c = c || { activo: true, categoria: 'otros' };
+    const compartidos = c.canalesCompartidos || [];
     return `
       <div class="stack" style="gap:14px">
-        <fieldset><legend>Canales</legend>${controlesDeCanales(true)}</fieldset>
-        <div class="form">
+        ${seccionRedes(true)}
+        ${seccionYouTube(true)}
+        <fieldset><legend>Datos</legend>
+        ${filaDeLlenado()}
+        <div class="form" style="margin-top:12px">
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
           <label class="f">Categoría<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(c.bio)}</textarea></label>
-          <label class="f full">Foto (URL)<input class="input" id="fFoto" value="${esc(c.fotoUrl)}" placeholder="https://"></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
+        </fieldset>
+        ${seccionFoto('Foto de perfil', c.fotoUrl)}
+        ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
+          <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
+          <p class="hint" style="margin:10px 0 0">Los videos de estos canales también les llegan a quienes lo siguen. Se cambia en la ficha de cada canal, en la sección Canales.</p>
+        </fieldset>` : ''}
         ${estado.sinProductoras ? '' : `<fieldset><legend>Productoras en las que figura</legend>
           ${casillas('productoras', estado.productoras || [], c.productoras || [], 'Todavía no hay productoras. Se dan de alta en la sección Productoras.')}
         </fieldset>`}
@@ -652,7 +991,7 @@
         if (nombre.length < 2) { toast('El nombre necesita al menos 2 letras.', true); return false; }
         const canales = editor.valores();
         if (!canales) return false;
-        if (!canales.length) { toast('Agrega al menos un canal.', true); return false; }
+        if (!canales.length) { toast('Agrega al menos una red social (o un canal de YouTube).', true); return false; }
         const cuerpo = {
           id: c ? c.id : null, nombre, categoria: $('#fCategoria').value, bio: $('#fBio').value.trim() || null,
           fotoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
@@ -662,7 +1001,8 @@
         const r = await api('/api/admin/creadores', { metodo: 'POST', cuerpo });
         if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica, true);
-        else toast(c ? 'Cambios guardados.' : 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.');
+        else toast(c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
+          ? 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.' : 'Creador creado.'));
         estado.creadores = null;
         estado.productoras = null;
         if (estado.vista === 'creadores') vistaCreadores();
@@ -677,6 +1017,8 @@
         if (!c) rellenarDesdeCanal(d);
         toast('Canal agregado: ' + (d.titulo || d.channelId));
       });
+      prepararFoto(editor);
+      prepararLlenado(editor, !c);
     });
   }
 
@@ -689,20 +1031,19 @@
       main.innerHTML = '<div class="head"><div><h1>Productoras</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene la versión con productoras. Aparecerán aquí cuando se despliegue.</div></div>';
       return;
     }
-    const nombreCreador = (id) => { const c = (estado.creadores || []).find((x) => x.id === id); return c ? c.nombre : null; };
     const lista = estado.productoras;
     main.innerHTML = `
-      <div class="head"><div><h1>Productoras</h1><p class="sub">Las casas detrás de varios creadores. Una productora tiene sus canales propios y, además, los canales de creadores que se le asignen. Quien la sigue en la app recibe avisos de todos esos canales.</p></div>
+      <div class="head"><div><h1>Productoras</h1><p class="sub">Las casas detrás de varios creadores. Una productora tiene sus canales propios y, además, los canales de creadores que se le asignen; quien la sigue recibe avisos de todos. Puede aparecer en el directorio como un creador más. Para que los videos de un canal suyo les lleguen también a quienes siguen a sus creadores, márcalos en la ficha de ese canal, en la sección Canales.</p></div>
         <button class="btn primary" data-accion="nueva-productora">Nueva productora</button></div>
       <section class="panel"><div class="tablewrap"><table><thead><tr><th>Productora</th><th>Canales</th><th>Creadores</th><th>Seguidores</th><th>En la app</th><th></th></tr></thead><tbody>
       ${lista.length ? lista.map((p) => {
-        const figuran = (p.creadores || []).map(nombreCreador).filter(Boolean);
+        const figuran = nombresDe(p.creadores);
         return `<tr>
           <td><div class="who">${avatar(p.logoUrl)}<div><b>${esc(p.nombre)}</b>${p.descripcion ? `<span class="clip" style="max-width:260px">${esc(p.descripcion)}</span>` : ''}</div></div></td>
           <td><div class="chips">${(p.canales || []).map((k) => chipCanal(k, true)).join('') || '<span class="muted">—</span>'}</div></td>
           <td>${figuran.length ? esc(figuran.join(', ')) : '<span class="muted">—</span>'}</td>
           <td class="num">${num(p.seguidores)}</td>
-          <td>${p.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculta</span>'}</td>
+          <td>${p.activo ? '<span class="badge b-ok">Visible</span>' : '<span class="badge b-mute">Oculta</span>'}${p.enDirectorio ? '<div style="margin-top:4px"><span class="badge b-info">En el directorio</span></div>' : ''}</td>
           <td class="acciones">
             <button class="btn sm" data-accion="editar-productora" data-id="${esc(p.id)}">Editar</button>
             <button class="btn sm danger" data-accion="borrar-productora" data-id="${esc(p.id)}">Eliminar</button>
@@ -719,13 +1060,20 @@
         <div class="form">
           <label class="f full">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(p.nombre)}"></label>
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(p.descripcion)}</textarea></label>
-          <label class="f full">Logo (URL)<input class="input" id="fFoto" value="${esc(p.logoUrl)}" placeholder="https://"></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${p.activo ? 'checked' : ''}> Visible en la app y suscrita a los videos de sus canales propios</label>
         </div>
-        <fieldset><legend>Canales propios</legend>${controlesDeCanales(false)}</fieldset>
+        ${servidorConFichas() ? `<fieldset><legend>En el directorio</legend>
+          <label class="check"><input type="checkbox" id="fEnDirectorio" ${p.enDirectorio ? 'checked' : ''}> Aparece en el directorio como un creador más</label>
+          <label class="f" style="margin-top:10px">Tema en el que sale<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${(p.categoria || 'otros') === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <p class="hint" style="margin:10px 0 0">Sale en el listado de creadores, con sus canales, y la gente la sigue desde ahí. Sirve también para las versiones de la app que no tienen la pestaña de productoras.</p>
+        </fieldset>` : ''}
+        ${seccionesDeCanales(false)}
+        <fieldset><legend>Llenar sola</legend>${filaDeLlenado()}</fieldset>
+        ${seccionFoto('Logo', p.logoUrl)}
         ${deCreadores.length ? `<fieldset><legend>Canales de creadores que son de esta productora</legend><div class="chips">${deCreadores.map((k) => chipCanal(k, true)).join('')}</div></fieldset>` : ''}
         <fieldset><legend>Creadores que figuran en ella</legend>
           ${casillas('creadores', estado.creadores || [], p.creadores || [], 'Todavía no hay creadores.')}
+          <p class="hint" style="margin:10px 0 0">Figurar en la productora no hace que les lleguen los videos de sus canales: eso se marca en la ficha de cada canal.</p>
         </fieldset>
       </div>`;
   }
@@ -742,11 +1090,16 @@
         if (nombre.length < 2) { toast('El nombre necesita al menos 2 letras.', true); return false; }
         const canales = editor.valores();
         if (!canales) return false;
-        const r = await api('/api/admin/productoras', { metodo: 'POST', cuerpo: {
+        const cuerpo = {
           id: p ? p.id : null, nombre, descripcion: $('#fBio').value.trim() || null,
           logoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
           canales, creadores: marcadas('creadores')
-        } });
+        };
+        if ($('#fEnDirectorio')) {
+          cuerpo.enDirectorio = $('#fEnDirectorio').checked;
+          cuerpo.categoria = $('#fCategoria').value;
+        }
+        const r = await api('/api/admin/productoras', { metodo: 'POST', cuerpo });
         if (r.avisoSuscripcion) toast('Productora guardada, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Productora guardada, pero no se copió a testing: ' + r.avisoReplica, true);
         else toast(p ? 'Cambios guardados.' : 'Productora creada.');
@@ -762,33 +1115,123 @@
         if (!p) rellenarDesdeCanal(d);
         toast('Canal agregado: ' + (d.titulo || d.channelId));
       });
+      prepararFoto(editor);
+      prepararLlenado(editor, !p);
     });
   }
 
   // ---------------------------------------------------------------------------
-  // Suscripciones WebSub
+  // Canales de YouTube: su ficha y su suscripción al hub
   // ---------------------------------------------------------------------------
-  async function vistaSuscripciones() {
+  async function vistaCanales() {
     await Promise.all([cargarCreadores(true), cargarProductoras(true)]);
+    const fichas = servidorConFichas();
     const canales = vigilados()
       .sort((a, b) => Number(conProblema(b)) - Number(conProblema(a)) || String(a.canal.expiraEn || '').localeCompare(String(b.canal.expiraEn || '')));
     const fallidas = canales.filter(conProblema).length;
     main.innerHTML = `
-      <div class="head"><div><h1>Suscripciones a YouTube</h1><p class="sub">Cada canal de YouTube del directorio se suscribe al hub de Google, que avisa al servidor cuando sube un video. El hub las corta a los 10 días y el servidor las renueva solo cada 4. Reintentar vuelve a guardar a su dueño, lo que repite la solicitud al hub para todos sus canales.</p></div>
-        ${fallidas ? `<button class="btn primary" data-accion="reintentar-fallidas">${fallidas === 1 ? 'Reintentar la que tiene problemas' : 'Reintentar las ' + num(fallidas) + ' con problemas'}</button>` : ''}</div>
-      <section class="panel"><div class="tablewrap"><table><thead><tr><th>De quién</th><th>Canal</th><th>Estado</th><th>Vence</th><th>En la app</th><th></th></tr></thead><tbody>
+      <div class="head"><div><h1>Canales de YouTube</h1><p class="sub">Cada canal de YouTube del directorio tiene su ficha: de quién es, de qué productora y con qué otros creadores aparece. Lo que publica le llega a quien sigue a cualquiera de ellos. El servidor se suscribe al hub de Google para enterarse de cada video; el hub corta la suscripción a los 10 días y el servidor la renueva solo cada 4.</p></div>
+        <div class="toolbar">${fallidas ? `<button class="btn" data-accion="reintentar-fallidas">${fallidas === 1 ? 'Reintentar la que tiene problemas' : 'Reintentar las ' + num(fallidas) + ' con problemas'}</button>` : ''}
+        ${fichas ? '<button class="btn primary" data-accion="nuevo-canal">Nuevo canal</button>' : ''}</div></div>
+      <section class="panel"><div class="tablewrap"><table><thead><tr><th>Canal</th><th>De quién es</th><th>También aparece con</th><th>Suscripción</th><th></th></tr></thead><tbody>
       ${canales.length ? canales.map((v) => {
         const k = v.canal, d = v.dueno, deProductora = v.tipo === 'productora';
+        const casa = !deProductora && k.productoraId ? nombreProductora(k.productoraId) : null;
+        const con = nombresDe(k.creadores);
         return `<tr>
-          <td><div class="who">${avatar(deProductora ? d.logoUrl : d.fotoUrl)}<div><b>${esc(d.nombre)}</b><span>${deProductora ? 'Productora · ' : ''}${plural(d.seguidores, 'seguidor', 'seguidores')}</span></div></div></td>
-          <td>${k.nombre ? `<div>${esc(k.nombre)}</div>` : ''}<a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></td>
-          <td>${d.activo ? badgeSusc(k.estadoSuscripcion || 'PENDIENTE_VERIFICACION') : `<span class="badge b-mute">Sin suscribir (${deProductora ? 'oculta' : 'oculto'})</span>`}</td>
-          <td class="num" title="${esc(fmtFecha(k.expiraEn))}">${k.expiraEn ? esc(relativo(k.expiraEn)) : '—'}${vencePronto(k) ? ' <span class="badge b-warn">pronto</span>' : ''}</td>
-          <td>${d.activo ? '<span class="badge b-ok">Visible</span>' : `<span class="badge b-mute">${deProductora ? 'Oculta' : 'Oculto'}</span>`}</td>
-          <td class="acciones">${d.activo ? `<button class="btn sm" data-accion="reintentar" data-tipo="${v.tipo}" data-id="${esc(d.id)}">Reintentar</button>` : ''}</td>
+          <td><b>${esc(k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal'))}</b><div><a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></div></td>
+          <td><div class="who">${avatar(deProductora ? d.logoUrl : d.fotoUrl)}<div><b>${esc(d.nombre)}</b><span>${deProductora ? 'Productora' : (casa ? 'Creador · canal de ' + esc(casa) : 'Creador')}${d.activo ? '' : (deProductora ? ' · oculta' : ' · oculto')}</span></div></div></td>
+          <td>${con.length ? esc(con.join(', ')) : '<span class="muted">—</span>'}</td>
+          <td>${d.activo ? badgeSusc(k.estadoSuscripcion || 'PENDIENTE_VERIFICACION') : '<span class="badge b-mute">Sin suscribir</span>'}${k.expiraEn ? `<div class="muted" style="font-size:12.5px" title="${esc(fmtFecha(k.expiraEn))}">vence ${esc(relativo(k.expiraEn))}${vencePronto(k) ? ' <span class="badge b-warn">pronto</span>' : ''}</div>` : ''}</td>
+          <td class="acciones">${fichas && k.id ? `<button class="btn sm" data-accion="editar-canal" data-id="${esc(k.id)}">Editar</button>` : ''}${d.activo ? `<button class="btn sm" data-accion="reintentar" data-tipo="${v.tipo}" data-id="${esc(d.id)}">Reintentar</button>` : ''}${fichas && k.id ? `<button class="btn sm danger" data-accion="borrar-canal" data-id="${esc(k.id)}">Eliminar</button>` : ''}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="6"><div class="empty">Todavía no hay ningún canal de YouTube en el directorio.</div></td></tr>'}
+      }).join('') : '<tr><td colspan="5"><div class="empty">Todavía no hay ningún canal de YouTube en el directorio.</div></td></tr>'}
       </tbody></table></div></section>`;
+  }
+
+  const tarjetaCanal = (k, titulo) => `<div class="canal"><div><b>${esc(titulo || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal vinculado'))}</b><div class="mono muted">${esc(k.channelId)}</div></div></div>`;
+
+  function formularioCanal(k) {
+    k = k || {};
+    return `
+      <div class="stack" style="gap:14px">
+        <fieldset><legend>Canal de YouTube</legend>
+          <div id="fKActual">${k.channelId ? tarjetaCanal(k) : '<span class="hint">Busca el canal por su @handle, su URL o su ID.</span>'}</div>
+          <div class="agregar" style="margin-top:10px">
+            <input class="input" id="fBuscarCanal" placeholder="@handle, URL del canal o ID que empieza por UC" aria-label="Canal de YouTube">
+            <button class="btn" type="button" id="btnBuscarCanal">${k.channelId ? 'Cambiar' : 'Buscar'}</button>
+          </div>
+          <input type="hidden" id="fKUrl" value="${esc(k.url)}">
+          <input type="hidden" id="fKHandle" value="${esc(k.handle)}">
+          <input type="hidden" id="fKId" value="${esc(k.channelId)}">
+        </fieldset>
+        <div class="form">
+          <label class="f full">Etiqueta<input class="input" id="fKNombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Oficial, Clips, Directos… (opcional)"></label>
+          <label class="f">Creador dueño<select class="input" id="fKCreador"><option value="">Ninguno: es propio de la productora</option>${(estado.creadores || []).map((c) => `<option value="${esc(c.id)}" ${k.creadorId === c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>
+          <label class="f">Productora<select class="input" id="fKProductora"><option value="">Ninguna</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
+        </div>
+        <fieldset><legend>También aparece con estos creadores</legend>
+          ${casillas('con', estado.creadores || [], k.creadores || [], 'Todavía no hay creadores.')}
+          <p class="hint" style="margin:10px 0 0">Lo que publique este canal les llega también a quienes siguen a los creadores marcados, y sale en sus novedades. Los avisos van a nombre del dueño; si no tiene, a nombre de la productora.</p>
+        </fieldset>
+      </div>`;
+  }
+
+  async function abrirCanal(id) {
+    await Promise.all([cargarCreadores(false), cargarProductoras(false)]);
+    const v = id ? vigilados().find((x) => x.canal.id === id) : null;
+    if (id && !v) return;
+    const k = v ? v.canal : null;
+
+    // El dueño no puede estar además entre "los demás".
+    const alCambiarDueno = () => {
+      const dueno = $('#fKCreador').value;
+      $$('#mCuerpo [data-grupo="con"]').forEach((x) => {
+        x.disabled = x.value === dueno;
+        if (x.disabled) x.checked = false;
+      });
+    };
+
+    abrirModal(k ? 'Ficha del canal' : 'Nuevo canal de YouTube', formularioCanal(k), [
+      { texto: 'Cancelar' },
+      { texto: k ? 'Guardar cambios' : 'Agregar canal', tipo: 'primary', alPulsar: async () => {
+        const channelId = $('#fKId').value.trim();
+        if (!channelId) { toast('Busca primero el canal de YouTube.', true); $('#fBuscarCanal').focus(); return false; }
+        const creadorId = $('#fKCreador').value || null;
+        const productoraId = $('#fKProductora').value || null;
+        if (!creadorId && !productoraId) { toast('Di de quién es el canal: elige un creador dueño o una productora.', true); return false; }
+        let r;
+        try {
+          r = await api('/api/admin/canales', { metodo: 'POST', cuerpo: {
+            id: k ? k.id : null, nombre: $('#fKNombre').value.trim() || null,
+            url: $('#fKUrl').value || 'https://www.youtube.com/channel/' + channelId,
+            handle: $('#fKHandle').value || null, channelId, creadorId, productoraId,
+            creadores: marcadas('con').filter((x) => x !== creadorId)
+          } });
+        } catch (e) {
+          if (e.estado === 404 && !k) throw new ErrorApi('Este servidor todavía no tiene la versión con fichas de canal.', 404);
+          throw e;
+        }
+        if (r.avisoSuscripcion) toast('Canal guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
+        else if (r.avisoReplica) toast('Canal guardado, pero no se copió a testing: ' + r.avisoReplica, true);
+        else toast(k ? 'Cambios guardados.' : 'Canal agregado. La suscripción queda pendiente hasta que el hub la verifique.');
+        estado.creadores = null;
+        estado.productoras = null;
+        if (estado.vista === 'canales') vistaCanales();
+        refrescarContadores();
+      } }
+    ], () => {
+      $('#fKCreador').addEventListener('change', alCambiarDueno);
+      alCambiarDueno();
+      prepararBusqueda((d) => {
+        const handle = d.handle ? d.handle.replace(/^@/, '') : '';
+        $('#fKId').value = d.channelId;
+        $('#fKHandle').value = handle;
+        $('#fKUrl').value = handle ? 'https://www.youtube.com/@' + handle : 'https://www.youtube.com/channel/' + d.channelId;
+        $('#fKActual').innerHTML = tarjetaCanal({ handle, channelId: d.channelId }, d.titulo);
+        $('#btnBuscarCanal').textContent = 'Cambiar';
+      });
+    });
   }
 
   /** El mismo cuerpo que manda el formulario, armado desde el listado. */
@@ -820,25 +1263,57 @@
   // ---------------------------------------------------------------------------
   const ESTADOS_PUB = { ok: ['Normal', 'b-ok'], moved: ['Movido', 'b-info'], removed: ['Retirado', 'b-bad'] };
 
+  // Qué se lista: todo, solo los videos normales o solo los cortos.
+  const FILTROS_PUB = { todos: 'Todos', videos: 'Videos', cortos: 'Cortos' };
+  const VACIO_PUB = {
+    todos: 'Todavía no se ha detectado ningún video.',
+    videos: 'Todavía no se ha detectado ningún video normal.',
+    cortos: 'No hay ningún video corto guardado.'
+  };
+
+  // El interruptor general de los videos cortos. Con un servidor anterior a
+  // esto no hay ajustes que leer, y el panel no enseña nada de los cortos.
+  function tarjetaCortos(ajustes) {
+    const on = !!ajustes.cortos;
+    return `<section class="panel"><div class="panel-head"><h2>Videos cortos (Shorts)</h2>
+        <span class="badge ${on ? 'b-ok' : 'b-mute'}" id="cortosEstado">${on ? 'Encendidos' : 'Apagados'}</span></div>
+      <div class="ajuste">
+        <label class="check"><input type="checkbox" id="cortosOn" data-accion="ajuste-cortos" ${on ? 'checked' : ''}> Mostrar los videos cortos en la app</label>
+        <p class="hint">${on
+          ? 'Salen en un apartado propio de Novedades, nunca mezclados con los demás videos, y avisan solo a quien los quiere. Cada persona puede apagarlos para sí en los Ajustes de la app.'
+          : 'El servidor los guarda, pero no avisan a nadie ni salen en la app, y la app no ofrece la opción de verlos. Si los enciendes, aparecen en un apartado propio y cada persona decide si los quiere.'}</p>
+        <p class="hint">¿Hay videos normales marcados como cortos, o al revés? Corrígelos en la lista con «Es corto» / «No es corto», o deja que el servidor le pregunte a YouTube por los últimos: <button class="link" data-accion="revisar-cortos">Repasar los cortos guardados</button></p>
+      </div></section>`;
+  }
+
   async function vistaPublicaciones() {
-    const lista = await api('/api/admin/publicaciones?limite=100');
+    const filtro = FILTROS_PUB[estado.filtroPubs] ? estado.filtroPubs : 'todos';
+    const [lista, ajustes] = await Promise.all([
+      api('/api/admin/publicaciones?limite=100' + (filtro !== 'todos' ? '&tipo=' + filtro : '')),
+      api('/api/admin/ajustes').catch(() => null)
+    ]);
     estado.publicaciones = lista;
+    estado.ajustes = ajustes;
     main.innerHTML = `
-      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Los videos que detectó el servidor. Si una plataforma tumba uno, muévelo a otro enlace y avisa a quienes siguen a su creador o a su productora.</p></div></div>
+      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Los videos que detectó el servidor. Si una plataforma tumba uno, muévelo a otro enlace y avisa a quienes siguen a su creador o a su productora.</p></div>
+        ${ajustes ? `<div class="toolbar" id="filtroPubs">${Object.entries(FILTROS_PUB).map(([k, v]) => `<button class="btn sm ${k === filtro ? 'primary' : ''}" data-accion="filtro-pubs" data-valor="${k}" aria-pressed="${k === filtro}">${v}</button>`).join('')}</div>` : ''}</div>
+      <div class="stack">
+      ${ajustes ? tarjetaCortos(ajustes) : ''}
       <section class="panel"><div class="tablewrap"><table><thead><tr><th></th><th>Video</th><th>Creador</th><th>Estado</th><th>Publicado</th><th></th></tr></thead><tbody>
       ${lista.length ? lista.map((p) => {
         const [t, c] = ESTADOS_PUB[p.estado] || [p.estado, 'b-mute'];
         const enlace = p.estado === 'moved' && p.destinoUrl ? p.destinoUrl : p.url;
         return `<tr>
           <td>${p.miniaturaUrl ? `<img class="thumb" src="${esc(p.miniaturaUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</td>
-          <td><div class="clip" style="max-width:380px"><b>${esc(p.titulo)}</b></div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? 'Short' : 'Video'} · <span class="mono">${esc(p.videoId)}</span></span></td>
+          <td><div class="clip" style="max-width:380px"><b>${esc(p.titulo)}</b></div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? '<span class="badge b-warn">Corto</span>' : 'Video'} · <span class="mono">${esc(p.videoId)}</span></span></td>
           <td>${esc(p.creadorNombre || '—')}${p.productoraNombre && p.productoraNombre !== p.creadorNombre ? `<div class="muted" style="font-size:12.5px">${esc(p.productoraNombre)}</div>` : ''}</td>
           <td><span class="badge ${c}">${esc(t)}</span>${p.estado === 'moved' ? `<div class="muted" style="font-size:12.5px">a ${esc(PLATAFORMAS[p.destinoPlataforma] || p.destinoPlataforma || '')}</div>` : ''}</td>
           <td class="num">${esc(fmtFecha(p.publicadoEn))}</td>
-          <td class="acciones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button></td>
+          <td class="acciones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button>${ajustes && !p.enVivo ? `<button class="btn sm" data-accion="tipo-video" data-video="${esc(p.videoId)}" data-valor="${p.tipo === 'short' ? 'video' : 'short'}">${p.tipo === 'short' ? 'No es corto' : 'Es corto'}</button>` : ''}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="6"><div class="empty">Todavía no se ha detectado ningún video.</div></td></tr>'}
-      </tbody></table></div></section>`;
+      }).join('') : `<tr><td colspan="6"><div class="empty">${VACIO_PUB[ajustes ? filtro : 'todos']}</div></td></tr>`}
+      </tbody></table></div></section>
+      </div>`;
   }
 
   function abrirMover(videoId) {
@@ -1132,13 +1607,106 @@
           <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
           <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
           <dt>Enlaces reportados</dt><dd>${num(d.reportes)}</dd>
+          ${u.sinAnuncios === undefined ? '' : `<dt>Anuncios</dt><dd>${u.sinAnuncios
+            ? 'No los ve: ' + esc(MOTIVOS_SIN_ANUNCIOS[u.sinAnunciosOrigen] || u.sinAnunciosOrigen || 'quitados') + (u.sinAnunciosDesde ? ' <span class="muted">(' + esc(fmtDia(u.sinAnunciosDesde)) + ')</span>' : '')
+            : 'Los ve <span class="muted">si están encendidos</span>'}</dd>`}
         </dl>
         <div>
           <p class="reparto-titulo">Sigue a ${plural(d.sigue.length, 'creador', 'creadores')}</p>
           ${d.sigue.length ? '<ul class="lista-simple">' + d.sigue.map((c) => `<li><span><b>${esc(c.nombre)}</b> <span class="muted">· ${esc(CATEGORIAS[c.categoria] || c.categoria)}</span></span>${c.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Todavía no sigue a nadie, así que no recibe avisos.</p>'}
         </div>
         ${rol ? '<div>' + rol + '</div>' : ''}
+        ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Anuncios
+  // ---------------------------------------------------------------------------
+  // Por qué una cuenta ya no ve anuncios, como lo guarda el servidor.
+  const MOTIVOS_SIN_ANUNCIOS = { compra: 'los compró', folio: 'folio de regalo', panel: 'desde el panel' };
+
+  /** Copia un texto. Devuelve si se pudo, para decirlo o pedir que se copie a mano. */
+  async function copiar(texto) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    } catch (e) {
+      // Sin HTTPS o sin permiso el navegador no deja: se intenta a la antigua.
+      const caja = document.createElement('textarea');
+      caja.value = texto;
+      caja.setAttribute('readonly', '');
+      caja.style.position = 'fixed';
+      caja.style.opacity = '0';
+      // Dentro del modal si está abierto: fuera de él no se puede seleccionar nada.
+      (modal.open ? modal : document.body).appendChild(caja);
+      caja.select();
+      let hecho = false;
+      try { hecho = document.execCommand('copy'); } catch (e2) { hecho = false; }
+      caja.remove();
+      return hecho;
+    }
+  }
+
+  async function vistaAnuncios() {
+    const a = await api('/api/admin/anuncios');
+    estado.anuncios = a;
+    const on = !!a.encendidos;
+    const sin = a.sinAnuncios || {};
+    const total = Object.values(sin).reduce((s, n) => s + (n || 0), 0);
+    const nuevos = estado.foliosNuevos || [];
+    const folios = a.folios || [];
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Anuncios</h1><p class="sub">Los anuncios que la app de Android muestra entre los videos de Novedades, y las dos maneras de quitarlos: una compra en Google Play o un folio de regalo.</p></div></div>
+      <div class="stack">
+        <div class="stats">
+          <div class="stat"><div class="k">Cuentas sin anuncios</div><div class="v">${num(total)}</div><div class="n">${sin.panel ? plural(sin.panel, 'puesta', 'puestas') + ' desde el panel' : 'entre compras y folios'}</div></div>
+          <div class="stat"><div class="k">Por compra</div><div class="v">${num(sin.compra)}</div><div class="n">pagaron en Google Play</div></div>
+          <div class="stat"><div class="k">Por folio</div><div class="v">${num(sin.folio)}</div><div class="n">canjearon un folio de regalo</div></div>
+          <div class="stat"><div class="k">Folios sin usar</div><div class="v">${num(a.foliosSinUsar)}</div><div class="n">esperando a que alguien los canjee</div></div>
+        </div>
+
+        <section class="panel"><div class="panel-head"><h2>Anuncios en la app</h2>
+            <span class="badge ${on ? 'b-ok' : 'b-mute'}">${on ? 'Encendidos' : 'Apagados'}</span></div>
+          <div class="ajuste">
+            <label class="check"><input type="checkbox" data-accion="ajuste-anuncios" ${on ? 'checked' : ''}> Mostrar anuncios en la app</label>
+            <p class="hint">${on
+              ? 'Los ve todo el mundo menos quien los quitó. Salen entre los videos de Novedades, marcados como «Publicidad», tres como mucho. En Ajustes de la app aparece la sección para quitarlos.'
+              : 'La app no pide ni muestra ningún anuncio, y no ofrece quitarlos. Quien ya los quitó no pierde nada: si los enciendes, sigue sin verlos.'}</p>
+            <p class="hint">${a.comprasListas
+              ? `<span class="badge b-ok">Compra lista</span> El servidor confirma las compras del producto <span class="mono">${esc(a.producto)}</span> de <span class="mono">${esc(a.paquete)}</span> con Google Play.`
+              : `<span class="badge b-warn">Compra sin configurar</span> La app no ofrece pagar por quitar los anuncios; solo el folio de regalo. Falta <span class="mono">COMPRAS_PAQUETE</span> en el servidor, o la cuenta de servicio no se pudo leer. Los pasos están en el README, sección «Anuncios».`}</p>
+          </div></section>
+
+        <section class="panel"><div class="panel-head"><h2>Folios de regalo</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 12px;font-size:13.5px">Un folio quita los anuncios a la cuenta que lo canjea, sin pagar. Sirve una sola vez: al usarlo se borra de aquí. La persona lo escribe en la app, en Ajustes → Anuncios → «Tengo un folio de regalo».</p>
+            <div class="toolbar">
+              <label class="hint" for="folCantidad">Cuántos</label>
+              <input class="input" id="folCantidad" type="number" min="1" max="100" value="1" style="width:84px">
+              <input class="input" id="folNota" maxlength="200" placeholder="Para quién o de qué campaña (opcional)" aria-label="Nota" style="flex:1;min-width:220px">
+              <button class="btn primary" data-accion="crear-folios">Crear folios</button>
+            </div>
+            ${nuevos.length ? `<div class="aviso-ok folios-nuevos" style="margin-top:14px">
+              <div><b>${plural(nuevos.length, 'folio nuevo', 'folios nuevos')}.</b> Cópialos y repártelos; también quedan en la lista de abajo.</div>
+              <div class="folios">${nuevos.map((f) => `<span class="folio">${esc(f.codigo)}</span>`).join('')}</div>
+              <div><button class="btn sm" data-accion="copiar-folios">${nuevos.length === 1 ? 'Copiar' : 'Copiar todos'}</button></div>
+            </div>` : ''}
+          </div>
+          <div class="tablewrap"><table><thead><tr><th>Folio</th><th>Nota</th><th>Creado</th><th></th></tr></thead><tbody>
+          ${folios.length ? folios.map((f) => `<tr>
+              <td><span class="folio">${esc(f.codigo)}</span></td>
+              <td>${f.nota ? esc(f.nota) : '<span class="muted">—</span>'}</td>
+              <td class="num">${esc(fmtFecha(f.creadoEn))}</td>
+              <td class="acciones"><button class="btn sm" data-accion="copiar-folio" data-codigo="${esc(f.codigo)}">Copiar</button><button class="btn sm danger" data-accion="anular-folio" data-codigo="${esc(f.codigo)}">Anular</button></td>
+            </tr>`).join('') : '<tr><td colspan="4"><div class="empty">No hay folios sin usar. Los que se canjean desaparecen de esta lista.</div></td></tr>'}
+          </tbody></table></div>
+          ${a.foliosSinUsar > folios.length ? `<div class="panel-body"><p class="hint" style="margin:0">Se ven los ${num(folios.length)} más recientes de ${num(a.foliosSinUsar)} sin usar.</p></div>` : ''}
+        </section>
+      </div>`;
+
+    $('#folNota').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-accion="crear-folios"]').click(); });
   }
 
   // ---------------------------------------------------------------------------
@@ -1165,6 +1733,314 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Versiones y migración de pruebas a producción
+  // ---------------------------------------------------------------------------
+  // Qué cambia, qué choca y qué se guarda lo decide versiones.js. Aquí está la
+  // pantalla y el orden de las peticiones.
+  const V = window.Versiones;
+  const TIPO_FICHA = { creador: 'Creador', productora: 'Productora' };
+  const contenidoDe = (v) => plural(v.creadores, 'creador', 'creadores') + ' · ' + plural(v.productoras, 'productora', 'productoras');
+
+  function filasDeVersiones(lista, botones, vacio) {
+    if (!lista.length) return `<tr><td colspan="5"><div class="empty">${vacio}</div></td></tr>`;
+    return lista.map((v) => `<tr>
+      <td><b>Versión ${esc(v.numero)}</b>${v.automatica ? ' <span class="badge b-mute">Automática</span>' : ''}</td>
+      <td>${v.nota ? esc(v.nota) : '<span class="muted">Sin nota</span>'}${v.creadoPor ? `<div class="muted" style="font-size:12.5px">${esc(v.creadoPor)}</div>` : ''}</td>
+      <td class="num">${esc(fmtFecha(v.creadoEn))}</td>
+      <td class="muted">${esc(contenidoDe(v))}</td>
+      <td class="acciones">${botones(v)}</td></tr>`).join('');
+  }
+
+  const tablaDeVersiones = (filas) => `<div class="tablewrap"><table><thead><tr><th>Versión</th><th>Nota</th><th>Cuándo</th><th>Contenido</th><th></th></tr></thead><tbody>${filas}</tbody></table></div>`;
+
+  function panelMigrar(datos, remotas, error) {
+    const m = datos.migracion;
+    const aplicada = m ? m.version : 0;
+    const cabecera = m
+      ? `Producción tiene aplicada la <b>versión ${esc(m.version)}</b> de pruebas (${esc(relativo(m.aplicadaEn))}${m.aplicadaPor ? ', por ' + esc(m.aplicadaPor) : ''}).`
+        + (m.fallidas ? ` <span class="badge b-warn">${plural(m.fallidas, 'ficha no se pudo guardar', 'fichas no se pudieron guardar')}</span>` : '')
+      : 'Todavía no se ha migrado ninguna versión de pruebas.';
+    const cuerpo = error
+      ? `<div class="panel-body"><div class="aviso-mal">No se pudieron leer las versiones de pruebas: ${esc(error)}</div></div>`
+      : tablaDeVersiones(filasDeVersiones(remotas.versiones.filter((v) => !v.automatica), (v) => (v.numero === aplicada
+        ? (m.fallidas
+          ? `<button class="btn sm" data-accion="revisar-migracion" data-id="${esc(v.numero)}">Reintentar lo que faltó</button>`
+          : '<span class="badge b-ok">Aplicada</span>')
+        : v.numero < aplicada
+          ? '<span class="muted">Anterior</span>'
+          : `<button class="btn sm primary" data-accion="revisar-migracion" data-id="${esc(v.numero)}">Revisar y migrar</button>`),
+        'En pruebas todavía no hay versiones. Entra al panel de pruebas, sección Versiones, y crea una.'));
+    return `<section class="panel"><div class="panel-head"><h2>Migrar desde pruebas</h2></div>
+      <div class="panel-body" style="border-bottom:1px solid var(--line)"><p style="margin:0">${cabecera}</p>
+      <p class="hint" style="margin:6px 0 0">Antes de guardar nada verás qué cambia y, si algo se tocó en los dos lados, eliges cuál se queda.</p></div>${cuerpo}</section>`;
+  }
+
+  function panelPendientes(datos) {
+    const lista = datos.pendientes || [];
+    return `<section class="panel"><div class="panel-head"><h2>Cambios de pruebas sin migrar</h2></div>
+      <div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Lo que se dio de alta o se cambió aquí y producción todavía no tiene. Mientras estén en esta lista, la copia que manda producción no los pisa. Para llevarlos: crea una versión y, en el panel de producción, entra a Versiones y pulsa «Revisar y migrar».</p></div>
+      ${lista.length ? `<ul class="alertas">${lista.map((x) => `<li>
+        <span><b>${esc(x.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[x.tipo] || x.tipo)}</span> ${x.nuevo ? '<span class="badge b-info">Nuevo aquí</span>' : '<span class="badge b-warn">Con cambios</span>'}</span>
+        ${x.nuevo ? '' : `<button class="btn sm" data-accion="descartar-pendiente" data-id="${esc(x.id)}" data-tipo="${esc(x.tipo)}" data-nombre="${esc(x.nombre)}">Descartar</button>`}</li>`).join('')}</ul>`
+        : '<div class="empty">Nada pendiente: pruebas no tiene cambios que producción no conozca.</div>'}</section>`;
+  }
+
+  async function vistaVersiones() {
+    estado.migracion = null;
+    let datos;
+    try {
+      datos = await api('/api/admin/versiones');
+    } catch (e) {
+      if (e.estado !== 404) throw e;
+      main.innerHTML = '<div class="head"><div><h1>Versiones</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene la versión con versiones del directorio. Aparecerán aquí cuando se despliegue.</div></div>';
+      return;
+    }
+
+    let remotas = null, error = null;
+    if (datos.papel === 'produccion') {
+      try { remotas = await api('/api/admin/versiones/remotas'); } catch (e) { error = e.message; }
+    }
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Versiones</h1><p class="sub">Una versión es una foto numerada de los creadores, las productoras y sus canales tal como están en este momento. Sirve para saber qué cambió desde entonces${datos.papel === 'pruebas' ? ' y es lo que producción trae cuando migra' : datos.papel === 'produccion' ? ' y para traer a producción lo que se preparó en pruebas' : ''}.</p></div>
+        <button class="btn primary" data-accion="crear-version">Crear versión</button></div>
+      <div class="stack">
+      ${datos.papel === 'produccion' ? panelMigrar(datos, remotas, error) : ''}
+      ${datos.papel === 'pruebas' ? panelPendientes(datos) : ''}
+      <section class="panel"><div class="panel-head"><h2>Versiones de ${config.ambiente === 'produccion' ? 'producción' : config.ambiente === 'pruebas' ? 'pruebas' : 'este servidor'}</h2></div>
+      ${tablaDeVersiones(filasDeVersiones(datos.versiones, (v) => `<button class="btn sm" data-accion="comparar-version" data-id="${esc(v.numero)}">Qué cambió desde entonces</button>`,
+        'Todavía no hay versiones. Crea la primera para tener un punto con el que comparar.'))}</section>
+      </div>`;
+  }
+
+  function crearVersion() {
+    abrirModal('Crear versión', `<div class="form">
+        <p class="full" style="margin:0">Se guarda una foto del directorio tal como está ahora. No cambia nada en la app.</p>
+        <label class="full">Nota <span class="opcional">(opcional)</span><input class="input" id="verNota" maxlength="200" placeholder="Qué trae esta versión" autocomplete="off"></label>
+      </div>`, [
+      { texto: 'Cancelar' },
+      { texto: 'Crear versión', tipo: 'primary', alPulsar: async () => {
+        const r = await api('/api/admin/versiones', { metodo: 'POST', cuerpo: { nota: $('#verNota').value.trim() || null } });
+        toast('Versión ' + r.numero + ' creada.');
+        if (estado.vista === 'versiones') await vistaVersiones();
+      } }
+    ]);
+  }
+
+  async function compararVersion(numero) {
+    const [v, ahora] = await Promise.all([api('/api/admin/versiones/' + numero), api('/api/admin/versiones/actual')]);
+    const dif = V.comparar(v.contenido, ahora.contenido);
+    const marca = { nuevo: ['Nuevo', 'b-ok'], quitado: ['Retirado', 'b-bad'], cambia: ['Cambió', 'b-warn'] };
+    abrirModal('Qué cambió desde la versión ' + numero, dif.length
+      ? `<ul class="cambios">${dif.map((d) => `<li><div><b>${esc(d.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[d.tipo])}</span> <span class="badge ${marca[d.estado][1]}">${marca[d.estado][0]}</span></div>
+          ${d.cambios.map((c) => `<div class="cambio"><span class="muted">${esc(c.etiqueta)}:</span> <s>${esc(c.antes)}</s> → ${esc(c.despues)}</div>`).join('')}</li>`).join('')}</ul>`
+      : '<p style="margin:0">Nada: el directorio está igual que en esa versión.</p>', [{ texto: 'Cerrar' }]);
+  }
+
+  // --- Revisar una migración ---------------------------------------------------
+
+  async function revisarMigracion(numero) {
+    main.innerHTML = '<div class="cargando">Comparando la versión de pruebas con producción…</div>';
+    const [remota, ahora, ultima] = await Promise.all([
+      api('/api/admin/versiones/remotas/' + numero),
+      api('/api/admin/versiones/actual'),
+      api('/api/admin/migraciones/ultima')]);
+    const anterior = (ultima && ultima.estado) || {};
+
+    estado.migracion = {
+      numero,
+      nota: remota.nota,
+      plan: V.planear({ base: anterior.base || null, pruebas: remota.contenido, produccion: ahora.contenido, ids: anterior.ids || null }),
+      decisiones: {},
+      ids: anterior.ids || null,
+      existen: new Set(ahora.contenido.creadores.concat(ahora.contenido.productoras).map((f) => f.id))
+    };
+    pintarRevision();
+  }
+
+  function itemsDe(plan, clase) {
+    const lista = [];
+    plan.fichas.forEach((f) => f.items.forEach((i) => { if (i.clase === clase) lista.push({ f, i }); }));
+    return lista;
+  }
+
+  const deQuien = (f, i) => `<b>${esc(f.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[f.tipo])} · ${esc(i.etiqueta)}</span>`;
+
+  function pintarRevision() {
+    const m = estado.migracion, plan = m.plan, r = plan.resumen;
+    const conflictos = itemsDe(plan, 'conflicto'), porConfirmar = itemsDe(plan, 'confirmar'), autos = itemsDe(plan, 'auto');
+    const nuevos = plan.fichas.filter((f) => f.estado === 'nuevo');
+    const marcado = (i, lado) => (m.decisiones[i.id] === lado ? ' checked' : '');
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Migrar la versión ${esc(m.numero)} de pruebas</h1>
+        <p class="sub">${m.nota ? '«' + esc(m.nota) + '». ' : ''}Todavía no se ha guardado nada. Revisa qué va a cambiar en producción y, donde las dos partes tocaron lo mismo, elige cuál se queda.</p></div>
+        <button class="btn" data-accion="volver-versiones">Volver</button></div>
+      <div class="stack">
+      <div class="chips">
+        <span class="badge b-ok">${plural(r.nuevos, 'ficha nueva', 'fichas nuevas')}</span>
+        <span class="badge b-info">${plural(r.cambios, 'cambio', 'cambios')}</span>
+        <span class="badge ${r.conflictos ? 'b-bad' : 'b-mute'}">${plural(r.conflictos, 'conflicto', 'conflictos')}</span>
+        <span class="badge ${r.confirmar ? 'b-warn' : 'b-mute'}">${num(r.confirmar)} por confirmar</span>
+        <span class="badge b-mute">${num(r.iguales)} sin cambios</span>
+      </div>
+      ${plan.primeraVez ? '<div class="aviso-ok">Es la primera migración: no hay una versión anterior con la que saber qué lado cambió cada cosa, así que cada diferencia se pregunta. Las siguientes solo preguntarán lo que de verdad se haya tocado en los dos lados.</div>' : ''}
+
+      ${plan.avisos.length ? `<section class="panel"><div class="panel-head"><h2>Para tener en cuenta</h2></div><ul class="cambios">${plan.avisos.map((a) => `<li>${esc(a)}</li>`).join('')}</ul></section>` : ''}
+
+      ${conflictos.length ? `<section class="panel"><div class="panel-head"><h2>Conflictos</h2>
+          <div class="toolbar"><button class="btn sm" data-accion="elegir-todos" data-valor="pruebas">Pruebas en todos</button><button class="btn sm" data-accion="elegir-todos" data-valor="produccion">Producción en todos</button></div></div>
+        <div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Se cambió en los dos lados y no coincide. Lo que elijas queda en producción, y pruebas quedará igual.</p></div>
+        <div class="panel-body choques">${conflictos.map(({ f, i }) => `<fieldset class="choque">
+          <legend>${deQuien(f, i)}</legend>
+          ${i.textoBase !== null ? `<p class="hint" style="margin:0 0 8px">Antes de que cambiara: ${esc(i.textoBase)}</p>` : ''}
+          <div class="lados">
+            <label class="lado"><input type="radio" name="d-${esc(i.id)}" value="pruebas" data-decision="${esc(i.id)}"${marcado(i, 'pruebas')}><span><b>Lo de pruebas</b><span class="valor">${esc(i.textoPruebas)}</span></span></label>
+            <label class="lado"><input type="radio" name="d-${esc(i.id)}" value="produccion" data-decision="${esc(i.id)}"${marcado(i, 'produccion')}><span><b>Lo de producción</b> <span class="muted">(dejar como está)</span><span class="valor">${esc(i.textoProduccion)}</span></span></label>
+          </div></fieldset>`).join('')}</div></section>` : ''}
+
+      ${porConfirmar.length ? `<section class="panel"><div class="panel-head"><h2>Canales que se quitaron en pruebas</h2></div>
+        <div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">En producción se conservan, salvo que marques la casilla; y como pruebas copia lo que hay en producción, allá volverán a aparecer. Quitar un canal de YouTube deja de vigilarlo.</p></div>
+        <ul class="alertas">${porConfirmar.map(({ f, i }) => `<li><span>${deQuien(f, i)}<div class="valor">${esc(i.textoProduccion)}</div></span>
+          <label class="check"><input type="checkbox" data-quitar="${esc(i.id)}"${marcado(i, 'pruebas')}> Quitarlo también en producción</label></li>`).join('')}</ul></section>` : ''}
+
+      ${nuevos.length || autos.length ? `<section class="panel"><div class="panel-head"><h2>Se lleva a producción sin preguntar</h2></div>
+        <ul class="cambios">
+          ${nuevos.map((f) => `<li><b>${esc(f.nombre)}</b> <span class="muted">· ${esc(TIPO_FICHA[f.tipo])}</span> <span class="badge b-ok">Alta nueva</span></li>`).join('')}
+          ${autos.map(({ f, i }) => `<li>${deQuien(f, i)}<div class="cambio"><s>${esc(i.textoProduccion)}</s> → ${esc(i.textoPruebas)}</div></li>`).join('')}
+        </ul></section>` : ''}
+
+      ${!conflictos.length && !porConfirmar.length && !nuevos.length && !autos.length ? '<section class="panel"><div class="empty">Esta versión no trae nada que producción no tenga ya. Puedes darla por aplicada para que quede como punto de partida de la siguiente.</div></section>' : ''}
+
+      <div class="pie-migrar"><span id="migrarFalta"></span><button class="btn primary" id="migrarBoton" data-accion="migrar"></button></div>
+      </div>`;
+    actualizarPieDeMigracion();
+  }
+
+  function actualizarPieDeMigracion() {
+    const m = estado.migracion;
+    if (!m || !$('#migrarBoton')) return;
+    const faltan = V.sinDecidir(m.plan, m.decisiones).length;
+    const cuantas = V.operaciones(m.plan, m.decisiones).filter((op) => !op.copia).length;
+    $('#migrarFalta').textContent = faltan ? (faltan === 1 ? 'Falta 1 conflicto por decidir.' : 'Faltan ' + faltan + ' conflictos por decidir.') : '';
+    const boton = $('#migrarBoton');
+    boton.disabled = faltan > 0;
+    boton.textContent = cuantas ? 'Migrar a producción (' + plural(cuantas, 'ficha', 'fichas') + ')'
+      : faltan ? 'Migrar a producción' : 'Dar por aplicada la versión ' + m.numero;
+  }
+
+  main.addEventListener('change', (e) => {
+    const m = estado.migracion;
+    if (!m) return;
+    const t = e.target;
+    if (t.dataset.decision) m.decisiones[t.dataset.decision] = t.value;
+    else if (t.dataset.quitar) m.decisiones[t.dataset.quitar] = t.checked ? 'pruebas' : 'produccion';
+    else return;
+    actualizarPieDeMigracion();
+  });
+
+  /**
+   * Aplica el plan. Cada ficha se guarda por la ruta de siempre, así que pasa
+   * por las mismas reglas que un guardado a mano y se copia de vuelta a
+   * pruebas. Si algo falla a medias no hay que deshacer nada: lo que no entró
+   * se queda fuera de la base y la siguiente revisión lo vuelve a proponer.
+   */
+  async function ejecutarMigracion() {
+    const m = estado.migracion;
+    if (V.sinDecidir(m.plan, m.decisiones).length) { toast('Faltan conflictos por decidir.', true); return; }
+    const ops = V.operaciones(m.plan, m.decisiones);
+    const cambian = ops.filter((op) => !op.copia).length;
+
+    const seguro = await confirmar('¿Migrar la versión ' + m.numero + ' a producción?',
+      cambian
+        ? 'Se van a guardar ' + plural(cambian, 'ficha', 'fichas') + ' en producción. Los usuarios de la app lo verán de inmediato.'
+        : 'No hay nada que cambiar en producción. La versión queda anotada como aplicada y será el punto de partida de la siguiente.',
+      cambian ? 'Migrar' : 'Dar por aplicada', cambian > 0);
+    if (!seguro) return;
+
+    main.innerHTML = `<div class="head"><div><h1>Migrando la versión ${esc(m.numero)}…</h1><p class="sub">No cierres esta pestaña hasta que termine.</p></div></div>
+      <section class="panel"><ul class="cambios" id="migrarPasos"></ul></section>`;
+    const paso = (html, clase) => { const li = document.createElement('li'); li.innerHTML = html; if (clase) li.className = clase; $('#migrarPasos').appendChild(li); return li; };
+
+    try {
+      const r = await api('/api/admin/migraciones/preparar', { metodo: 'POST', cuerpo: { version: m.numero } });
+      paso('Producción quedó guardada como estaba en su <b>versión ' + esc(r.respaldo) + '</b>.');
+    } catch (e) {
+      paso('No se pudo empezar: ' + esc(e.message) + ' No se cambió nada.', 'mal');
+      paso('<button class="btn" data-accion="volver-versiones">Volver a Versiones</button>');
+      return;
+    }
+
+    const nuevos = {}, fallidas = [], avisos = [], pendientes = [];
+    let guardadas = 0;
+
+    const guardar = async (op) => {
+      const ruta = op.tipo === 'creador' ? '/api/admin/creadores' : '/api/admin/productoras';
+      let { cuerpo, incompleto } = V.cuerpoDe(op, nuevos, m.existen);
+      let r = await api(ruta, { metodo: 'POST', cuerpo });
+      if (op.nuevo && !nuevos[op.id]) {
+        nuevos[op.id] = r.id;
+        m.existen.add(r.id);
+        // Al crearlo, producción ya mandó su copia, pero pruebas todavía no
+        // sabía que es su misma ficha. Se le dice cuál es (antes de que otra
+        // ficha lo nombre) y se guarda otra vez, para que la copia llegue ahora
+        // a la ficha correcta. Lo que avisara la primera copia ya no cuenta.
+        try {
+          await api('/api/admin/migraciones/enlazar', { metodo: 'POST', cuerpo: { tipo: op.tipo, pruebas: op.idPruebas, produccion: r.id } });
+          ({ cuerpo, incompleto } = V.cuerpoDe(op, nuevos, m.existen));
+          r = await api(ruta, { metodo: 'POST', cuerpo });
+        } catch (e) {
+          avisos.push('«' + op.nombre + '» se creó, pero no se pudo enlazar con su ficha de pruebas: ' + e.message);
+        }
+      }
+      if (r.avisoReplica) avisos.push('«' + op.nombre + '» se guardó, pero no se copió de vuelta a pruebas: ' + r.avisoReplica);
+      if (r.avisoSuscripcion) avisos.push('«' + op.nombre + '» se guardó, pero YouTube no confirmó la suscripción: ' + r.avisoSuscripcion);
+      return incompleto;
+    };
+
+    for (const op of ops) {
+      const li = paso(esc(TIPO_FICHA[op.tipo]) + ' <b>' + esc(op.nombre) + '</b>…');
+      try {
+        if (await guardar(op)) pendientes.push(op);
+        if (!op.copia) guardadas++;
+        li.innerHTML = esc(TIPO_FICHA[op.tipo]) + ' <b>' + esc(op.nombre) + '</b>: '
+          + (op.nuevo ? 'dado de alta.' : op.copia ? 'se quedó como estaba aquí, y así se copió a pruebas.' : 'actualizado.');
+      } catch (e) {
+        // Una copia que falla no deja nada a medias en producción.
+        if (op.copia) { li.remove(); avisos.push('«' + op.nombre + '» se quedó como estaba aquí, pero no se pudo copiar así a pruebas: ' + e.message); continue; }
+        fallidas.push(op.id);
+        li.className = 'mal';
+        li.innerHTML = esc(TIPO_FICHA[op.tipo]) + ' <b>' + esc(op.nombre) + '</b>: no se guardó. ' + esc(e.message);
+      }
+    }
+    // Segunda vuelta para quien nombraba a alguien que todavía no existía.
+    for (const op of pendientes) {
+      try { await guardar(op); } catch (e) { avisos.push('«' + op.nombre + '» quedó sin alguna de sus ligas con fichas nuevas: ' + e.message); }
+    }
+
+    const fin = V.estadoFinal(m.plan, nuevos, fallidas, m.ids);
+    let anotada = true;
+    try {
+      await api('/api/admin/migraciones', { metodo: 'POST', cuerpo: { version: m.numero, estado: { base: fin.base, ids: fin.ids, resumen: { guardadas, fallidas: fallidas.length } } } });
+    } catch (e) {
+      anotada = false;
+      paso('Las fichas se guardaron, pero no se pudo anotar la migración: ' + esc(e.message) + ' Repite «Revisar y migrar» con esta misma versión: no duplicará nada.', 'mal');
+    }
+
+    avisos.forEach((a) => paso(esc(a), 'aviso'));
+    $('#main h1').textContent = fallidas.length ? 'La versión ' + m.numero + ' se migró a medias' : 'Versión ' + m.numero + ' migrada';
+    $('#main .sub').textContent = plural(guardadas, 'ficha guardada', 'fichas guardadas') + ' en producción'
+      + (fallidas.length ? ', ' + plural(fallidas.length, 'no se pudo guardar', 'no se pudieron guardar') + '. Corrige lo que indica cada una y, en Versiones, pulsa «Reintentar lo que faltó»: solo propondrá eso.' : '.')
+      + (anotada ? '' : ' La migración no quedó anotada.');
+    paso('<button class="btn primary" data-accion="volver-versiones">Volver a Versiones</button>');
+
+    estado.migracion = null;
+    estado.creadores = null;
+    estado.productoras = null;
+    refrescarContadores();
+  }
+
+  // ---------------------------------------------------------------------------
   // Acciones
   // ---------------------------------------------------------------------------
   document.addEventListener('click', async (e) => {
@@ -1181,9 +2057,55 @@
     try {
       switch (accion) {
         case 'recargar': ir(estado.vista); break;
+
+        case 'crear-version': crearVersion(); break;
+        case 'comparar-version': await compararVersion(Number(id)); break;
+        case 'revisar-migracion': await revisarMigracion(Number(id)); break;
+        case 'volver-versiones': ir('versiones'); break;
+        case 'migrar': await ejecutarMigracion(); break;
+
+        case 'elegir-todos': {
+          const m = estado.migracion;
+          if (!m) break;
+          itemsDe(m.plan, 'conflicto').forEach(({ i }) => { m.decisiones[i.id] = b.dataset.valor; });
+          pintarRevision();
+          break;
+        }
+
+        case 'descartar-pendiente': {
+          const ok = await confirmar('¿Descartar los cambios de ' + b.dataset.nombre + '?',
+            'Pruebas deja de proteger lo que se cambió aquí. La próxima vez que esa ficha se guarde en producción, o cuando se repita la copia completa, quedará igual que allá. Si prefieres llevar los cambios a producción, no los descartes: crea una versión y mígrala.',
+            'Descartar', true);
+          if (!ok) break;
+          await api('/api/admin/versiones/descartar', { metodo: 'POST', cuerpo: { tipo: b.dataset.tipo, id } });
+          toast('Cambios descartados.');
+          await vistaVersiones();
+          break;
+        }
         case 'nuevo-creador': await abrirCreador(null); break;
         case 'editar-creador': await abrirCreador(id); break;
         case 'nueva-productora': await abrirProductora(null); break;
+        case 'nuevo-canal': await abrirCanal(null); break;
+        case 'editar-canal': await abrirCanal(id); break;
+
+        case 'borrar-canal': {
+          const v = vigilados().find((x) => x.canal.id === id);
+          if (!v) break;
+          const k = v.canal;
+          const ok = await confirmar('¿Eliminar el canal ' + (k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : k.channelId)) + '?',
+            'Sale del directorio y el servidor deja de vigilarlo: ya no habrá avisos de sus videos. '
+              + (v.tipo === 'productora' ? 'Se borran también los videos que publicó.' : 'Los videos que ya publicó siguen siendo de ' + v.dueno.nombre + '.')
+              + ' No se puede deshacer.', 'Eliminar', true);
+          if (!ok) break;
+          const r = await api('/api/admin/canales/' + id, { metodo: 'DELETE' });
+          toast(r.mensaje || 'Canal eliminado.');
+          estado.creadores = null;
+          estado.productoras = null;
+          vistaCanales();
+          refrescarContadores();
+          break;
+        }
+
         case 'editar-productora': await abrirProductora(id); break;
 
         case 'borrar-productora': {
@@ -1243,7 +2165,7 @@
           const r = await reintentarDueno(tipo, c);
           if (r.avisoSuscripcion) toast('El hub respondió: ' + r.avisoSuscripcion, true);
           else toast('Solicitud enviada. Pasa a Activa cuando el hub la verifique.');
-          setTimeout(() => { if (estado.vista === 'suscripciones') vistaSuscripciones(); refrescarContadores(); }, 2000);
+          setTimeout(() => { if (estado.vista === 'canales') vistaCanales(); refrescarContadores(); }, 2000);
           break;
         }
 
@@ -1263,11 +2185,137 @@
             } catch (err) { mal++; }
           }
           toast(mal ? `${bien} enviadas, ${mal} fallaron.` : plural(bien, 'solicitud enviada', 'solicitudes enviadas') + ' al hub.', !!mal);
-          setTimeout(() => { if (estado.vista === 'suscripciones') vistaSuscripciones(); refrescarContadores(); }, 2000);
+          setTimeout(() => { if (estado.vista === 'canales') vistaCanales(); refrescarContadores(); }, 2000);
           break;
         }
 
         case 'mover': abrirMover(b.dataset.video); break;
+
+        case 'filtro-pubs': {
+          estado.filtroPubs = b.dataset.valor;
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'ajuste-cortos': {
+          // La casilla ya cambió al pulsarla. Si algo falla o se cancela, se
+          // vuelve a pintar la sección con lo que diga el servidor.
+          const encender = b.checked;
+          try {
+            const seguro = await confirmar(
+              encender ? 'Mostrar los videos cortos' : 'Dejar de mostrar los videos cortos',
+              encender
+                ? 'La app enseñará un apartado de videos cortos en Novedades, con los que ya están guardados y los que lleguen. Cada persona podrá apagarlos para sí en Ajustes. No se avisa de los que ya estaban guardados.'
+                : 'Los videos cortos dejan de salir en la app y de avisar, y desaparece la opción en los Ajustes de la app. No se borra nada: si los vuelves a encender, ahí siguen.',
+              encender ? 'Mostrarlos' : 'Dejar de mostrarlos', !encender);
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { cortos: encender } });
+              toast(encender ? 'Videos cortos encendidos.' : 'Videos cortos apagados.');
+            }
+          } finally {
+            if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          }
+          break;
+        }
+
+        case 'tipo-video': {
+          const corto = b.dataset.valor === 'short';
+          await api('/api/admin/videos/' + encodeURIComponent(b.dataset.video) + '/tipo', { metodo: 'PUT', cuerpo: { tipo: b.dataset.valor } });
+          toast(corto ? 'Marcado como video corto.' : 'Marcado como video normal.');
+          if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
+
+        case 'revisar-cortos': {
+          b.disabled = true;
+          const antes = b.textContent;
+          b.textContent = 'Preguntando a YouTube…';
+          try {
+            const r = await api('/api/admin/videos/revisar-cortos', { metodo: 'POST' });
+            toast(!r.revisados ? 'No hay videos cortos guardados que repasar.'
+              : (r.corregidos ? plural(r.corregidos, 'video pasó', 'videos pasaron') + ' a normal' : 'Ninguno cambió')
+                + ' de ' + plural(r.revisados, 'corto repasado', 'cortos repasados')
+                + (r.sinRespuesta ? '; de ' + num(r.sinRespuesta) + ' YouTube no aclaró nada.' : '.'));
+          } finally {
+            b.disabled = false;
+            b.textContent = antes;
+          }
+          if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
+
+        case 'ajuste-anuncios': {
+          // Igual que con los cortos: la casilla ya cambió al pulsarla, y al
+          // final se vuelve a pintar con lo que diga el servidor.
+          const encender = b.checked;
+          try {
+            const seguro = await confirmar(
+              encender ? 'Mostrar anuncios en la app' : 'Dejar de mostrar anuncios',
+              encender
+                ? 'La app de Android empezará a mostrar anuncios de Google entre los videos de Novedades a quien no los haya quitado. Los teléfonos que la tienen abierta se enteran en un minuto como mucho. Antes de encenderlos, la política de privacidad publicada tiene que decir que hay anuncios.'
+                : 'La app deja de mostrar anuncios y de ofrecer quitarlos. Quien ya los quitó no pierde nada: si los vuelves a encender, sigue sin verlos.',
+              encender ? 'Mostrarlos' : 'Dejar de mostrarlos', encender && config.ambiente === 'produccion');
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { anuncios: encender } });
+              toast(encender ? 'Anuncios encendidos.' : 'Anuncios apagados.');
+            }
+          } finally {
+            if (estado.vista === 'anuncios') await vistaAnuncios();
+          }
+          break;
+        }
+
+        case 'crear-folios': {
+          const cantidad = Number($('#folCantidad').value);
+          if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100) { toast('Se pueden crear de 1 a 100 folios cada vez.', true); break; }
+          b.disabled = true;
+          const nota = $('#folNota').value.trim();
+          estado.foliosNuevos = await api('/api/admin/folios', { metodo: 'POST', cuerpo: { cantidad, nota: nota || null } });
+          toast(plural(estado.foliosNuevos.length, 'folio creado', 'folios creados') + '.');
+          if (estado.vista === 'anuncios') await vistaAnuncios();
+          break;
+        }
+
+        case 'copiar-folio': {
+          toast(await copiar(b.dataset.codigo) ? 'Folio copiado.' : 'No se pudo copiar. Selecciónalo y cópialo a mano.', false);
+          break;
+        }
+
+        case 'copiar-folios': {
+          const todos = (estado.foliosNuevos || []).map((f) => f.codigo).join('\n');
+          toast(await copiar(todos) ? 'Copiados.' : 'No se pudo copiar. Selecciónalos y cópialos a mano.', false);
+          break;
+        }
+
+        case 'anular-folio': {
+          const codigo = b.dataset.codigo;
+          const ok = await confirmar('¿Anular el folio ' + codigo + '?', 'Deja de valer: si ya se lo diste a alguien, no podrá canjearlo. No se puede deshacer.', 'Anular', true);
+          if (!ok) break;
+          const r = await api('/api/admin/folios/' + encodeURIComponent(codigo), { metodo: 'DELETE' });
+          estado.foliosNuevos = (estado.foliosNuevos || []).filter((f) => f.codigo !== codigo);
+          toast(r.mensaje || 'Folio anulado.');
+          if (estado.vista === 'anuncios') await vistaAnuncios();
+          break;
+        }
+
+        case 'sin-anuncios-usuario': {
+          const quitar = b.dataset.valor === 'true';
+          const nombre = b.dataset.nombre;
+          const ok = await confirmar(
+            quitar ? '¿Quitarle los anuncios a ' + nombre + '?' : '¿Devolverle los anuncios a ' + nombre + '?',
+            quitar ? 'Deja de ver anuncios sin pagar ni usar un folio. Queda apuntado que se hizo desde el panel.'
+              : b.dataset.origen === 'compra'
+                ? 'Los compró. Si solo se los devuelves aquí, su teléfono vuelve a presentar la compra al abrir la app y se le quitan otra vez: para que sea definitivo, devuélvele antes el dinero en Play Console.'
+                : b.dataset.origen === 'folio'
+                  ? 'Los quitó con un folio de regalo, que ya se gastó. Volverá a ver anuncios y el folio no se recupera.'
+                  : 'Volverá a ver anuncios como cualquier otra cuenta.',
+            quitar ? 'Quitárselos' : 'Devolvérselos', !quitar);
+          if (!ok) break;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/sin-anuncios?valor=' + quitar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          await abrirUsuario(id);
+          break;
+        }
 
         case 'ver-usuario': {
           b.disabled = true;
@@ -1340,7 +2388,7 @@
   });
 
   window.addEventListener('hashchange', () => {
-    const v = location.hash.slice(1);
+    const v = ALIAS[location.hash.slice(1)] || location.hash.slice(1);
     if (sesion && v !== estado.vista && VISTAS[v]) ir(v);
   });
 

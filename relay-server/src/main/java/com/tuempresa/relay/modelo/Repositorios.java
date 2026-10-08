@@ -72,6 +72,22 @@ public final class Repositorios {
         @Query("select k from Canal k where k.productoraId in :productoras")
         List<Canal> deProductoras(@Param("productoras") Collection<UUID> productoras);
 
+        /** Los canales de YouTube, que son los que tienen ficha propia en el panel. */
+        @Query("""
+                select k from Canal k
+                where k.plataforma = 'youtube'
+                order by k.creadoEn asc, k.id asc
+                """)
+        List<Canal> deYouTube();
+
+        /** Canales de otros en los que aparece un creador. */
+        @Query("""
+                select k from Canal k join k.vinculados v
+                where v = :creador
+                order by k.creadoEn asc, k.id asc
+                """)
+        List<Canal> dondeAparece(@Param("creador") UUID creador);
+
         /** Los canales propios de una productora: los que no tienen creador. */
         @Query("""
                 select k from Canal k
@@ -113,6 +129,11 @@ public final class Repositorios {
 
         boolean existsByVideoId(String videoId);
 
+        /** Para el panel: solo los cortos, o todo menos los cortos. */
+        List<Publicacion> findByTipoOrderByPublicadoEnDesc(String tipo, Pageable pagina);
+
+        List<Publicacion> findByTipoNotOrderByPublicadoEnDesc(String tipo, Pageable pagina);
+
         /** Directos pendientes de arrancar o de terminar. */
         List<Publicacion> findByDirectoIn(Collection<String> estados);
 
@@ -123,15 +144,20 @@ public final class Repositorios {
          *
          * Ninguna de las dos colecciones puede llegar vacia; quien llama pone
          * un id que no existe en la que no tenga nada.
+         *
+         * Los videos cortos nunca van mezclados con los demas: `cortos` elige
+         * cual de las dos listas se pide.
          */
         @Query("""
                 select p from Publicacion p
                 where (p.creadorId in :creadores or p.canalId in :canales)
                   and p.estado <> 'removed'
+                  and ((:cortos = true and p.tipo = 'short') or (:cortos = false and p.tipo <> 'short'))
                 order by p.publicadoEn desc nulls last
                 """)
         List<Publicacion> delFeed(@Param("creadores") Collection<UUID> creadores,
                                   @Param("canales") Collection<UUID> canales,
+                                  @Param("cortos") boolean cortos,
                                   Pageable pagina);
 
         /**
@@ -142,7 +168,20 @@ public final class Repositorios {
         @Query("delete from Publicacion p where p.creadorId is null and p.canalId in :canales")
         void borrarSinCreadorDe(@Param("canales") Collection<UUID> canales);
 
+        /** Lo que un canal publicó cuando no tenía creador pasa a ser del que ahora tiene. */
+        @Modifying
+        @Query("update Publicacion p set p.creadorId = :creador where p.canalId = :canal and p.creadorId is null")
+        void adoptar(@Param("canal") UUID canal, @Param("creador") UUID creador);
+
         List<Publicacion> findAllByOrderByPublicadoEnDesc(Pageable pagina);
+
+        /** Los últimos videos de un canal, para su ficha en la app. Sin los cortos. */
+        @Query("""
+                select p from Publicacion p
+                where p.canalId = :canal and p.estado <> 'removed' and p.tipo <> 'short'
+                order by p.publicadoEn desc nulls last
+                """)
+        List<Publicacion> delCanal(@Param("canal") UUID canal, Pageable pagina);
 
         @Modifying
         @Query("update Publicacion p set p.reportes = p.reportes + 1 where p.videoId = :videoId")
@@ -199,6 +238,14 @@ public final class Repositorios {
 
         long countByPosibleBotTrue();
 
+        /** Cuántas cuentas ya no ven anuncios, por motivo: compra, folio o panel. */
+        @Query("""
+                select u.sinAnunciosOrigen, count(u) from Usuario u
+                where u.sinAnuncios = true
+                group by u.sinAnunciosOrigen
+                """)
+        List<Object[]> sinAnunciosPorOrigen();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
@@ -233,6 +280,42 @@ public final class Repositorios {
                              @Param("soloAdmins") boolean soloAdmins,
                              @Param("soloBots") boolean soloBots,
                              Pageable pagina);
+    }
+
+    public interface Ajustes extends JpaRepository<Ajuste, String> {
+    }
+
+    public interface Folios extends JpaRepository<Folio, String> {
+
+        List<Folio> findAllByOrderByCreadoEnDesc(Pageable pagina);
+
+        /**
+         * Gasta un folio: lo borra y dice si estaba. Es una sola sentencia a
+         * propósito. Si dos personas mandan el mismo folio a la vez, la base
+         * deja pasar a una sola: la otra recibe 0 y se queda sin él.
+         */
+        @Modifying
+        @Query("delete from Folio f where f.codigo = :codigo")
+        int gastar(@Param("codigo") String codigo);
+    }
+
+    public interface Compras extends JpaRepository<Compra, UUID> {
+
+        Optional<Compra> findByToken(String token);
+
+        /**
+         * Las compras de una cuenta pasan a otra. Hay que llamarlo antes de
+         * borrar la primera cuando se funden dos: si no, se irían con ella.
+         */
+        @Modifying
+        @Query("update Compra c set c.usuarioId = :a where c.usuarioId = :de")
+        void pasar(@Param("de") UUID de, @Param("a") UUID a);
+    }
+
+    public interface Fotos extends JpaRepository<Foto, UUID> {
+
+        /** La copia que ya hay de la foto de esa cuenta ("x/usuario"), si hay. */
+        Optional<Foto> findByOrigen(String origen);
     }
 
     public interface Suscripciones extends JpaRepository<Suscripcion, String> {

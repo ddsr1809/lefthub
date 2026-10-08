@@ -18,6 +18,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import com.vocesdeizquierda.lefthub.data.Creador
+import com.vocesdeizquierda.lefthub.data.Productora
 
 enum class VarianteBoton { PRIMARIO, SECUNDARIO, PELIGRO }
 
@@ -95,13 +96,72 @@ fun FilaCreador(
     // comprobar todavía). Con null la fila queda como siempre.
     suscritoEnYouTube: Boolean? = null
 ) {
-    val esquema = MaterialTheme.colorScheme
-    val lugares = creador.platforms.size
+    val lugares = creador.canalesVisibles.size
     val textoYouTube = when (suscritoEnYouTube) {
         true -> "Suscrito en YouTube"
         false -> "Sin suscripción en YouTube"
         null -> null
     }
+
+    FilaDeDirectorio(
+        nombre = creador.name,
+        fotoUrl = creador.photoUrl,
+        detalle = "${creador.category.replaceFirstChar { it.uppercase() }} · " +
+            "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
+        siguiendo = siguiendo,
+        onAbrir = onAbrir,
+        onSeguir = onSeguir,
+        descripcionAlAbrir = "${creador.name}, ${creador.category}. " +
+            (textoYouTube?.let { "$it. " } ?: "") + "Ver su perfil.",
+        lineaExtra = textoYouTube,
+        lineaExtraDestacada = suscritoEnYouTube == true
+    )
+}
+
+/** Fila de una productora en el directorio. Mismo trato que la de un creador. */
+@Composable
+fun FilaProductora(
+    productora: Productora,
+    siguiendo: Boolean,
+    onAbrir: () -> Unit,
+    onSeguir: () -> Unit
+) {
+    val canales = productora.canales.size
+    val creadores = productora.creadores.size
+    val detalle = listOfNotNull(
+        "Productora",
+        "$canales ${if (canales == 1) "canal" else "canales"}".takeIf { canales > 0 },
+        "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 }
+    ).joinToString(" · ")
+
+    FilaDeDirectorio(
+        nombre = productora.nombre,
+        fotoUrl = productora.logoUrl,
+        detalle = detalle,
+        siguiendo = siguiendo,
+        onAbrir = onAbrir,
+        onSeguir = onSeguir,
+        descripcionAlAbrir = "${productora.nombre}, productora. Ver sus canales y creadores."
+    )
+}
+
+/**
+ * Lo que comparten las dos filas: a la izquierda quién es, y al tocarlo se
+ * abre su ficha; a la derecha, el botón de seguir.
+ */
+@Composable
+private fun FilaDeDirectorio(
+    nombre: String,
+    fotoUrl: String?,
+    detalle: String,
+    siguiendo: Boolean,
+    onAbrir: () -> Unit,
+    onSeguir: () -> Unit,
+    descripcionAlAbrir: String,
+    lineaExtra: String? = null,
+    lineaExtraDestacada: Boolean = false
+) {
+    val esquema = MaterialTheme.colorScheme
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -119,23 +179,21 @@ fun FilaCreador(
                 .clickable(onClick = onAbrir)
                 .semantics(mergeDescendants = true) {
                     role = Role.Button
-                    contentDescription = "${creador.name}, ${creador.category}. " +
-                        (textoYouTube?.let { "$it. " } ?: "") + "Ver su perfil."
+                    contentDescription = descripcionAlAbrir
                 }
                 .padding(vertical = Espacio.sm)
         ) {
-            Avatar(creador.photoUrl, creador.name)
+            Avatar(fotoUrl, nombre)
             Column(Modifier.weight(1f)) {
                 Text(
-                    creador.name,
+                    nombre,
                     style = MaterialTheme.typography.bodyMedium,
                     color = esquema.onBackground,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
                 Text(
-                    "${creador.category.replaceFirstChar { it.uppercase() }} · " +
-                        "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
+                    detalle,
                     style = MaterialTheme.typography.bodySmall,
                     color = esquema.onSurfaceVariant,
                     maxLines = 1,
@@ -143,11 +201,11 @@ fun FilaCreador(
                 )
                 // Línea aparte y con palabras: la diferencia no puede depender
                 // solo de un color ni de un icono que haya que interpretar.
-                if (textoYouTube != null) {
+                if (lineaExtra != null) {
                     Text(
-                        textoYouTube,
+                        lineaExtra,
                         style = MaterialTheme.typography.bodySmall,
-                        color = if (suscritoEnYouTube == true) esquema.onBackground else esquema.onSurfaceVariant,
+                        color = if (lineaExtraDestacada) esquema.onBackground else esquema.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -174,9 +232,9 @@ fun FilaCreador(
                 .semantics {
                     role = Role.Switch
                     contentDescription = if (siguiendo)
-                        "Dejar de recibir avisos de ${creador.name}"
+                        "Dejar de recibir avisos de $nombre"
                     else
-                        "Recibir avisos de ${creador.name}"
+                        "Recibir avisos de $nombre"
                 }
         ) {
             Text(

@@ -8,7 +8,9 @@ import com.tuempresa.relay.modelo.Repositorios;
 import com.tuempresa.relay.push.PushService.Emisor;
 import org.springframework.stereotype.Component;
 
+import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -20,7 +22,9 @@ import java.util.UUID;
  *   · si el canal tiene creador, el creador manda: oculto él, no se avisa a
  *     nadie, tampoco a quienes siguen a la productora;
  *   · la productora se suma si el canal le pertenece y está visible;
- *   · sin creador, avisa la productora sola.
+ *   · sin creador, firma la productora;
+ *   · los demás creadores con los que aparece el canal se suman si están
+ *     visibles, pero no firman ni bastan: sin dueño visible no avisa nadie.
  *
  * Devuelve vacío cuando no queda nadie a quien avisar.
  */
@@ -39,16 +43,20 @@ public class Emisores {
     }
 
     public Optional<Emisor> de(Canal canal) {
-        return resolver(canal.getCreadorId(), canal.getProductoraId(), true);
+        return resolver(canal.getCreadorId(), canal.getProductoraId(), canal.getVinculados(), true);
     }
 
     /**
-     * El creador es el que quedó anotado en la publicación; la productora, la
-     * que tenga hoy su canal. Si el canal ya no está en el directorio, la
-     * publicación sigue siendo de su creador y solo él avisa.
+     * El creador es el que quedó anotado en la publicación; la productora y
+     * los demás creadores, los que tenga hoy su canal. Si el canal ya no está
+     * en el directorio, la publicación sigue siendo de su creador y solo él
+     * avisa.
      */
     public Optional<Emisor> de(Publicacion publicacion) {
-        return resolver(publicacion.getCreadorId(), productoraDe(publicacion), true);
+        Canal canal = canalDe(publicacion);
+        return resolver(publicacion.getCreadorId(),
+                canal != null ? canal.getProductoraId() : null,
+                canal != null ? canal.getVinculados() : Set.of(), true);
     }
 
     /**
@@ -57,15 +65,19 @@ public class Emisores {
      * está oculto, como siempre ha hecho.
      */
     public Optional<Emisor> paraAvisoManual(Publicacion publicacion) {
-        return resolver(publicacion.getCreadorId(), productoraDe(publicacion), false);
+        Canal canal = canalDe(publicacion);
+        return resolver(publicacion.getCreadorId(),
+                canal != null ? canal.getProductoraId() : null,
+                canal != null ? canal.getVinculados() : Set.of(), false);
     }
 
-    private UUID productoraDe(Publicacion publicacion) {
+    private Canal canalDe(Publicacion publicacion) {
         if (publicacion.getCanalId() == null) return null;
-        return canales.findById(publicacion.getCanalId()).map(Canal::getProductoraId).orElse(null);
+        return canales.findById(publicacion.getCanalId()).orElse(null);
     }
 
-    private Optional<Emisor> resolver(UUID creadorId, UUID productoraId, boolean soloVisible) {
+    private Optional<Emisor> resolver(UUID creadorId, UUID productoraId, Set<UUID> vinculados,
+                                      boolean soloVisible) {
         Creador creador = null;
         if (creadorId != null) {
             creador = creadores.findById(creadorId)
@@ -77,7 +89,17 @@ public class Emisores {
         Productora productora = productoraId == null ? null
                 : productoras.findById(productoraId).filter(Productora::isActivo).orElse(null);
 
+        // Sin dueño visible no avisa nadie, tampoco los demás creadores.
         if (creador == null && productora == null) return Optional.empty();
-        return Optional.of(Emisor.de(creador, productora));
+
+        List<UUID> tambien = vinculados.isEmpty() ? List.of()
+                : creadores.findAllById(vinculados).stream()
+                        .filter(Creador::isActivo)
+                        .map(Creador::getId)
+                        .filter(id -> !id.equals(creadorId))
+                        .sorted()
+                        .toList();
+
+        return Optional.of(Emisor.de(creador, productora, tambien));
     }
 }

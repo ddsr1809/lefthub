@@ -18,10 +18,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class ReplicaController {
 
     private final ReplicaService replica;
+    private final VersionesService versiones;
     private final RelayProperties config;
 
-    public ReplicaController(ReplicaService replica, RelayProperties config) {
+    public ReplicaController(ReplicaService replica, VersionesService versiones, RelayProperties config) {
         this.replica = replica;
+        this.versiones = versiones;
         this.config = config;
     }
 
@@ -35,7 +37,12 @@ public class ReplicaController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
+        // Si en pruebas tiene cambios sin migrar, no se pisan: responde 409
+        // con el motivo, y el panel de producción lo enseña.
+        versiones.exigirSinPendientes(VersionesService.CREADOR, peticion.id());
+
         ReplicaService.Recibido recibido = replica.recibir(peticion);
+        versiones.marcarSincronizado(VersionesService.CREADOR, recibido.id());
 
         // Después de recibir(): la transacción ya confirmó, y el GET de
         // verificación del hub va a encontrar al creador.
@@ -55,7 +62,10 @@ public class ReplicaController {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
+        versiones.exigirSinPendientes(VersionesService.PRODUCTORA, peticion.id());
+
         ReplicaService.Recibido recibido = replica.recibir(peticion);
+        versiones.marcarSincronizado(VersionesService.PRODUCTORA, recibido.id());
         replica.sincronizarDespues(recibido);
 
         return ResponseEntity.ok(Dtos.RespuestaSimple.de(

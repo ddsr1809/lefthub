@@ -19,7 +19,10 @@ public record RelayProperties(
         @DefaultValue Apple apple,
         @DefaultValue Renovacion renovacion,
         @DefaultValue Cors cors,
-        @DefaultValue Replica replica
+        @DefaultValue Replica replica,
+        @DefaultValue Fotos fotos,
+        @DefaultValue Perfiles perfiles,
+        @DefaultValue Compras compras
 ) {
 
     public record Jwt(
@@ -36,7 +39,13 @@ public record RelayProperties(
             @DefaultValue("6") long antiguedadMaximaHoras
     ) {}
 
-    public record YouTube(@DefaultValue("") String apiKey) {}
+    public record YouTube(
+            @DefaultValue("") String apiKey,
+            // Las dos direcciones son las de YouTube y no hay por que tocarlas;
+            // estan aqui para poder apuntar las pruebas a un servidor de pega.
+            @DefaultValue("https://www.googleapis.com/youtube/v3") String apiBase,
+            @DefaultValue("https://www.youtube.com/shorts/") String urlShorts
+    ) {}
 
     public record Fcm(
             @DefaultValue("") String proyectoId,
@@ -69,6 +78,50 @@ public record RelayProperties(
     ) {}
 
     public record Cors(@DefaultValue("") String origenes) {}
+
+    /**
+     * De dónde se toman las fotos de perfil de las redes sociales.
+     *
+     * @param base   el servicio que las encuentra. Sin clave da 25 fotos al día.
+     * @param apiKey opcional: la clave del servicio, si se contrata un plan
+     */
+    public record Fotos(
+            @DefaultValue("https://unavatar.io") String base,
+            @DefaultValue("") String apiKey
+    ) {}
+
+    /**
+     * De dónde se leen el nombre y la descripción de una cuenta de una red.
+     *
+     * @param base   el servicio que abre el perfil. Sin clave da 25 consultas al día.
+     * @param apiKey opcional: la clave del servicio, si se contrata un plan
+     */
+    public record Perfiles(
+            @DefaultValue("https://api.microlink.io") String base,
+            @DefaultValue("") String apiKey
+    ) {}
+
+    /**
+     * La compra de "quitar los anuncios" en Google Play.
+     *
+     * @param paquete      el applicationId de la app en Play Console
+     * @param producto     el ID del producto, como se dio de alta allí
+     * @param credenciales ruta al JSON de la cuenta de servicio. Si no se
+     *                     pone otra, es la misma de FCM: basta con invitarla
+     *                     en Play Console
+     * @param apiBase      la dirección de Google; existe como ajuste solo para
+     *                     poder apuntar las pruebas a un servidor de pega
+     */
+    public record Compras(
+            @DefaultValue("") String paquete,
+            @DefaultValue("sin_anuncios") String producto,
+            @DefaultValue("") String credenciales,
+            @DefaultValue("https://androidpublisher.googleapis.com/androidpublisher/v3") String apiBase
+    ) {
+        public boolean estaConfigurado() {
+            return !paquete.isBlank() && !producto.isBlank() && !credenciales.isBlank();
+        }
+    }
 
     /**
      * Copia de creadores de produccion a testing.

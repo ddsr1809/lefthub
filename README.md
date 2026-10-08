@@ -15,6 +15,7 @@ El nombre "Relé" es un marcador de posición: cámbialo por el que prefieras, p
 | `android/` | La app de Android, en Kotlin y Jetpack Compose. | Play Store |
 | `ios/` | La app de iPhone, en Swift y SwiftUI. | App Store |
 | `scripts/` | Utilidades de terminal. | Tu computadora |
+| `datos/` | Copia en archivos de los creadores, productoras y canales de cada ambiente, para no perderlos. Ver `datos/README.md`. | GitHub |
 | `firestore.rules` | Quién puede leer y escribir qué. | Firebase |
 
 ---
@@ -253,42 +254,185 @@ Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlis
 
 ## Canales y productoras
 
-Un creador puede tener varios canales, también en la misma plataforma (el principal, el de clips, el de directos). Y existe la productora, la casa detrás de varios creadores, que se liga con el directorio de dos maneras independientes:
+Tres cosas distintas, cada una con su ficha en el panel:
 
-- **Creador ↔ productora**, de muchos a muchos: una persona puede figurar en varias, o en ninguna.
-- **Canal → productora**, canal por canal: de los tres canales de un creador, uno puede ser de la productora y los otros dos suyos. Un canal también puede ser de la productora sin creador: su canal oficial.
+- **Creador**: una persona del directorio. Puede figurar en una o varias productoras, y tener uno o varios canales de YouTube, varias redes sociales, o solo redes y ningún canal de YouTube: se le puede dar de alta con un canal de YouTube o solo con una cuenta de X, Instagram, TikTok, Facebook, Threads, Telegram, Twitch, Spotify, Patreon o su página. Solo YouTube genera avisos de videos; las redes son enlaces de su perfil. En su ficha van primero sus datos y sus redes, que bastan para crearlo; los canales de YouTube son opcionales y se agregan cuando se quiera, ahí mismo o en la sección Canales, donde además se dice de qué productora es cada uno.
+- **Canal de YouTube**: de donde salen los videos. Es de un creador (su dueño) o, si no tiene, de una productora: su canal oficial. Además puede ser de una productora aunque tenga creador, y **aparecer con otros creadores**.
+- **Productora**: la casa detrás de varios creadores. Tiene sus canales propios y puede **aparecer en el directorio como un creador más**.
+
+Lo que publica un canal le llega a quien sigue a cualquiera de estos: su dueño, su productora, o los demás creadores con los que aparece. Ejemplo: el canal de la productora *Gobierno de México* aparece con dos creadores; quien sigue a cualquiera de los dos, o a la productora, recibe sus videos, firmados por *Gobierno de México*.
+
+Figurar en una productora no basta para recibir los videos de sus canales: son ligas separadas. Con qué creadores aparece un canal se marca en la ficha de ese canal.
 
 | Tabla | Qué guarda |
 |---|---|
-| `canales` | Cada canal, con su creador (`creador_id`), su productora (`productora_id`) o los dos. Un `channel_id` de YouTube es de un solo dueño. |
-| `productoras` | Nombre, descripción y logo. |
+| `canales` | Cada canal o red, con su creador dueño (`creador_id`), su productora (`productora_id`) o los dos. Un `channel_id` de YouTube es de un solo dueño. |
+| `canales_creadores` | Con qué otros creadores aparece cada canal, sin contar al dueño. |
+| `productoras` | Nombre, descripción, logo, y si aparece en el directorio (`en_directorio`) y en qué tema (`categoria`). |
 | `creadores_productoras` | Qué creadores figuran en qué productoras. |
 | `favoritos_productoras` | Qué productoras sigue cada persona. |
 
 **Reglas**
 
-- El dueño de un canal es su creador; si no tiene, la productora. Con el dueño oculto, el canal no se vigila ni avisa a nadie.
-- Seguir a una productora avisa de lo que se publica en los canales que le pertenecen, no de todo lo de sus creadores. El topic de FCM es `productora_<id>`.
-- Un video de un canal que es de un creador y de una productora manda **un solo** aviso, con una condición de FCM (`creator_<id>` o `productora_<id>`): quien sigue a los dos lo recibe una vez.
+- El dueño de un canal es su creador; si no tiene, la productora. Los avisos salen a su nombre. Con el dueño oculto, el canal no se vigila ni avisa a nadie, tampoco a través de los demás creadores.
+- Seguir a una productora avisa de lo que se publica en los canales que le pertenecen, no de todo lo de sus creadores.
+- Un video manda **un solo** aviso aunque tenga varias audiencias, con una condición de FCM ("sigue a este o a aquel"): quien sigue a varios lo recibe una vez. Los topics son `creator_<id>` por cada creador y, por la productora, `productora_<id>` y `creator_<id de la productora>`. FCM admite cinco topics por condición; con más, el aviso se parte y lleva la misma etiqueta para que la copia sustituya a la primera.
+- Una productora que aparece en el directorio sale también en `GET /api/creadores`, como una fila más con `esProductora: true` y su mismo id. Las apps que no conocen las productoras la siguen con `PUT /api/favoritos/{id}`, que el servidor guarda como productora seguida; por eso `GET /api/perfil` repite en `favoritos` las productoras que se siguen.
 - Al retirar una productora se van sus canales propios y lo que publicaron. Los canales de sus creadores se quedan, sin la liga.
+- Cuando un canal sin creador pasa a tener dueño, lo que había publicado pasa a ser de ese creador.
 
 **Rutas**
 
 | Ruta | Para qué |
 |---|---|
-| `GET /api/creadores` | Cada creador trae `canales` (todos) y `productoras`. `conexiones` sigue viniendo, con el primer canal de cada plataforma. |
+| `GET /api/creadores` | Cada creador trae `canales` (los suyos y después los de otros en los que aparece) y `productoras`. `conexiones` sigue viniendo, con el primer canal de cada plataforma. Incluye las productoras que aparecen en el directorio. |
 | `GET /api/productoras`, `GET /api/productoras/{id}` | Productoras visibles, con sus canales y los ids de sus creadores. |
+| `GET /api/canales/{id}/publicaciones` | Lo último que publicó un canal, para su ficha en la app. No depende de a quién se siga. |
 | `PUT` / `DELETE /api/favoritos/productoras/{id}` | Seguir y dejar de seguir. `GET /api/perfil` las devuelve en `productoras`. |
-| `GET` / `POST /api/admin/productoras`, `DELETE /api/admin/productoras/{id}` | Panel: listar, guardar (con sus canales propios y sus creadores) y retirar. |
-| `POST /api/admin/creadores` | Acepta `canales` (la lista completa, cada uno con su `productoraId` opcional) y `productoras`. |
+| `GET` / `POST /api/admin/canales`, `DELETE /api/admin/canales/{id}` | Panel: la ficha de cada canal de YouTube. Dueño (`creadorId`), `productoraId` y `creadores` (con quién más aparece). Es el único sitio donde un canal cambia de dueño. |
+| `GET` / `POST /api/admin/productoras`, `DELETE /api/admin/productoras/{id}` | Panel: listar, guardar (con sus canales propios, sus creadores, `enDirectorio` y `categoria`) y retirar. |
+| `POST /api/admin/creadores` | Acepta `canales` (la lista completa, cada uno con su `productoraId` opcional) y `productoras`. No toca con quién aparece cada canal. |
 
-**En el panel.** La sección **Productoras** las da de alta, con sus canales propios y los creadores que figuran en ellas. En el formulario de un creador, **Canales** es una lista: se agregan con el buscador de YouTube o con un enlace de otra plataforma, cada uno con su etiqueta ("Clips", "Directos") y, si corresponde, su productora. El primero de cada plataforma es el principal. **Suscripciones** tiene una fila por canal de YouTube.
+**En el panel**
 
-El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mismo para testing y producción: se actualiza con `git -C /opt/vocesleft pull`, no con el pipeline.
+- **Creadores.** La ficha tiene dos listas: *Canales de YouTube* (con el buscador) y *Redes sociales* (un enlace por red; basta escribir el usuario, `@claudia`, y el panel arma el enlace). Cualquiera de las dos puede quedar vacía, no las dos. Más abajo, las productoras en las que figura y, solo para verlos, los canales de otros en los que aparece.
+- **Canales.** Una fila por canal de YouTube, con su suscripción al hub (antes era la sección Suscripciones) y su ficha: etiqueta, creador dueño, productora y *También aparece con estos creadores*.
+- **Productoras.** Sus canales propios, sus redes, los creadores que figuran en ella y la casilla *Aparece en el directorio como un creador más*, con el tema en el que sale.
 
-**Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
+El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mismo para testing y producción: se actualiza con `git -C /opt/vocesleft pull`, no con el pipeline. Si el servidor al que apunta es anterior a esta versión, el panel no ofrece las fichas de canal ni la casilla del directorio, y lo demás funciona igual.
+
+**En la app de Android.** Las mismas tres fichas que en el panel:
+
+- **Creador.** *Canales de YouTube* y *Redes sociales* van en apartados distintos, y después sus productoras. De un canal que no es suyo dice de quién es. Si no tiene canal de YouTube lo dice, porque entonces no hay avisos de videos suyos.
+- **Canal de YouTube.** Se llega con "Ver los últimos videos de este canal", debajo del botón del canal (que sigue abriendo YouTube de un toque). Dice de quién es, de qué productora y con qué otros creadores aparece, cada uno con el camino a su ficha para seguirlo, y lista sus últimos videos.
+- **Productora.** Sus canales, con quién sale cada uno, sus creadores y el botón para seguirla. Está en la pestaña **Productoras** del directorio (solo si hay alguna) y, si aparece en el directorio, también entre los creadores.
+
+En Novedades, un video de un canal de productora se firma "Creador · Productora". "¿Estoy suscrito en YouTube?" se contesta canal por canal. La app nueva también funciona contra un servidor anterior: sin `canales` usa `conexiones`, sin la ruta de productoras no muestra la pestaña y sin la de videos la ficha del canal sale sin lista.
+
+**Compatibilidad.** Las versiones de la app y del panel anteriores a esto siguen funcionando: leen y mandan `conexiones`, un enlace por plataforma, que el servidor entiende como "el canal principal de cada plataforma" y deja los demás canales como están. Para ellas, un canal compartido es un video más en Novedades y un aviso más, y una productora en el directorio es un creador más. Las redes que no conocen (X, Facebook, Threads, Telegram) no las enseñan: un creador que solo tenga esas les sale sin enlaces. Las tablas `conexiones` y `youtube_suscripciones` ya no se usan, pero no se borran todavía: si un despliegue se revierte, la versión anterior arranca sobre el esquema nuevo. Se retiran en una migración posterior.
 
 ---
+
+## Llenar la ficha con los datos de una cuenta
+
+Para no teclear: el panel puede poner el **nombre**, la **descripción** y la
+**foto** que la persona tenga en una de sus cuentas.
+
+- **Al dar de alta**, la primera cuenta que se agrega (una red con «Agregar»,
+  o un canal de YouTube con «Buscar y agregar») rellena sola lo que esté
+  vacío. Si el nombre ya está escrito, no toca nada.
+- **Cuando se quiera**, en la sección *Datos* hay una fila «Llenar con los
+  datos de:» con un botón por cada cuenta del formulario (*YouTube · @canal*,
+  *X · usuario*, *Instagram · usuario*…) y **Manual**. El botón sustituye los
+  tres datos por los de esa cuenta; lo que esa cuenta no traiga se queda como
+  estaba. La productora tiene lo mismo.
+- Nada se guarda hasta pulsar el botón de guardar: se puede revisar y corregir.
+
+De dónde sale cada cosa:
+
+- **YouTube**: todo de la Data API (1 unidad de cuota). Es la fuente fiable.
+- **Las demás redes y las páginas web**: el nombre y la descripción se leen de
+  la tarjeta de presentación del perfil (lo que la red publica para cuando
+  alguien comparte el enlace), a través de [microlink.io](https://microlink.io);
+  la foto, como se explica abajo. Sin clave son **25 consultas al día**; con un
+  plan, la clave va en `PERFILES_API_KEY`.
+- Es una ayuda, no una garantía: cada red redacta esa tarjeta a su manera,
+  algunas enseñan su pantalla de entrada en vez del perfil, y lo cambian
+  cuando quieren. El servidor no inventa: si lo que llega es «Instagram»,
+  «Log in» o cifras de seguidores, lo descarta y el panel dice qué faltó.
+
+## Versiones y migración de pruebas a producción
+
+El panel tiene una sección **Versiones**. Una versión es una foto numerada de los creadores, las productoras y sus canales tal como están en ese ambiente en ese momento. Se crea a mano, con una nota, y no cambia nada en la app. Con «Qué cambió desde entonces» se compara cualquier versión con el directorio de ahora.
+
+Sirve sobre todo para **preparar cambios en pruebas y llevarlos a producción**:
+
+1. **En el panel de pruebas** se dan de alta o se cambian las fichas. Mientras producción no las tenga, salen en «Cambios de pruebas sin migrar».
+2. **En el panel de pruebas**, sección Versiones, se pulsa **Crear versión**.
+3. **En el panel de producción**, sección Versiones, esa versión aparece en «Migrar desde pruebas». **Revisar y migrar** enseña, antes de guardar nada, qué pasaría:
+   - **Se lleva sin preguntar** lo que es nuevo y lo que cambió solo en pruebas.
+   - **Conflictos**: lo que se cambió en los dos lados y no coincide. Se ven los dos valores (y cómo estaba antes) y se elige uno, caso por caso o todos a la vez. No deja migrar hasta decidirlos todos.
+   - **Canales que se quitaron en pruebas**: en producción se conservan, salvo que se marque la casilla.
+   - **Para tener en cuenta**: lo que se retiró en un lado, o una foto que quedó guardada en el servidor de pruebas.
+4. **Migrar** guarda las fichas en producción y deja las dos partes iguales.
+
+Lo que conviene saber:
+
+- **Se compara campo por campo y contra la versión anterior.** Producción recuerda la última versión que aplicó. Si en pruebas cambió el nombre de alguien y en producción su descripción, se quedan los dos cambios sin preguntar. Solo es conflicto cuando el mismo dato cambió en los dos lados. La primera migración no tiene con qué comparar y pregunta cada diferencia de las fichas que se tocaron en pruebas.
+- **Retirar no se migra.** Si un creador o una productora se retira en pruebas, la revisión lo avisa y en producción se conserva: retirarlo allá borra sus videos y quién lo sigue, así que se hace a mano.
+- **Pruebas ya no pierde sus cambios.** Antes, guardar una ficha en producción pisaba su copia en pruebas. Ahora, si esa ficha tiene en pruebas cambios sin migrar, la copia no entra: producción guarda igual y su panel avisa de que no se copió. El choque aparece como conflicto al migrar. Para renunciar al cambio de pruebas está el botón **Descartar** de su lista de pendientes.
+- **Elegir lo de producción también iguala pruebas.** La ficha se vuelve a copiar a pruebas tal como está en producción.
+- **Cada ficha se guarda por la ruta de siempre**, una a una. Si alguna falla (por ejemplo, un canal de YouTube que en producción ya es de otro), las demás entran y la pantalla dice cuál falló y por qué. Corregido el motivo, «Reintentar lo que faltó» vuelve a proponer solo eso. No hay nada que deshacer.
+- **Antes de migrar, producción corta sola una versión** («Antes de migrar la versión N de pruebas»), para poder ver después qué cambió.
+- **Los ids siguen siendo distintos** en cada ambiente. Lo que nace en pruebas recibe en producción un id nuevo y queda enlazado con su ficha de pruebas.
+- **Hacen falta los dos servidores con esta versión** y la copia de creadores encendida (`REPLICA_URL` y `REPLICA_TOKEN`, ver `PIPELINE.md`): producción lee las versiones de pruebas con ese mismo token.
+
+Dónde está cada cosa: la foto la arma la base de datos (`V10__versiones.sql`); comparar, detectar conflictos y decidir qué se guarda es de `admin/versiones.js`, que tiene sus pruebas (`node admin/versiones.test.js`); el servidor solo guarda y entrega las versiones (`VersionesService`).
+
+## Foto de perfil
+
+En la ficha de un creador (y en la de una productora, para su logo) la sección
+**Foto de perfil** ofrece un botón por cada cuenta que tenga en el formulario:
+*YouTube · @canal*, *X · usuario*, *Instagram · usuario*… y **Manual**. Al
+pulsar uno, el panel trae la foto de esa cuenta, la enseña y la deja lista
+para guardarse con lo demás. Con *Manual* se pega la dirección de una imagen.
+
+- Al dar de alta a alguien buscando su canal de YouTube, el formulario se
+  rellena solo con el nombre, la descripción y la foto del canal (lo que esté
+  vacío). Después se puede cambiar la foto por la de otra red.
+- **De YouTube** se usa la dirección que da la Data API, que no caduca (1
+  unidad de cuota).
+- **De las demás redes** (X, Instagram, TikTok, Facebook, Threads, Telegram,
+  Twitch, Spotify, Patreon) el servidor se la pide a
+  [unavatar.io](https://unavatar.io) y **guarda una copia** (tabla `fotos`, V9)
+  que sirve él mismo en `/api/fotos/{id}`. Se guarda la copia y no la
+  dirección porque las de Instagram o TikTok caducan a los pocos días.
+- Sin clave, ese servicio da **25 fotos al día** por servidor, que sobra para
+  dar de alta creadores. Si hiciera falta más, se contrata un plan y se pone
+  la clave en `FOTOS_API_KEY` del `.env`.
+- La foto **no se actualiza sola**: si la persona la cambia en su red, se
+  vuelve a pulsar el botón y se guarda.
+- Si la red no entrega la foto (cuenta privada, usuario mal escrito, la red
+  bloquea la consulta), el panel lo dice y se puede probar con otra red o
+  pegarla a mano.
+
+## Videos cortos (Shorts)
+
+Los videos cortos van aparte de los demás, y son opcionales dos veces: para el
+equipo y para cada persona.
+
+- **El equipo decide si existen.** En el panel, sección **Publicaciones**, está
+  el interruptor *Mostrar los videos cortos en la app*. Viene **apagado**. Así,
+  el servidor guarda los Shorts que detecta pero no avisa de ellos ni los
+  enseña en ningún sitio, y la app no ofrece la opción. Al encenderlo, la app
+  muestra un apartado *Videos cortos* dentro de Novedades, con los que ya
+  estaban guardados y los que lleguen.
+- **Cada persona decide si los ve.** Con el interruptor encendido aparece en
+  los Ajustes de la app la sección *Videos cortos*, con *Verlos* / *No verlos*.
+  Si el equipo lo apaga, esa sección desaparece.
+
+Reglas que conviene saber:
+
+- Un corto **nunca** sale mezclado en Novedades ni en la ficha de un canal.
+- Sus avisos van por topics aparte (`creator_<id>_cortos`,
+  `productora_<id>_cortos`), a los que solo se suscribe el teléfono de quien
+  los ve. Las versiones de la app anteriores a esto no los conocen: dejan de
+  ver y de recibir Shorts del todo.
+- **Cómo se sabe que un video es un Short.** La Data API no lo dice. Si dura
+  más de tres minutos o es un directo, no lo es. Si dura menos, el servidor
+  pide `youtube.com/shorts/ID` (solo la cabecera, sin cuota): YouTube contesta
+  200 si es un Short y redirige a `/watch` si es un video normal. Si no
+  contesta con claridad, se queda como corto.
+- **Corregir a mano.** En la lista de Publicaciones cada video tiene *Es corto*
+  / *No es corto*. Y *Repasar los cortos guardados* vuelve a preguntarle a
+  YouTube por los últimos: sirve sobre todo la primera vez, porque lo guardado
+  antes de esta versión se clasificó solo por la duración.
+
+En la API: `GET /api/publicaciones` no trae cortos; `GET
+/api/publicaciones?tipo=cortos` trae solo cortos (vacío si están apagados o la
+persona no los quiere). `GET /api/perfil` dice `cortos` (lo que eligió la
+persona) y `cortosDisponibles` (lo que decidió el equipo). El interruptor es
+`GET`/`PUT /api/admin/ajustes`, y se guarda en la tabla `ajustes` (V8).
 
 ## "¿Estoy suscrito en YouTube?"
 
@@ -327,6 +471,158 @@ La app de iOS todavía no tiene esta función.
 
 ---
 
+## Anuncios, y cómo quitarlos
+
+La app de Android puede mostrar anuncios de Google (AdMob) entre los videos de
+Novedades. Una persona deja de verlos de dos maneras: con **una compra única**
+en Google Play, o con **un folio de regalo** que repartes tú y que se borra al
+usarse. Las dos quedan apuntadas en la base de datos, en su cuenta.
+
+Todo viene **apagado**. Nada de esto se ve en la app hasta que enciendes los
+anuncios en el panel, y la app de producción no puede mostrar ninguno hasta que
+le pones los identificadores de tu cuenta de AdMob.
+
+### Qué hace cada parte
+
+- **El equipo decide si hay anuncios.** En el panel, sección **Anuncios**, está
+  el interruptor *Mostrar anuncios en la app*. Es el ajuste `anuncios` de la
+  tabla `ajustes`; sin fila, no hay.
+- **Dónde salen.** Solo en Novedades: uno después del segundo video y luego uno
+  cada seis, tres como mucho (`anuncios/Huecos.kt`). Van en una tarjeta con la
+  palabra «Publicidad» y otro fondo, para que nadie toque uno creyendo que es
+  un video. Si Google no tiene anuncio que dar, ese hueco no se pinta.
+- **La biblioteca de Google solo arranca para quien ve anuncios.** Quien los
+  quitó, o cualquiera mientras estén apagados, nunca la pone en marcha. Antes
+  del primer anuncio se le pregunta a Google si a esa persona hay que pedirle
+  consentimiento (Europa, Reino Unido, algunos estados de EE. UU.); si hace
+  falta, Google enseña su formulario. A Google no se le dice a quién sigue la
+  persona ni qué abre (`anuncios/Anuncios.kt`).
+- **Comprar.** En Ajustes de la app, sección *Anuncios*, el botón *Quitar los
+  anuncios* abre la pantalla de pago de Google Play. La app le pasa el
+  comprobante al servidor, el servidor le pregunta a Google si es de verdad y
+  solo entonces quita los anuncios y le confirma a Google que la compra quedó
+  entregada. La app nunca decide por su cuenta que alguien pagó.
+- **Folio de regalo.** Los creas en el panel (de 1 a 100 cada vez, con una
+  nota para acordarte de para quién son). Son diez letras y números, como
+  `ABCDE-FGHJK`, sin los caracteres que se confunden al leer. La persona lo
+  escribe en Ajustes → Anuncios → *Tengo un folio de regalo*. Vale una sola
+  vez: al canjearlo **la fila se borra** de la tabla `folios`. Los que no se
+  han usado se pueden anular desde el panel.
+- **A mano.** En la ficha de una cuenta (panel → Usuarios) hay un botón para
+  quitarle o devolverle los anuncios. Sirve para atender a quien pagó y sigue
+  viéndolos.
+
+### Lo que queda en la base de datos (V11)
+
+| Dónde | Qué |
+|---|---|
+| `usuarios.sin_anuncios` | Si la cuenta ya no ve anuncios |
+| `usuarios.sin_anuncios_origen` | Por qué: `compra`, `folio` o `panel` |
+| `usuarios.sin_anuncios_desde` | Desde cuándo |
+| `folios` | Los folios **sin usar**. Canjear uno borra su fila |
+| `compras` | Cada compra que Google confirmó: comprobante, número de pedido y fecha |
+
+Cosas que conviene saber:
+
+- **Va con la cuenta, no con el teléfono.** Un invitado puede comprar o
+  canjear un folio; si después guarda su cuenta con Google en ese teléfono, lo
+  conserva.
+- **Una compra se recupera sola.** Es de la cuenta de Google Play de la
+  persona: al reinstalar la app o cambiar de teléfono, la app la vuelve a
+  presentar al abrirse y el servidor la apunta otra vez, sin cobrar.
+- **Un folio no.** Si quien lo canjeó borra su cuenta, se pierde. La app lo
+  avisa antes de borrar.
+- **Reembolsos.** Si devuelves el dinero de una compra en Play Console, Google
+  la da por cancelada y ya no se puede volver a presentar, pero el servidor no
+  se entera solo: quítale el «sin anuncios» a esa cuenta desde su ficha en el
+  panel.
+- **La app de iPhone no muestra anuncios.** Nada de esto la toca.
+
+### Para encenderlos en producción, en este orden
+
+**1. AdMob.** Crea la cuenta en `admob.google.com`, da de alta la app de
+Android (`com.vocesdeizquierda.lefthub`) y crea un bloque de anuncios de tipo
+**Banner**. Te da dos identificadores; ponlos en
+`android/app/build.gradle.kts`, en el sabor `produccion`:
+
+```kotlin
+val admobApp = "ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY"     // el de la app
+val admobBanner = "ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ"  // el del bloque
+```
+
+Mientras estén vacíos, la app de producción no muestra anuncios aunque el panel
+los tenga encendidos. Los sabores `developer` y `pruebas` usan siempre los
+identificadores de prueba de Google: salen anuncios marcados «Test Ad», que se
+pueden tocar sin riesgo. **No toques anuncios de verdad desde tu teléfono**: es
+el motivo más común por el que AdMob cierra una cuenta.
+
+En AdMob, *Privacidad y mensajes*, crea el mensaje de consentimiento para
+Europa si esperas gente de allí. Y publica el archivo `app-ads.txt` que te
+indica AdMob en la raíz de `vocesdeizquierda.com`.
+
+**2. El producto.** En Play Console, *Monetizar con Play → Productos →
+Productos únicos*, crea uno con el ID **`sin_anuncios`**, ponle precio y
+actívalo. Si usas otro ID, cámbialo en `PRODUCTO_SIN_ANUNCIOS`
+(`build.gradle.kts`) y en `COMPRAS_PRODUCTO` (servidor): tienen que coincidir
+letra por letra.
+
+**3. Que el servidor pueda confirmar las compras.** Usa la misma cuenta de
+servicio de FCM; solo hay que darle permiso:
+
+1. En Google Cloud, en el proyecto de esa cuenta de servicio, activa la
+   **Google Play Android Developer API**.
+2. En Play Console, *Usuarios y permisos*, invita al correo de la cuenta de
+   servicio (el `client_email` del JSON de FCM) con los permisos de ver datos
+   financieros y de gestionar pedidos.
+3. En `.env.prod` del VPS pon `COMPRAS_PAQUETE=com.vocesdeizquierda.lefthub` y
+   vuelve a desplegar. En los registros debe salir *Compras de Google Play
+   listas*, y en el panel, *Compra lista*.
+
+El permiso puede tardar unas horas en hacer efecto. Hasta que el servidor no
+puede confirmar compras, la app **no enseña el botón de comprar** (el folio
+sí): cobrar algo que luego no se puede entregar sería peor que no ofrecerlo.
+
+**4. Play Console, declaraciones.** Marca que la app contiene anuncios, declara
+el uso del ID de publicidad y actualiza el formulario de *Seguridad de los
+datos*: la biblioteca de anuncios recoge el identificador de publicidad, la
+ubicación aproximada y la interacción con los anuncios, y los comparte con
+Google para publicidad; y ahora hay compras.
+
+**5. La política de privacidad.** Ya está actualizada en `web/` (español e
+inglés) y en la pantalla de bienvenida de la app. Publícala antes de subir la
+versión nueva. Como cambió, `Aceptacion.VERSION` cambió con ella: la app
+vuelve a pedir la aceptación a todo el mundo, una vez.
+
+**6. Enciéndelos** en el panel, sección Anuncios.
+
+### Probar
+
+- **Los anuncios**: con el sabor `developer` o `pruebas` y el interruptor
+  encendido en ese servidor.
+- **Los folios**: en cualquier ambiente. Crea uno en el panel y canjéalo en la
+  app.
+- **La compra**: Google Play solo vende a una app instalada desde Play. Sube
+  la versión a *Prueba interna*, añade tu cuenta en Play Console →
+  *Configuración → Prueba de licencias* y compra con ella: pasa por todo el
+  flujo sin cobrarte. Esa app habla con el servidor de producción, que es el
+  que tiene `COMPRAS_PAQUETE`.
+
+### En la API
+
+`GET /api/perfil` dice `anuncios` (los tiene encendidos el equipo),
+`sinAnuncios` (esta cuenta los quitó) y `compraDisponible` (el servidor puede
+confirmar compras). `POST /api/anuncios/folio` (`{codigo}`) canjea un folio y
+`POST /api/anuncios/compra` (`{producto, token}`) registra una compra. Del
+panel: `GET /api/admin/anuncios`, `POST /api/admin/folios` (`{cantidad,
+nota}`), `DELETE /api/admin/folios/{codigo}`, `POST
+/api/admin/usuarios/{id}/sin-anuncios?valor=` y el interruptor, que es
+`anuncios` en `PUT /api/admin/ajustes`.
+
+Canjear folios tiene un límite por cuenta: cinco equivocados seguidos y luego
+uno cada tres minutos.
+
+---
+
 ## Cosas que se rompen y cómo notarlo
 
 **Las notificaciones dejan de llegar a los 10 días.** El arrendamiento de WebSub caducó. La renovación corre cada 4 días; en los registros del servidor debe aparecer "Ciclo de renovación terminado". Si no aparece, casi siempre es que el servicio escala a cero y nunca llega a ejecutar la tarea programada.
@@ -336,6 +632,10 @@ La app de iOS todavía no tiene esta función.
 **Llegan avisos duplicados.** No deberían: la transacción de idempotencia en `WebSubService.procesarEntrada` solo deja pasar el primero. Si pasa, revisa que no tengas dos suscripciones al mismo canal.
 
 **Se envían avisos de videos viejos.** Al suscribirte, el hub reenvía entradas recientes del feed. `relay.websub.antiguedad-maxima-horas` (6) las descarta. Cámbialo en `server/src/main/resources/application.yml`.
+
+**Los anuncios están encendidos en el panel y no sale ninguno.** En producción, casi siempre es que faltan `admobApp` y `admobBanner` en `build.gradle.kts`. Si están, mira el registro del teléfono con la etiqueta `Anuncios`: una cuenta de AdMob recién creada tarda en empezar a servir anuncios, y Google no siempre tiene uno que dar.
+
+**En Ajustes no aparece el botón de comprar, solo el del folio.** O el servidor no puede confirmar compras (el panel dice *Compra sin configurar*), o Google Play no devolvió el producto: no existe todavía en Play Console, no está activo, o la app instalada no viene de Google Play. El registro del teléfono lo dice con la etiqueta `ComprasRepo`.
 
 **`Task 'prepareKotlinBuildScriptModel' not found in project ':app'`.** Gradle y el Android Gradle Plugin no son compatibles entre sí. Casi siempre significa que el IDE no está usando el wrapper del proyecto. Está explicado en `android/COMO-ABRIR.md`.
 
@@ -374,5 +674,7 @@ Necesitas política de privacidad y términos de uso publicados en una URL antes
 | Cómo borrar la cuenta (lo pide Play) | `https://vocesdeizquierda.com/privacidad/#borrar-cuenta` | `https://vocesdeizquierda.com/en/privacy/#delete-account` |
 
 Las páginas en español mandan solas a la versión en inglés cuando el navegador no está en español (`web/idioma.js`). Si cambias lo que la app o el servidor guardan de las personas, actualiza la política en los dos idiomas.
+
+Los anuncios y la compra cambiaron lo que dicen esos documentos: antes prometían que la app no tenía publicidad y que no se usaba el identificador de publicidad. Los textos nuevos están en `web/`, pero son un borrador hecho con cuidado, no un dictamen: pásalos por quien te asesore antes de publicarlos, sobre todo la parte de la publicidad como finalidad secundaria en el aviso de privacidad mexicano.
 
 Este documento describe requisitos normativos de forma general; no es asesoría legal. Para AB 1757, la App Store Review y el manejo de datos personales, vale la pena una consulta con un abogado antes de publicar.

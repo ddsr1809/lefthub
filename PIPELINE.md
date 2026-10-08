@@ -96,6 +96,11 @@ Las productoras se copian igual, por `POST /internal/replica/productoras`. Un
 creador solo queda ligado en testing a las productoras que testing ya conoce,
 asi que el script de abajo las manda primero.
 
+Con que otros creadores aparece un canal viaja dentro de su dueno (su creador
+o, si no tiene, su productora), y testing solo puede ligarlo a los creadores
+que ya conoce. Por eso la copia completa da una segunda vuelta a quien tiene
+canales compartidos, y guardar la ficha de un canal vuelve a copiar a su dueno.
+
 Se enciende una vez, en el **VPS**, cuando los dos ambientes ya tienen esta
 version desplegada. El mismo comando copia los creadores que ya existian:
 
@@ -116,12 +121,55 @@ Lo que conviene saber:
   produccion en `creadores.origen_id` para reconocer al creador cuando cambia.
 - **Los borrados no se copian.** Retirar un creador en produccion lo deja como
   esta en testing; alli se borra desde su propio panel.
-- **Produccion manda.** Un cambio hecho a mano en testing sobre un creador
-  copiado se pierde la siguiente vez que ese creador se guarde en produccion.
+- **Produccion manda, salvo sobre lo que testing tiene sin migrar.** Un creador
+  o una productora que se cambio en el panel de testing queda protegido: la
+  copia de produccion no lo pisa, produccion guarda igual y su panel avisa de
+  que no se copio. Se resuelve al migrar esa version a produccion, o
+  descartando el cambio en el panel de testing (seccion Versiones). Lo que
+  testing no ha tocado se sigue copiando como siempre. Ver "Versiones y
+  migracion de pruebas a produccion" en `README.md`.
 - **Si testing no responde, produccion guarda igual** y el panel avisa de que
   la copia fallo. Para ponerse al dia basta repetir el script.
 - Si en testing ya existia un creador con ese canal de YouTube, la copia lo
   adopta en lugar de duplicarlo.
+
+## Respaldo del directorio en datos/
+
+Los creadores, las productoras y los canales de testing y de produccion se
+guardan tambien en archivos, en `datos/testing/` y `datos/produccion/` de este
+repositorio. Un temporizador del VPS lee las dos bases cada 5 minutos y, si
+algo cambio, hace un commit en `master` y lo sube. Que hay en esos archivos y
+como se recupera algo desde ellos esta en `datos/README.md`.
+
+Se enciende una vez, en el **VPS**, cuando `master` ya trae esta version:
+
+```bash
+git -C /opt/vocesleft pull
+bash /opt/vocesleft/scripts/vps/respaldo-datos.sh instalar
+```
+
+La primera vez se detiene y muestra una llave: hay que agregarla en GitHub
+(Settings del repositorio, Deploy keys) marcando **Allow write access**, y
+repetir el comando. Es la unica llave del VPS que puede escribir en el
+repositorio, y solo vale para este.
+
+Lo que conviene saber:
+
+- **No redespliega nada.** Esos commits solo tocan `datos/`, que no esta entre
+  las rutas que disparan el pipeline.
+- **`master` recibe commits que `development` y `testing` no tienen.** No
+  estorban al fusionar con pull requests, que es como sube el codigo. Lo que
+  ya no funciona es empujar directo a `master` desde tu equipo sin traer antes
+  lo ultimo.
+- **Usa un clon aparte**, `/opt/vocesleft-datos`. El de `/opt/vocesleft`, de
+  donde sale el panel, no se toca: sigue actualizandose solo cuando haces
+  `git pull` en el.
+- **Si `master` esta protegida** contra subidas directas, GitHub rechazara el
+  commit y la pasada lo dira en su registro. Hay que permitir esa llave en la
+  regla, o indicar otra rama con `RAMA=...` al instalar.
+- Ver las ultimas pasadas: `journalctl -u vocesleft-datos -n 30 --no-pager`.
+- El ambiente developer no pasa por aqui: `make datos-guardar` en tu equipo
+  escribe `datos/development/`.
 
 ## Configurar SSH y GitHub
 

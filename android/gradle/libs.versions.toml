@@ -15,6 +15,15 @@ playServicesAuth = "21.5.0"
 coil = "2.7.0"
 coroutines = "1.9.0"
 okhttp = "4.12.0"
+# Anuncios y compra. Van fijadas a versiones que se llevan bien con la
+# combinación conservadora de arriba (AGP 8.7.3 + Kotlin 2.1.0 + compileSdk 35):
+#  · play-services-ads 24.9.0 es la última de la serie 24. La 25 sube
+#    requisitos; pásate a ella cuando subas el AGP y Kotlin.
+#  · billing 8.3.0: Google Play exige la serie 8 o posterior. Es el artefacto
+#    de Java (sin -ktx) a propósito, para no atarse a la versión de Kotlin.
+playServicesAds = "24.9.0"
+ump = "3.2.0"
+billing = "8.3.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -50,6 +59,15 @@ play-services-auth = { group = "com.google.android.gms", name = "play-services-a
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
+
+# AdMob: los anuncios de Novedades. UMP es el formulario de consentimiento de
+# Google, obligatorio para mostrar anuncios a quien está en Europa y en
+# algunos estados de EE. UU.; donde no hace falta, no enseña nada.
+play-services-ads = { group = "com.google.android.gms", name = "play-services-ads", version.ref = "playServicesAds" }
+ump = { group = "com.google.android.ump", name = "user-messaging-platform", version.ref = "ump" }
+
+# Google Play Billing: la compra única que quita los anuncios.
+billing = { group = "com.android.billingclient", name = "billing", version.ref = "billing" }
 kotlinx-coroutines-play-services = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-play-services", version.ref = "coroutines" }
 
 [plugins]

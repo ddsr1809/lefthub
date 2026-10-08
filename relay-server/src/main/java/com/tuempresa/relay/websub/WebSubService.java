@@ -1,6 +1,7 @@
 package com.tuempresa.relay.websub;
 
 import com.tuempresa.relay.config.RelayProperties;
+import com.tuempresa.relay.directorio.AjustesService;
 import com.tuempresa.relay.modelo.*;
 import com.tuempresa.relay.push.Emisores;
 import com.tuempresa.relay.push.PushService;
@@ -42,6 +43,7 @@ public class WebSubService {
     private final PushService push;
     private final Emisores emisores;
     private final LectorDeFeed lector;
+    private final AjustesService ajustes;
     private final TransactionTemplate transaccionNueva;
 
     // El hub y el vigilante pueden querer revisar los directos a la vez. Con
@@ -53,7 +55,7 @@ public class WebSubService {
                          Repositorios.Suscripciones suscripciones,
                          RestClient http, RelayProperties config,
                          YouTubeClient youtube, PushService push, Emisores emisores,
-                         LectorDeFeed lector,
+                         LectorDeFeed lector, AjustesService ajustes,
                          PlatformTransactionManager gestorDeTransacciones) {
         this.canales = canales;
         this.publicaciones = publicaciones;
@@ -64,6 +66,7 @@ public class WebSubService {
         this.push = push;
         this.emisores = emisores;
         this.lector = lector;
+        this.ajustes = ajustes;
 
         this.transaccionNueva = new TransactionTemplate(gestorDeTransacciones);
         this.transaccionNueva.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
@@ -325,7 +328,7 @@ public class WebSubService {
                 ? detalle.miniatura()
                 : "https://i.ytimg.com/vi/" + entrada.videoId() + "/hqdefault.jpg");
         p.setDuracion(detalle != null ? detalle.duracion() : null);
-        p.setTipo(detalle != null ? detalle.tipo() : "video");
+        p.setTipo(tipoDe(entrada.videoId(), detalle));
         p.setEnVivo(detalle != null && detalle.enVivo());
         p.setDirecto(detalle != null ? detalle.directo() : Publicacion.DIRECTO_NO);
         p.setUrl("https://www.youtube.com/watch?v=" + entrada.videoId());
@@ -358,15 +361,46 @@ public class WebSubService {
             return;
         }
 
-        // 5. Avisar.
-        boolean enviado = push.avisarPublicacion(emisor, entrada.videoId(), p.getTitulo(),
-                p.getMiniaturaUrl(), detalle);
+        // 5. Avisar. Un video corto va aparte: solo si el equipo los tiene
+        //    encendidos en el panel, y solo a quienes los quieren ver. Apagados,
+        //    se queda guardado y nada más; si un día se encienden, ya está ahí.
+        boolean enviado;
+        if (p.esCorto()) {
+            if (!ajustes.cortos()) {
+                log.info("Video corto {} guardado sin notificar: están apagados en el panel",
+                        entrada.videoId());
+                return;
+            }
+            enviado = push.avisarCorto(emisor, entrada.videoId(), p.getTitulo(), p.getMiniaturaUrl());
+        } else {
+            enviado = push.avisarPublicacion(emisor, entrada.videoId(), p.getTitulo(),
+                    p.getMiniaturaUrl(), detalle);
+        }
 
         // Solo se marca si FCM aceptó el mensaje. Antes quedaba en true aunque
         // el envío fallara, y la base de datos decía "notificado" sin serlo.
         p.setNotificado(enviado);
         if (alAire) p.setDirectoAvisado(enviado);
         publicaciones.save(p);
+    }
+
+    /**
+     * Video normal o corto.
+     *
+     * La duración sola no basta: un Short dura como mucho tres minutos, pero
+     * también hay videos normales así de breves (un avance, un comunicado), y
+     * tratarlos de cortos sería esconderlos. Por eso, a los que duran poco se
+     * les pregunta además a YouTube, que es quien lo sabe. A los largos y a
+     * los directos no hace falta.
+     */
+    private String tipoDe(String videoId, YouTubeClient.DetalleDeVideo detalle) {
+        if (detalle == null) return Publicacion.TIPO_VIDEO;
+
+        boolean hayDuda = Publicacion.TIPO_CORTO.equals(detalle.tipo())
+                && Publicacion.DIRECTO_NO.equals(detalle.directo());
+
+        return YouTubeClient.tipoDe(detalle.tipo(), detalle.directo(),
+                hayDuda ? youtube.esShort(videoId) : null);
     }
 
     // -------------------------------------------------------------------------

@@ -35,6 +35,7 @@ public class AdminController {
 
     private final Repositorios.Creadores creadores;
     private final Repositorios.Productoras productoras;
+    private final Repositorios.Canales canales;
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Usuarios usuarios;
     private final Repositorios.Suscripciones suscripciones;
@@ -47,9 +48,13 @@ public class AdminController {
     private final CanalesService canalesService;
     private final Catalogo catalogo;
     private final ReplicaService replica;
+    private final AjustesService ajustes;
+    private final FotosService fotos;
+    private final PerfilesService perfiles;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
+                           Repositorios.Canales canales,
                            Repositorios.Publicaciones publicaciones,
                            Repositorios.Usuarios usuarios,
                            Repositorios.Suscripciones suscripciones,
@@ -57,9 +62,11 @@ public class AdminController {
                            YouTubeClient youtube, PushService push, Emisores emisores,
                            CreadoresService servicio, ProductorasService servicioDeProductoras,
                            CanalesService canalesService, Catalogo catalogo,
-                           ReplicaService replica) {
+                           ReplicaService replica, AjustesService ajustes,
+                           FotosService fotos, PerfilesService perfiles) {
         this.creadores = creadores;
         this.productoras = productoras;
+        this.canales = canales;
         this.publicaciones = publicaciones;
         this.usuarios = usuarios;
         this.suscripciones = suscripciones;
@@ -72,6 +79,9 @@ public class AdminController {
         this.canalesService = canalesService;
         this.catalogo = catalogo;
         this.replica = replica;
+        this.ajustes = ajustes;
+        this.fotos = fotos;
+        this.perfiles = perfiles;
     }
 
     // -------------------------------------------------------------------------
@@ -85,7 +95,7 @@ public class AdminController {
         Catalogo.Vista vista = catalogo.vista();
         Map<String, Suscripcion> estados = estadosDelHub();
 
-        return creadores.findAll().stream()
+        return vista.creadores().stream()
                 .sorted(Comparator.comparing(Creador::getNombre))
                 .map(c -> {
                     List<Canal> suyos = vista.canalesDe(c.getId());
@@ -98,8 +108,10 @@ public class AdminController {
                             s != null ? s.getEstado() : null,
                             s != null ? s.getExpiraEn() : null,
                             usuarios.cuantosSiguen(c.getId()),
-                            suyos.stream().map(k -> canalAdmin(k, c.getNombre(), estados)).toList(),
-                            List.copyOf(c.getProductoras()));
+                            suyos.stream().map(k -> canalAdmin(k, vista, estados)).toList(),
+                            List.copyOf(c.getProductoras()),
+                            vista.compartidosCon(c.getId()).stream()
+                                    .map(k -> canalAdmin(k, vista, estados)).toList());
                 })
                 .toList();
     }
@@ -157,23 +169,20 @@ public class AdminController {
         Catalogo.Vista vista = catalogo.vista();
         Map<String, Suscripcion> estados = estadosDelHub();
 
-        List<Creador> todos = creadores.findAll();
-        Map<UUID, String> nombres = new HashMap<>();
-        todos.forEach(c -> nombres.put(c.getId(), c.getNombre()));
-
-        return productoras.findAll().stream()
+        return vista.productoras().stream()
                 .sorted(Comparator.comparing(Productora::getNombre, String.CASE_INSENSITIVE_ORDER))
                 .map(p -> new Dtos.ProductoraAdminDto(
                         p.getId(), p.getNombre(), p.getDescripcion(), p.getLogoUrl(), p.isActivo(),
                         vista.canalesDeProductora(p.getId()).stream()
-                                .map(k -> canalAdmin(k, nombres.get(k.getCreadorId()), estados))
+                                .map(k -> canalAdmin(k, vista, estados))
                                 .toList(),
-                        todos.stream()
+                        vista.creadores().stream()
                                 .filter(c -> c.getProductoras().contains(p.getId()))
                                 .sorted(Comparator.comparing(Creador::getNombre, String.CASE_INSENSITIVE_ORDER))
                                 .map(Creador::getId)
                                 .toList(),
-                        usuarios.cuantosSiguenProductora(p.getId())))
+                        usuarios.cuantosSiguenProductora(p.getId()),
+                        p.isEnDirectorio(), p.getCategoria()))
                 .toList();
     }
 
@@ -216,6 +225,75 @@ public class AdminController {
     }
 
     // -------------------------------------------------------------------------
+    // Canales de YouTube
+    // -------------------------------------------------------------------------
+
+    /**
+     * Todos los canales de YouTube del directorio, cada uno con su dueño, su
+     * productora, los demás creadores con los que aparece y el estado de su
+     * suscripción al hub.
+     */
+    @GetMapping("/canales")
+    @Transactional(readOnly = true)
+    public List<Dtos.CanalAdminDto> listarCanales() {
+        Catalogo.Vista vista = catalogo.vista();
+        Map<String, Suscripcion> estados = estadosDelHub();
+
+        return canales.deYouTube().stream().map(k -> canalAdmin(k, vista, estados)).toList();
+    }
+
+    /**
+     * Alta o edición de la ficha de un canal de YouTube: de quién es, de qué
+     * productora y con qué otros creadores aparece. Lo que publique les llega
+     * a quienes siguen a cualquiera de ellos.
+     */
+    @PostMapping("/canales")
+    @Transactional
+    public Dtos.CanalGuardado guardarCanal(@Valid @RequestBody Dtos.GuardarFichaDeCanal peticion) {
+        CanalesService.Ficha ficha = canalesService.guardarFicha(peticion);
+
+        String avisoSuscripcion = null;
+        try {
+            canalesService.sincronizarWebSub(ficha.cambio());
+        } catch (Exception e) {
+            log.error("No se pudo sincronizar la suscripción del canal {}", ficha.canal().getId(), e);
+            avisoSuscripcion = e.getMessage();
+        }
+
+        return new Dtos.CanalGuardado(ficha.canal().getId(), avisoSuscripcion, copiarDuenos(ficha));
+    }
+
+    @DeleteMapping("/canales/{id}")
+    @Transactional
+    public Dtos.RespuestaSimple borrarCanal(@PathVariable UUID id) {
+        CanalesService.Ficha ficha = canalesService.eliminarFicha(id);
+
+        darDeBaja(ficha.cambio());
+        copiarDuenos(ficha);
+        return Dtos.RespuestaSimple.de("Canal retirado del directorio.");
+    }
+
+    /**
+     * Un canal no viaja solo a testing: va dentro de su dueño. Aquí se
+     * vuelven a copiar el de ahora y, si cambió, el de antes.
+     *
+     * @return el primer motivo de fallo, o null si todo se copió.
+     */
+    private String copiarDuenos(CanalesService.Ficha ficha) {
+        String aviso = null;
+
+        for (Productora p : productoras.findAllById(ficha.productoras())) {
+            String fallo = replica.enviar(p);
+            if (aviso == null) aviso = fallo;
+        }
+        for (Creador c : creadores.findAllById(ficha.creadores())) {
+            String fallo = replica.enviar(c);
+            if (aviso == null) aviso = fallo;
+        }
+        return aviso;
+    }
+
+    // -------------------------------------------------------------------------
 
     /** Bajas del hub al retirar algo. Si fallan, lo retirado se retira igual. */
     private void darDeBaja(Cambio cambio) {
@@ -232,15 +310,18 @@ public class AdminController {
         return estados;
     }
 
-    private static Dtos.CanalAdminDto canalAdmin(Canal k, String creadorNombre,
+    private static Dtos.CanalAdminDto canalAdmin(Canal k, Catalogo.Vista vista,
                                                  Map<String, Suscripcion> estados) {
         Suscripcion s = k.getCanalDeYouTube() != null ? estados.get(k.getCanalDeYouTube()) : null;
+        Creador dueno = vista.creador(k.getCreadorId());
 
         return new Dtos.CanalAdminDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
-                k.getHandle(), k.getChannelId(), k.getCreadorId(), creadorNombre,
+                k.getHandle(), k.getChannelId(), k.getCreadorId(),
+                dueno != null ? dueno.getNombre() : null,
                 k.getProductoraId(),
                 s != null ? s.getEstado() : null,
-                s != null ? s.getExpiraEn() : null);
+                s != null ? s.getExpiraEn() : null,
+                List.copyOf(k.getVinculados()));
     }
 
     /**
@@ -331,17 +412,133 @@ public class AdminController {
         return datos;
     }
 
+    /**
+     * La foto de perfil de una cuenta del creador, para ponérsela.
+     *
+     * De YouTube devuelve la dirección de la foto del canal. De las demás
+     * redes guarda una copia aquí y devuelve la dirección de la copia. No
+     * cambia a ningún creador: el panel pone la dirección en el formulario y
+     * se guarda con lo demás.
+     */
+    @GetMapping("/foto")
+    public Dtos.FotoDto foto(@RequestParam(required = false) String plataforma,
+                             @RequestParam(required = false) String url,
+                             @RequestParam(required = false) String channelId) {
+        if (plataforma == null || plataforma.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta decir de qué red es la cuenta.");
+        }
+        return fotos.traer(plataforma, url, channelId);
+    }
+
+    /**
+     * Nombre, descripción y foto de una cuenta, para rellenar la ficha de un
+     * creador sin teclear. Devuelve lo que se haya podido leer; no guarda
+     * nada en ningún creador.
+     */
+    @GetMapping("/cuenta")
+    public Dtos.CuentaDto cuenta(@RequestParam(required = false) String plataforma,
+                                 @RequestParam(required = false) String url,
+                                 @RequestParam(required = false) String channelId) {
+        if (plataforma == null || plataforma.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta decir de qué red es la cuenta.");
+        }
+        return perfiles.leer(plataforma, url, channelId);
+    }
+
     // -------------------------------------------------------------------------
     // Publicaciones y redirección de emergencia
     // -------------------------------------------------------------------------
 
     @GetMapping("/publicaciones")
     @Transactional(readOnly = true)
-    public List<Dtos.PublicacionDto> recientes(@RequestParam(defaultValue = "40") int limite) {
-        List<Publicacion> lista = publicaciones.findAllByOrderByPublicadoEnDesc(
-                PageRequest.of(0, Math.min(limite, 200)));
+    public List<Dtos.PublicacionDto> recientes(@RequestParam(defaultValue = "40") int limite,
+                                               @RequestParam(required = false) String tipo) {
+        PageRequest pagina = PageRequest.of(0, Math.max(1, Math.min(limite, 200)));
 
-        return DirectorioController.aDtos(lista, catalogo.vista(), creadores);
+        // Sin `tipo`, todo junto, como siempre: el panel marca cuáles son cortos.
+        List<Publicacion> lista =
+                "cortos".equals(tipo) ? publicaciones.findByTipoOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
+                : "videos".equals(tipo) ? publicaciones.findByTipoNotOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
+                : publicaciones.findAllByOrderByPublicadoEnDesc(pagina);
+
+        return DirectorioController.aDtos(lista, catalogo.vista());
+    }
+
+    /**
+     * Corrige a mano si un video es corto o no.
+     *
+     * El servidor lo decide solo al recibir el video, y casi siempre acierta,
+     * pero la última palabra es de quien lo está viendo. No avisa a nadie:
+     * solo cambia en qué lista sale.
+     */
+    @PutMapping("/videos/{videoId}/tipo")
+    @Transactional
+    public Dtos.RespuestaSimple cambiarTipo(@PathVariable String videoId,
+                                            @Valid @RequestBody Dtos.CambiarTipo peticion) {
+
+        Publicacion p = publicaciones.findByVideoId(videoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Ese video no está en el directorio."));
+
+        // Se comprueba también aquí, no solo con la anotación: un tipo que no
+        // sea uno de estos dos dejaría el video fuera de las dos listas.
+        if (!Publicacion.TIPO_VIDEO.equals(peticion.tipo())
+                && !Publicacion.TIPO_CORTO.equals(peticion.tipo())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El tipo tiene que ser video o short.");
+        }
+
+        p.setTipo(peticion.tipo());
+        publicaciones.save(p);
+
+        return Dtos.RespuestaSimple.de(p.esCorto()
+                ? "Marcado como video corto." : "Marcado como video normal.");
+    }
+
+    /**
+     * Vuelve a preguntarle a YouTube por los últimos videos guardados como
+     * cortos, y corrige los que en realidad son videos normales.
+     *
+     * Hasta ahora se decidía solo por la duración, así que entre lo guardado
+     * hay videos normales de menos de tres minutos marcados como cortos. Los
+     * que YouTube no aclara se dejan como están.
+     */
+    @PostMapping("/videos/revisar-cortos")
+    public Dtos.RevisionDeCortos revisarCortos(@RequestParam(defaultValue = "40") int limite) {
+        List<Publicacion> lista = publicaciones.findByTipoOrderByPublicadoEnDesc(
+                Publicacion.TIPO_CORTO, PageRequest.of(0, Math.max(1, Math.min(limite, 100))));
+
+        int corregidos = 0;
+        int sinRespuesta = 0;
+
+        for (Publicacion p : lista) {
+            Boolean esShort = youtube.esShort(p.getVideoId());
+            if (esShort == null) {
+                sinRespuesta++;
+            } else if (!esShort) {
+                p.setTipo(Publicacion.TIPO_VIDEO);
+                publicaciones.save(p);
+                corregidos++;
+            }
+        }
+        return new Dtos.RevisionDeCortos(lista.size(), corregidos, sinRespuesta);
+    }
+
+    // -------------------------------------------------------------------------
+    // Ajustes generales
+    // -------------------------------------------------------------------------
+
+    @GetMapping("/ajustes")
+    public Dtos.AjustesDto ajustes() {
+        return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios());
+    }
+
+    /** Solo cambia lo que llega; lo demás se queda como estaba. */
+    @PutMapping("/ajustes")
+    public Dtos.AjustesDto cambiarAjustes(@RequestBody Dtos.CambiarAjustes peticion) {
+        if (peticion.cortos() != null) ajustes.ponerCortos(peticion.cortos());
+        if (peticion.anuncios() != null) ajustes.ponerAnuncios(peticion.anuncios());
+        return ajustes();
     }
 
     /**
@@ -364,12 +561,16 @@ public class AdminController {
         p.setDestinoPlataforma(peticion.plataformaDestino());
         publicaciones.save(p);
 
-        if (peticion.debeAvisar()) {
+        // De un video corto solo se avisa a quienes los ven; con los cortos
+        // apagados no lo vio nadie, y no hay a quién decirle que se movió.
+        boolean corto = p.esCorto();
+
+        if (peticion.debeAvisar() && (!corto || ajustes.cortos())) {
             // A quienes siguen a su creador y, si el canal es de una
             // productora, también a quienes la siguen a ella.
             emisores.paraAvisoManual(p).ifPresent(emisor ->
                     push.avisarContenidoMovido(emisor, videoId, p.getTitulo(),
-                            peticion.url(), peticion.plataformaDestino()));
+                            peticion.url(), peticion.plataformaDestino(), corto));
         }
 
         return Dtos.RespuestaSimple.de("Destino cambiado.");

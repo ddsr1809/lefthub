@@ -48,15 +48,17 @@ public class AuthController {
     private final VerificadorIdentidad verificador;
     private final AppleService apple;
     private final RegistroDeAcceso accesos;
+    private final Repositorios.Compras compras;
 
     public AuthController(Repositorios.Usuarios usuarios, ServicioJwt jwt,
                           VerificadorIdentidad verificador, AppleService apple,
-                          RegistroDeAcceso accesos) {
+                          RegistroDeAcceso accesos, Repositorios.Compras compras) {
         this.usuarios = usuarios;
         this.jwt = jwt;
         this.verificador = verificador;
         this.apple = apple;
         this.accesos = accesos;
+        this.compras = compras;
     }
 
     /** Sesión invisible. Se llama al abrir la app, sin interfaz de por medio. */
@@ -165,6 +167,15 @@ public class AuthController {
                     usuario.getProductorasSeguidas().addAll(productoras);
                     fusionados = true;
                 }
+                // Si en este teléfono ya se habían quitado los anuncios (con
+                // una compra o un folio, como invitado), la cuenta buena los
+                // hereda. Y las compras se le pasan antes del borrado: son de
+                // la cuenta que se va, y se irían con ella.
+                if (anonimo.get().isSinAnuncios()) {
+                    usuario.quitarAnuncios(anonimo.get().getSinAnunciosOrigen(),
+                            anonimo.get().getSinAnunciosDesde());
+                }
+                compras.pasar(anonimo.get().getId(), usuario.getId());
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
                 //

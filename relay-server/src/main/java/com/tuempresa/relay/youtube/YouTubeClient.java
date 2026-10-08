@@ -12,6 +12,9 @@ import org.springframework.web.client.RestClientResponseException;
 import org.springframework.web.util.UriUtils;
 
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.Collection;
@@ -38,16 +41,106 @@ import java.util.Set;
 public class YouTubeClient {
 
     private static final Logger log = LoggerFactory.getLogger(YouTubeClient.class);
-    private static final String BASE = "https://www.googleapis.com/youtube/v3";
+    /** Lo que se espera a YouTube al preguntar si un video es un Short. */
+    private static final Duration ESPERA_SHORT = Duration.ofSeconds(6);
     private static final List<String> TAMANOS_MINIATURA =
             List.of("maxres", "standard", "high", "medium", "default");
 
     private final RestClient http;
     private final RelayProperties config;
 
+    private final String BASE;
+
+    // El cliente compartido sigue las redirecciones, y aquí la redirección es
+    // justo la respuesta: ver esShort().
+    private final HttpClient sinRedirigir = HttpClient.newBuilder()
+            .connectTimeout(ESPERA_SHORT)
+            .version(HttpClient.Version.HTTP_1_1)
+            .followRedirects(HttpClient.Redirect.NEVER)
+            .build();
+
     public YouTubeClient(RestClient http, RelayProperties config) {
         this.http = http;
         this.config = config;
+        this.BASE = sinBarraFinal(config.youtube().apiBase());
+    }
+
+    private static String sinBarraFinal(String url) {
+        String base = url.trim();
+        while (base.endsWith("/")) base = base.substring(0, base.length() - 1);
+        return base;
+    }
+
+    // -------------------------------------------------------------------------
+    // ¿Es un Short?
+    // -------------------------------------------------------------------------
+
+    /**
+     * Le pregunta a YouTube si un video es un Short.
+     *
+     * La Data API no lo dice. Lo que sí lo dice es la dirección
+     * youtube.com/shorts/ID: si el video es un Short, YouTube la sirve (200);
+     * si es un video normal, redirige a su página de siempre (/watch). No
+     * cuesta cuota y no se lee nada de la página: solo el código de respuesta.
+     *
+     * @return true o false si YouTube contestó con claridad; null si no se
+     *         pudo saber (sin red, una respuesta inesperada). Quien llama
+     *         decide entonces con la duración, que es lo que se hacía antes.
+     */
+    public Boolean esShort(String videoId) {
+        try {
+            HttpRequest peticion = HttpRequest.newBuilder(URI.create(
+                            config.youtube().urlShorts() + UriUtils.encodePathSegment(videoId, StandardCharsets.UTF_8)))
+                    .method("HEAD", HttpRequest.BodyPublishers.noBody())
+                    .timeout(ESPERA_SHORT)
+                    .build();
+
+            HttpResponse<Void> respuesta = sinRedirigir.send(peticion, HttpResponse.BodyHandlers.discarding());
+            Boolean veredicto = veredicto(respuesta.statusCode(),
+                    respuesta.headers().firstValue("location").orElse(null));
+
+            if (veredicto == null) {
+                log.warn("YouTube no dejó claro si {} es un Short (HTTP {})", videoId, respuesta.statusCode());
+            }
+            return veredicto;
+
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            return null;
+        } catch (Exception e) {
+            log.warn("No se pudo preguntar si {} es un Short: {}", videoId, e.getMessage());
+            return null;
+        }
+    }
+
+    /**
+     * Lo que significa la respuesta de youtube.com/shorts/ID.
+     *
+     * Solo valen dos respuestas: la página servida, o una redirección a la
+     * página normal del video. Cualquier otra cosa (una redirección a una
+     * pantalla de consentimiento, un error) no dice nada del video.
+     */
+    static Boolean veredicto(int estado, String destino) {
+        if (estado == 200) return true;
+        if (estado >= 300 && estado < 400 && destino != null && destino.contains("/watch")) return false;
+        return null;
+    }
+
+    /**
+     * Video normal o corto, con todo lo que se sabe.
+     *
+     * @param porDuracion lo que dice la duración: "short" si dura tres minutos
+     *                    o menos. Sirve para descartar: un video más largo no
+     *                    puede ser un Short, y ni se pregunta.
+     * @param directo     un directo o un estreno nunca es un Short, dure lo que dure
+     * @param esShort     lo que contestó YouTube, o null si no se pudo saber
+     */
+    public static String tipoDe(String porDuracion, String directo, Boolean esShort) {
+        if (directo != null && !"no".equals(directo)) return "video";
+        if (!"short".equals(porDuracion)) return "video";
+        // Dura poco. Si YouTube dijo que es un video normal, lo es; si dijo
+        // que es un Short o no contestó, se queda como corto.
+        return Boolean.FALSE.equals(esShort) ? "video" : "short";
     }
 
     public record DetalleDeVideo(
@@ -294,7 +387,11 @@ public class YouTubeClient {
         return null;
     }
 
-    /** Heurística barata: un Short dura tres minutos o menos. */
+    /**
+     * Primer filtro: un Short dura tres minutos o menos. Pero un video normal
+     * también puede durar eso, así que esto solo dice "podría serlo": lo
+     * confirma esShort().
+     */
     private boolean esCorto(String duracionIso) {
         if (duracionIso == null || duracionIso.isBlank()) return false;
         try {

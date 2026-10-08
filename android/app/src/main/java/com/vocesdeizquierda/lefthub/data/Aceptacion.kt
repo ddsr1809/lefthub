@@ -14,7 +14,7 @@ import android.content.Context
  */
 object Aceptacion {
 
-    const val VERSION = "2026-10-02"
+    const val VERSION = "2026-10-08"
 
     private const val PREFS = "relay_legal"
     private const val CLAVE_VERSION = "version_aceptada"
