@@ -471,6 +471,158 @@ La app de iOS todavía no tiene esta función.
 
 ---
 
+## Anuncios, y cómo quitarlos
+
+La app de Android puede mostrar anuncios de Google (AdMob) entre los videos de
+Novedades. Una persona deja de verlos de dos maneras: con **una compra única**
+en Google Play, o con **un folio de regalo** que repartes tú y que se borra al
+usarse. Las dos quedan apuntadas en la base de datos, en su cuenta.
+
+Todo viene **apagado**. Nada de esto se ve en la app hasta que enciendes los
+anuncios en el panel, y la app de producción no puede mostrar ninguno hasta que
+le pones los identificadores de tu cuenta de AdMob.
+
+### Qué hace cada parte
+
+- **El equipo decide si hay anuncios.** En el panel, sección **Anuncios**, está
+  el interruptor *Mostrar anuncios en la app*. Es el ajuste `anuncios` de la
+  tabla `ajustes`; sin fila, no hay.
+- **Dónde salen.** Solo en Novedades: uno después del segundo video y luego uno
+  cada seis, tres como mucho (`anuncios/Huecos.kt`). Van en una tarjeta con la
+  palabra «Publicidad» y otro fondo, para que nadie toque uno creyendo que es
+  un video. Si Google no tiene anuncio que dar, ese hueco no se pinta.
+- **La biblioteca de Google solo arranca para quien ve anuncios.** Quien los
+  quitó, o cualquiera mientras estén apagados, nunca la pone en marcha. Antes
+  del primer anuncio se le pregunta a Google si a esa persona hay que pedirle
+  consentimiento (Europa, Reino Unido, algunos estados de EE. UU.); si hace
+  falta, Google enseña su formulario. A Google no se le dice a quién sigue la
+  persona ni qué abre (`anuncios/Anuncios.kt`).
+- **Comprar.** En Ajustes de la app, sección *Anuncios*, el botón *Quitar los
+  anuncios* abre la pantalla de pago de Google Play. La app le pasa el
+  comprobante al servidor, el servidor le pregunta a Google si es de verdad y
+  solo entonces quita los anuncios y le confirma a Google que la compra quedó
+  entregada. La app nunca decide por su cuenta que alguien pagó.
+- **Folio de regalo.** Los creas en el panel (de 1 a 100 cada vez, con una
+  nota para acordarte de para quién son). Son diez letras y números, como
+  `ABCDE-FGHJK`, sin los caracteres que se confunden al leer. La persona lo
+  escribe en Ajustes → Anuncios → *Tengo un folio de regalo*. Vale una sola
+  vez: al canjearlo **la fila se borra** de la tabla `folios`. Los que no se
+  han usado se pueden anular desde el panel.
+- **A mano.** En la ficha de una cuenta (panel → Usuarios) hay un botón para
+  quitarle o devolverle los anuncios. Sirve para atender a quien pagó y sigue
+  viéndolos.
+
+### Lo que queda en la base de datos (V11)
+
+| Dónde | Qué |
+|---|---|
+| `usuarios.sin_anuncios` | Si la cuenta ya no ve anuncios |
+| `usuarios.sin_anuncios_origen` | Por qué: `compra`, `folio` o `panel` |
+| `usuarios.sin_anuncios_desde` | Desde cuándo |
+| `folios` | Los folios **sin usar**. Canjear uno borra su fila |
+| `compras` | Cada compra que Google confirmó: comprobante, número de pedido y fecha |
+
+Cosas que conviene saber:
+
+- **Va con la cuenta, no con el teléfono.** Un invitado puede comprar o
+  canjear un folio; si después guarda su cuenta con Google en ese teléfono, lo
+  conserva.
+- **Una compra se recupera sola.** Es de la cuenta de Google Play de la
+  persona: al reinstalar la app o cambiar de teléfono, la app la vuelve a
+  presentar al abrirse y el servidor la apunta otra vez, sin cobrar.
+- **Un folio no.** Si quien lo canjeó borra su cuenta, se pierde. La app lo
+  avisa antes de borrar.
+- **Reembolsos.** Si devuelves el dinero de una compra en Play Console, Google
+  la da por cancelada y ya no se puede volver a presentar, pero el servidor no
+  se entera solo: quítale el «sin anuncios» a esa cuenta desde su ficha en el
+  panel.
+- **La app de iPhone no muestra anuncios.** Nada de esto la toca.
+
+### Para encenderlos en producción, en este orden
+
+**1. AdMob.** Crea la cuenta en `admob.google.com`, da de alta la app de
+Android (`com.vocesdeizquierda.lefthub`) y crea un bloque de anuncios de tipo
+**Banner**. Te da dos identificadores; ponlos en
+`android/app/build.gradle.kts`, en el sabor `produccion`:
+
+```kotlin
+val admobApp = "ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY"     // el de la app
+val admobBanner = "ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ"  // el del bloque
+```
+
+Mientras estén vacíos, la app de producción no muestra anuncios aunque el panel
+los tenga encendidos. Los sabores `developer` y `pruebas` usan siempre los
+identificadores de prueba de Google: salen anuncios marcados «Test Ad», que se
+pueden tocar sin riesgo. **No toques anuncios de verdad desde tu teléfono**: es
+el motivo más común por el que AdMob cierra una cuenta.
+
+En AdMob, *Privacidad y mensajes*, crea el mensaje de consentimiento para
+Europa si esperas gente de allí. Y publica el archivo `app-ads.txt` que te
+indica AdMob en la raíz de `vocesdeizquierda.com`.
+
+**2. El producto.** En Play Console, *Monetizar con Play → Productos →
+Productos únicos*, crea uno con el ID **`sin_anuncios`**, ponle precio y
+actívalo. Si usas otro ID, cámbialo en `PRODUCTO_SIN_ANUNCIOS`
+(`build.gradle.kts`) y en `COMPRAS_PRODUCTO` (servidor): tienen que coincidir
+letra por letra.
+
+**3. Que el servidor pueda confirmar las compras.** Usa la misma cuenta de
+servicio de FCM; solo hay que darle permiso:
+
+1. En Google Cloud, en el proyecto de esa cuenta de servicio, activa la
+   **Google Play Android Developer API**.
+2. En Play Console, *Usuarios y permisos*, invita al correo de la cuenta de
+   servicio (el `client_email` del JSON de FCM) con los permisos de ver datos
+   financieros y de gestionar pedidos.
+3. En `.env.prod` del VPS pon `COMPRAS_PAQUETE=com.vocesdeizquierda.lefthub` y
+   vuelve a desplegar. En los registros debe salir *Compras de Google Play
+   listas*, y en el panel, *Compra lista*.
+
+El permiso puede tardar unas horas en hacer efecto. Hasta que el servidor no
+puede confirmar compras, la app **no enseña el botón de comprar** (el folio
+sí): cobrar algo que luego no se puede entregar sería peor que no ofrecerlo.
+
+**4. Play Console, declaraciones.** Marca que la app contiene anuncios, declara
+el uso del ID de publicidad y actualiza el formulario de *Seguridad de los
+datos*: la biblioteca de anuncios recoge el identificador de publicidad, la
+ubicación aproximada y la interacción con los anuncios, y los comparte con
+Google para publicidad; y ahora hay compras.
+
+**5. La política de privacidad.** Ya está actualizada en `web/` (español e
+inglés) y en la pantalla de bienvenida de la app. Publícala antes de subir la
+versión nueva. Como cambió, `Aceptacion.VERSION` cambió con ella: la app
+vuelve a pedir la aceptación a todo el mundo, una vez.
+
+**6. Enciéndelos** en el panel, sección Anuncios.
+
+### Probar
+
+- **Los anuncios**: con el sabor `developer` o `pruebas` y el interruptor
+  encendido en ese servidor.
+- **Los folios**: en cualquier ambiente. Crea uno en el panel y canjéalo en la
+  app.
+- **La compra**: Google Play solo vende a una app instalada desde Play. Sube
+  la versión a *Prueba interna*, añade tu cuenta en Play Console →
+  *Configuración → Prueba de licencias* y compra con ella: pasa por todo el
+  flujo sin cobrarte. Esa app habla con el servidor de producción, que es el
+  que tiene `COMPRAS_PAQUETE`.
+
+### En la API
+
+`GET /api/perfil` dice `anuncios` (los tiene encendidos el equipo),
+`sinAnuncios` (esta cuenta los quitó) y `compraDisponible` (el servidor puede
+confirmar compras). `POST /api/anuncios/folio` (`{codigo}`) canjea un folio y
+`POST /api/anuncios/compra` (`{producto, token}`) registra una compra. Del
+panel: `GET /api/admin/anuncios`, `POST /api/admin/folios` (`{cantidad,
+nota}`), `DELETE /api/admin/folios/{codigo}`, `POST
+/api/admin/usuarios/{id}/sin-anuncios?valor=` y el interruptor, que es
+`anuncios` en `PUT /api/admin/ajustes`.
+
+Canjear folios tiene un límite por cuenta: cinco equivocados seguidos y luego
+uno cada tres minutos.
+
+---
+
 ## Cosas que se rompen y cómo notarlo
 
 **Las notificaciones dejan de llegar a los 10 días.** El arrendamiento de WebSub caducó. La renovación corre cada 4 días; en los registros del servidor debe aparecer "Ciclo de renovación terminado". Si no aparece, casi siempre es que el servicio escala a cero y nunca llega a ejecutar la tarea programada.
@@ -480,6 +632,10 @@ La app de iOS todavía no tiene esta función.
 **Llegan avisos duplicados.** No deberían: la transacción de idempotencia en `WebSubService.procesarEntrada` solo deja pasar el primero. Si pasa, revisa que no tengas dos suscripciones al mismo canal.
 
 **Se envían avisos de videos viejos.** Al suscribirte, el hub reenvía entradas recientes del feed. `relay.websub.antiguedad-maxima-horas` (6) las descarta. Cámbialo en `server/src/main/resources/application.yml`.
+
+**Los anuncios están encendidos en el panel y no sale ninguno.** En producción, casi siempre es que faltan `admobApp` y `admobBanner` en `build.gradle.kts`. Si están, mira el registro del teléfono con la etiqueta `Anuncios`: una cuenta de AdMob recién creada tarda en empezar a servir anuncios, y Google no siempre tiene uno que dar.
+
+**En Ajustes no aparece el botón de comprar, solo el del folio.** O el servidor no puede confirmar compras (el panel dice *Compra sin configurar*), o Google Play no devolvió el producto: no existe todavía en Play Console, no está activo, o la app instalada no viene de Google Play. El registro del teléfono lo dice con la etiqueta `ComprasRepo`.
 
 **`Task 'prepareKotlinBuildScriptModel' not found in project ':app'`.** Gradle y el Android Gradle Plugin no son compatibles entre sí. Casi siempre significa que el IDE no está usando el wrapper del proyecto. Está explicado en `android/COMO-ABRIR.md`.
 
@@ -518,5 +674,7 @@ Necesitas política de privacidad y términos de uso publicados en una URL antes
 | Cómo borrar la cuenta (lo pide Play) | `https://vocesdeizquierda.com/privacidad/#borrar-cuenta` | `https://vocesdeizquierda.com/en/privacy/#delete-account` |
 
 Las páginas en español mandan solas a la versión en inglés cuando el navegador no está en español (`web/idioma.js`). Si cambias lo que la app o el servidor guardan de las personas, actualiza la política en los dos idiomas.
+
+Los anuncios y la compra cambiaron lo que dicen esos documentos: antes prometían que la app no tenía publicidad y que no se usaba el identificador de publicidad. Los textos nuevos están en `web/`, pero son un borrador hecho con cuidado, no un dictamen: pásalos por quien te asesore antes de publicarlos, sobre todo la parte de la publicidad como finalidad secundaria en el aviso de privacidad mexicano.
 
 Este documento describe requisitos normativos de forma general; no es asesoría legal. Para AB 1757, la App Store Review y el manejo de datos personales, vale la pena una consulta con un abogado antes de publicar.
