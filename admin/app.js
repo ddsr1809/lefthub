@@ -21,7 +21,40 @@
   const BASE = (CONFIG.apiBase || '').replace(/\/$/, '');
 
   const CATEGORIAS = { cine: 'Cine', comida: 'Comida', politica: 'Política', musica: 'Música', salud: 'Salud', noticias: 'Noticias', tecnologia: 'Tecnología', otros: 'Otros' };
-  const PLATAFORMAS = { youtube: 'YouTube', tiktok: 'TikTok', twitch: 'Twitch', instagram: 'Instagram', spotify: 'Spotify', patreon: 'Patreon', web: 'Web' };
+  // En el orden en que se ofrecen. Solo YouTube genera avisos de videos; las
+  // demás son enlaces del perfil.
+  const PLATAFORMAS = { youtube: 'YouTube', tiktok: 'TikTok', twitch: 'Twitch', instagram: 'Instagram', x: 'X', facebook: 'Facebook', threads: 'Threads', telegram: 'Telegram', spotify: 'Spotify', patreon: 'Patreon', web: 'Web' };
+
+  // Para no obligar a pegar el enlace entero: con el usuario basta.
+  const PERFILES = {
+    tiktok: (u) => 'https://www.tiktok.com/@' + u,
+    twitch: (u) => 'https://www.twitch.tv/' + u,
+    instagram: (u) => 'https://www.instagram.com/' + u,
+    x: (u) => 'https://x.com/' + u,
+    facebook: (u) => 'https://www.facebook.com/' + u,
+    threads: (u) => 'https://www.threads.net/@' + u,
+    telegram: (u) => 'https://t.me/' + u,
+    patreon: (u) => 'https://www.patreon.com/' + u
+  };
+
+  /**
+   * El enlace de una red a partir de lo que se escribió: un enlace completo,
+   * un dominio sin el https, o solo el usuario ("@claudia"). Devuelve null si
+   * no se puede armar un enlace con eso.
+   */
+  function enlaceDeRed(plataforma, texto) {
+    const t = (texto || '').trim();
+    if (!t) return null;
+    if (/^https?:\/\//i.test(t)) return t;
+    if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(t) && !t.startsWith('@')) {
+      // "instagram.com/claudia", "claudia.mx". Un usuario con punto y sin
+      // barra ("ana.lopez") es un usuario, no un dominio, si la red los admite.
+      if (t.includes('/') || !PERFILES[plataforma]) return 'https://' + t;
+    }
+    const usuario = t.replace(/^@/, '');
+    if (PERFILES[plataforma] && /^[\w.-]+$/.test(usuario)) return PERFILES[plataforma](usuario);
+    return null;
+  }
   const ESTADOS_SUSC = {
     ACTIVA: ['Activa', 'b-ok'],
     PENDIENTE_VERIFICACION: ['Pendiente', 'b-warn'],
@@ -510,19 +543,19 @@
           <button class="btn" type="button" id="btnBuscarCanal">Buscar y agregar</button>
         </div>
         <p class="hint" style="margin:10px 0 0">${conProductora
-          ? 'Puede tener varios o ninguno. De cada uno puedes decir si es de una productora. Con qué otros creadores aparece un canal se elige en su ficha, en la sección Canales.'
+          ? 'Puede tener varios o ninguno: un creador se puede dar de alta con un canal de YouTube o solo con una red social. De cada canal puedes decir si es de una productora. Con qué otros creadores aparece se elige en su ficha, en la sección Canales.'
           : 'Solo los canales que son de la productora y de ningún creador. Con qué creadores aparece cada uno se elige en su ficha, en la sección Canales.'}</p>
       </fieldset>
       <fieldset><legend>Redes sociales</legend>
         <div class="canales" id="fRedes"></div>
         <div class="agregar" style="margin-top:10px">
           <select class="input" id="fOtraPlat" aria-label="Red social">${otras.map((p) => `<option value="${p}">${PLATAFORMAS[p]}</option>`).join('')}</select>
-          <input class="input" id="fOtraUrl" placeholder="https://" aria-label="Enlace">
+          <input class="input" id="fOtraUrl" placeholder="@usuario o enlace" aria-label="Usuario o enlace">
           <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
         </div>
         <p class="hint" style="margin:10px 0 0">${conProductora
-          ? 'TikTok, Instagram, su página… Un creador puede tener solo redes y ningún canal de YouTube.'
-          : 'TikTok, Instagram, su página…'}</p>
+          ? 'X, Instagram, TikTok, Facebook, su página… Basta con su usuario. Un creador puede darse de alta solo con una red, sin canal de YouTube; la app lo muestra en el directorio con sus enlaces, pero los avisos de videos nuevos solo salen de YouTube.'
+          : 'X, Instagram, TikTok, Facebook, su página… Basta con su usuario.'}</p>
       </fieldset>`;
   }
 
@@ -596,9 +629,13 @@
     });
 
     $('#btnOtraPlat').addEventListener('click', () => {
-      const url = $('#fOtraUrl').value.trim();
       const plataforma = $('#fOtraPlat').value;
-      if (!/^https?:\/\//i.test(url)) { toast('El enlace de ' + PLATAFORMAS[plataforma] + ' debe empezar por https://', true); $('#fOtraUrl').focus(); return; }
+      const url = enlaceDeRed(plataforma, $('#fOtraUrl').value);
+      if (!url) {
+        toast(PERFILES[plataforma] ? 'Escribe su usuario de ' + PLATAFORMAS[plataforma] + ' o pega el enlace.' : 'Pega el enlace completo, empezando por https://', true);
+        $('#fOtraUrl').focus();
+        return;
+      }
       lista.push({ id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '', creadores: [] });
       $('#fOtraUrl').value = '';
       pintar();
