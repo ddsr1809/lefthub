@@ -265,6 +265,8 @@
     publicaciones: null,
     filtroPubs: 'todos',    // todos | videos | cortos
     ajustes: null,          // null: el servidor es anterior a los ajustes
+    anuncios: null,         // lo último que dijo /api/admin/anuncios
+    foliosNuevos: [],       // los folios recién creados, para copiarlos
     usuarios: null,         // la página que está en pantalla
     migracion: null,        // la revisión de una migración que está en pantalla
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
@@ -278,6 +280,7 @@
     versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
+    anuncios: vistaAnuncios,
     usuarios: vistaUsuarios,
     administradores: vistaAdministradores
   };
@@ -1604,13 +1607,106 @@
           <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
           <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
           <dt>Enlaces reportados</dt><dd>${num(d.reportes)}</dd>
+          ${u.sinAnuncios === undefined ? '' : `<dt>Anuncios</dt><dd>${u.sinAnuncios
+            ? 'No los ve: ' + esc(MOTIVOS_SIN_ANUNCIOS[u.sinAnunciosOrigen] || u.sinAnunciosOrigen || 'quitados') + (u.sinAnunciosDesde ? ' <span class="muted">(' + esc(fmtDia(u.sinAnunciosDesde)) + ')</span>' : '')
+            : 'Los ve <span class="muted">si están encendidos</span>'}</dd>`}
         </dl>
         <div>
           <p class="reparto-titulo">Sigue a ${plural(d.sigue.length, 'creador', 'creadores')}</p>
           ${d.sigue.length ? '<ul class="lista-simple">' + d.sigue.map((c) => `<li><span><b>${esc(c.nombre)}</b> <span class="muted">· ${esc(CATEGORIAS[c.categoria] || c.categoria)}</span></span>${c.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Todavía no sigue a nadie, así que no recibe avisos.</p>'}
         </div>
         ${rol ? '<div>' + rol + '</div>' : ''}
+        ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Anuncios
+  // ---------------------------------------------------------------------------
+  // Por qué una cuenta ya no ve anuncios, como lo guarda el servidor.
+  const MOTIVOS_SIN_ANUNCIOS = { compra: 'los compró', folio: 'folio de regalo', panel: 'desde el panel' };
+
+  /** Copia un texto. Devuelve si se pudo, para decirlo o pedir que se copie a mano. */
+  async function copiar(texto) {
+    try {
+      await navigator.clipboard.writeText(texto);
+      return true;
+    } catch (e) {
+      // Sin HTTPS o sin permiso el navegador no deja: se intenta a la antigua.
+      const caja = document.createElement('textarea');
+      caja.value = texto;
+      caja.setAttribute('readonly', '');
+      caja.style.position = 'fixed';
+      caja.style.opacity = '0';
+      // Dentro del modal si está abierto: fuera de él no se puede seleccionar nada.
+      (modal.open ? modal : document.body).appendChild(caja);
+      caja.select();
+      let hecho = false;
+      try { hecho = document.execCommand('copy'); } catch (e2) { hecho = false; }
+      caja.remove();
+      return hecho;
+    }
+  }
+
+  async function vistaAnuncios() {
+    const a = await api('/api/admin/anuncios');
+    estado.anuncios = a;
+    const on = !!a.encendidos;
+    const sin = a.sinAnuncios || {};
+    const total = Object.values(sin).reduce((s, n) => s + (n || 0), 0);
+    const nuevos = estado.foliosNuevos || [];
+    const folios = a.folios || [];
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Anuncios</h1><p class="sub">Los anuncios que la app de Android muestra entre los videos de Novedades, y las dos maneras de quitarlos: una compra en Google Play o un folio de regalo.</p></div></div>
+      <div class="stack">
+        <div class="stats">
+          <div class="stat"><div class="k">Cuentas sin anuncios</div><div class="v">${num(total)}</div><div class="n">${sin.panel ? plural(sin.panel, 'puesta', 'puestas') + ' desde el panel' : 'entre compras y folios'}</div></div>
+          <div class="stat"><div class="k">Por compra</div><div class="v">${num(sin.compra)}</div><div class="n">pagaron en Google Play</div></div>
+          <div class="stat"><div class="k">Por folio</div><div class="v">${num(sin.folio)}</div><div class="n">canjearon un folio de regalo</div></div>
+          <div class="stat"><div class="k">Folios sin usar</div><div class="v">${num(a.foliosSinUsar)}</div><div class="n">esperando a que alguien los canjee</div></div>
+        </div>
+
+        <section class="panel"><div class="panel-head"><h2>Anuncios en la app</h2>
+            <span class="badge ${on ? 'b-ok' : 'b-mute'}">${on ? 'Encendidos' : 'Apagados'}</span></div>
+          <div class="ajuste">
+            <label class="check"><input type="checkbox" data-accion="ajuste-anuncios" ${on ? 'checked' : ''}> Mostrar anuncios en la app</label>
+            <p class="hint">${on
+              ? 'Los ve todo el mundo menos quien los quitó. Salen entre los videos de Novedades, marcados como «Publicidad», tres como mucho. En Ajustes de la app aparece la sección para quitarlos.'
+              : 'La app no pide ni muestra ningún anuncio, y no ofrece quitarlos. Quien ya los quitó no pierde nada: si los enciendes, sigue sin verlos.'}</p>
+            <p class="hint">${a.comprasListas
+              ? `<span class="badge b-ok">Compra lista</span> El servidor confirma las compras del producto <span class="mono">${esc(a.producto)}</span> de <span class="mono">${esc(a.paquete)}</span> con Google Play.`
+              : `<span class="badge b-warn">Compra sin configurar</span> La app no ofrece pagar por quitar los anuncios; solo el folio de regalo. Falta <span class="mono">COMPRAS_PAQUETE</span> en el servidor, o la cuenta de servicio no se pudo leer. Los pasos están en el README, sección «Anuncios».`}</p>
+          </div></section>
+
+        <section class="panel"><div class="panel-head"><h2>Folios de regalo</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 12px;font-size:13.5px">Un folio quita los anuncios a la cuenta que lo canjea, sin pagar. Sirve una sola vez: al usarlo se borra de aquí. La persona lo escribe en la app, en Ajustes → Anuncios → «Tengo un folio de regalo».</p>
+            <div class="toolbar">
+              <label class="hint" for="folCantidad">Cuántos</label>
+              <input class="input" id="folCantidad" type="number" min="1" max="100" value="1" style="width:84px">
+              <input class="input" id="folNota" maxlength="200" placeholder="Para quién o de qué campaña (opcional)" aria-label="Nota" style="flex:1;min-width:220px">
+              <button class="btn primary" data-accion="crear-folios">Crear folios</button>
+            </div>
+            ${nuevos.length ? `<div class="aviso-ok folios-nuevos" style="margin-top:14px">
+              <div><b>${plural(nuevos.length, 'folio nuevo', 'folios nuevos')}.</b> Cópialos y repártelos; también quedan en la lista de abajo.</div>
+              <div class="folios">${nuevos.map((f) => `<span class="folio">${esc(f.codigo)}</span>`).join('')}</div>
+              <div><button class="btn sm" data-accion="copiar-folios">${nuevos.length === 1 ? 'Copiar' : 'Copiar todos'}</button></div>
+            </div>` : ''}
+          </div>
+          <div class="tablewrap"><table><thead><tr><th>Folio</th><th>Nota</th><th>Creado</th><th></th></tr></thead><tbody>
+          ${folios.length ? folios.map((f) => `<tr>
+              <td><span class="folio">${esc(f.codigo)}</span></td>
+              <td>${f.nota ? esc(f.nota) : '<span class="muted">—</span>'}</td>
+              <td class="num">${esc(fmtFecha(f.creadoEn))}</td>
+              <td class="acciones"><button class="btn sm" data-accion="copiar-folio" data-codigo="${esc(f.codigo)}">Copiar</button><button class="btn sm danger" data-accion="anular-folio" data-codigo="${esc(f.codigo)}">Anular</button></td>
+            </tr>`).join('') : '<tr><td colspan="4"><div class="empty">No hay folios sin usar. Los que se canjean desaparecen de esta lista.</div></td></tr>'}
+          </tbody></table></div>
+          ${a.foliosSinUsar > folios.length ? `<div class="panel-body"><p class="hint" style="margin:0">Se ven los ${num(folios.length)} más recientes de ${num(a.foliosSinUsar)} sin usar.</p></div>` : ''}
+        </section>
+      </div>`;
+
+    $('#folNota').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-accion="crear-folios"]').click(); });
   }
 
   // ---------------------------------------------------------------------------
@@ -2145,6 +2241,79 @@
             b.textContent = antes;
           }
           if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
+
+        case 'ajuste-anuncios': {
+          // Igual que con los cortos: la casilla ya cambió al pulsarla, y al
+          // final se vuelve a pintar con lo que diga el servidor.
+          const encender = b.checked;
+          try {
+            const seguro = await confirmar(
+              encender ? 'Mostrar anuncios en la app' : 'Dejar de mostrar anuncios',
+              encender
+                ? 'La app de Android empezará a mostrar anuncios de Google entre los videos de Novedades a quien no los haya quitado. Los teléfonos que la tienen abierta se enteran en un minuto como mucho. Antes de encenderlos, la política de privacidad publicada tiene que decir que hay anuncios.'
+                : 'La app deja de mostrar anuncios y de ofrecer quitarlos. Quien ya los quitó no pierde nada: si los vuelves a encender, sigue sin verlos.',
+              encender ? 'Mostrarlos' : 'Dejar de mostrarlos', encender && config.ambiente === 'produccion');
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { anuncios: encender } });
+              toast(encender ? 'Anuncios encendidos.' : 'Anuncios apagados.');
+            }
+          } finally {
+            if (estado.vista === 'anuncios') await vistaAnuncios();
+          }
+          break;
+        }
+
+        case 'crear-folios': {
+          const cantidad = Number($('#folCantidad').value);
+          if (!Number.isInteger(cantidad) || cantidad < 1 || cantidad > 100) { toast('Se pueden crear de 1 a 100 folios cada vez.', true); break; }
+          b.disabled = true;
+          const nota = $('#folNota').value.trim();
+          estado.foliosNuevos = await api('/api/admin/folios', { metodo: 'POST', cuerpo: { cantidad, nota: nota || null } });
+          toast(plural(estado.foliosNuevos.length, 'folio creado', 'folios creados') + '.');
+          if (estado.vista === 'anuncios') await vistaAnuncios();
+          break;
+        }
+
+        case 'copiar-folio': {
+          toast(await copiar(b.dataset.codigo) ? 'Folio copiado.' : 'No se pudo copiar. Selecciónalo y cópialo a mano.', false);
+          break;
+        }
+
+        case 'copiar-folios': {
+          const todos = (estado.foliosNuevos || []).map((f) => f.codigo).join('\n');
+          toast(await copiar(todos) ? 'Copiados.' : 'No se pudo copiar. Selecciónalos y cópialos a mano.', false);
+          break;
+        }
+
+        case 'anular-folio': {
+          const codigo = b.dataset.codigo;
+          const ok = await confirmar('¿Anular el folio ' + codigo + '?', 'Deja de valer: si ya se lo diste a alguien, no podrá canjearlo. No se puede deshacer.', 'Anular', true);
+          if (!ok) break;
+          const r = await api('/api/admin/folios/' + encodeURIComponent(codigo), { metodo: 'DELETE' });
+          estado.foliosNuevos = (estado.foliosNuevos || []).filter((f) => f.codigo !== codigo);
+          toast(r.mensaje || 'Folio anulado.');
+          if (estado.vista === 'anuncios') await vistaAnuncios();
+          break;
+        }
+
+        case 'sin-anuncios-usuario': {
+          const quitar = b.dataset.valor === 'true';
+          const nombre = b.dataset.nombre;
+          const ok = await confirmar(
+            quitar ? '¿Quitarle los anuncios a ' + nombre + '?' : '¿Devolverle los anuncios a ' + nombre + '?',
+            quitar ? 'Deja de ver anuncios sin pagar ni usar un folio. Queda apuntado que se hizo desde el panel.'
+              : b.dataset.origen === 'compra'
+                ? 'Los compró. Si solo se los devuelves aquí, su teléfono vuelve a presentar la compra al abrir la app y se le quitan otra vez: para que sea definitivo, devuélvele antes el dinero en Play Console.'
+                : b.dataset.origen === 'folio'
+                  ? 'Los quitó con un folio de regalo, que ya se gastó. Volverá a ver anuncios y el folio no se recupera.'
+                  : 'Volverá a ver anuncios como cualquier otra cuenta.',
+            quitar ? 'Quitárselos' : 'Devolvérselos', !quitar);
+          if (!ok) break;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/sin-anuncios?valor=' + quitar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          await abrirUsuario(id);
           break;
         }
 
