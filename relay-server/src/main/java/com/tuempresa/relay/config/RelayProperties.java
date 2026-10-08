@@ -20,7 +20,8 @@ public record RelayProperties(
         @DefaultValue Renovacion renovacion,
         @DefaultValue Cors cors,
         @DefaultValue Replica replica,
-        @DefaultValue Fotos fotos
+        @DefaultValue Fotos fotos,
+        @DefaultValue Perfiles perfiles
 ) {
 
     public record Jwt(
@@ -85,6 +86,17 @@ public record RelayProperties(
      */
     public record Fotos(
             @DefaultValue("https://unavatar.io") String base,
+            @DefaultValue("") String apiKey
+    ) {}
+
+    /**
+     * De dónde se leen el nombre y la descripción de una cuenta de una red.
+     *
+     * @param base   el servicio que abre el perfil. Sin clave da 25 consultas al día.
+     * @param apiKey opcional: la clave del servicio, si se contrata un plan
+     */
+    public record Perfiles(
+            @DefaultValue("https://api.microlink.io") String base,
             @DefaultValue("") String apiKey
     ) {}
 

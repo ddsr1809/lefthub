@@ -312,6 +312,34 @@ En Novedades, un video de un canal de productora se firma "Creador · Productora
 
 ---
 
+## Llenar la ficha con los datos de una cuenta
+
+Para no teclear: el panel puede poner el **nombre**, la **descripción** y la
+**foto** que la persona tenga en una de sus cuentas.
+
+- **Al dar de alta**, la primera cuenta que se agrega (una red con «Agregar»,
+  o un canal de YouTube con «Buscar y agregar») rellena sola lo que esté
+  vacío. Si el nombre ya está escrito, no toca nada.
+- **Cuando se quiera**, en la sección *Datos* hay una fila «Llenar con los
+  datos de:» con un botón por cada cuenta del formulario (*YouTube · @canal*,
+  *X · usuario*, *Instagram · usuario*…) y **Manual**. El botón sustituye los
+  tres datos por los de esa cuenta; lo que esa cuenta no traiga se queda como
+  estaba. La productora tiene lo mismo.
+- Nada se guarda hasta pulsar el botón de guardar: se puede revisar y corregir.
+
+De dónde sale cada cosa:
+
+- **YouTube**: todo de la Data API (1 unidad de cuota). Es la fuente fiable.
+- **Las demás redes y las páginas web**: el nombre y la descripción se leen de
+  la tarjeta de presentación del perfil (lo que la red publica para cuando
+  alguien comparte el enlace), a través de [microlink.io](https://microlink.io);
+  la foto, como se explica abajo. Sin clave son **25 consultas al día**; con un
+  plan, la clave va en `PERFILES_API_KEY`.
+- Es una ayuda, no una garantía: cada red redacta esa tarjeta a su manera,
+  algunas enseñan su pantalla de entrada en vez del perfil, y lo cambian
+  cuando quieren. El servidor no inventa: si lo que llega es «Instagram»,
+  «Log in» o cifras de seguidores, lo descarta y el panel dice qué faltó.
+
 ## Foto de perfil
 
 En la ficha de un creador (y en la de una productora, para su logo) la sección

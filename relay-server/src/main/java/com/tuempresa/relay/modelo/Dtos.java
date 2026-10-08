@@ -591,5 +591,17 @@ public final class Dtos {
      */
     public record FotoDto(String url, String origen) {}
 
+    /**
+     * Lo que se pudo leer de una cuenta para rellenar la ficha. Lo que no se
+     * pudo viene en null, y `avisos` dice por qué, en frases para mostrar.
+     */
+    public record CuentaDto(
+            String origen,
+            String nombre,
+            String descripcion,
+            String fotoUrl,
+            List<String> avisos
+    ) {}
+
     public record ResultadoRenovacion(int renovados, int fallidos, List<String> errores) {}
 }

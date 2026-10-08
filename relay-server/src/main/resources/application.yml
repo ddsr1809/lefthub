@@ -96,6 +96,13 @@ relay:
     base: ${FOTOS_BASE:https://unavatar.io}
     api-key: ${FOTOS_API_KEY:}
 
+  perfiles:
+    # El servicio que lee el nombre y la descripción del perfil de una cuenta
+    # de X, Instagram, TikTok... para rellenar la ficha desde el panel.
+    # Sin clave da 25 consultas al día.
+    base: ${PERFILES_BASE:https://api.microlink.io}
+    api-key: ${PERFILES_API_KEY:}
+
   fcm:
     # ID del proyecto de Firebase y ruta al JSON de la cuenta de servicio.
     # Es lo único que sigue siendo de Google, y no cuesta nada: FCM es

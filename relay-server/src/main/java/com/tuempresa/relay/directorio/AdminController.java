@@ -50,6 +50,7 @@ public class AdminController {
     private final ReplicaService replica;
     private final AjustesService ajustes;
     private final FotosService fotos;
+    private final PerfilesService perfiles;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -62,7 +63,7 @@ public class AdminController {
                            CreadoresService servicio, ProductorasService servicioDeProductoras,
                            CanalesService canalesService, Catalogo catalogo,
                            ReplicaService replica, AjustesService ajustes,
-                           FotosService fotos) {
+                           FotosService fotos, PerfilesService perfiles) {
         this.creadores = creadores;
         this.productoras = productoras;
         this.canales = canales;
@@ -80,6 +81,7 @@ public class AdminController {
         this.replica = replica;
         this.ajustes = ajustes;
         this.fotos = fotos;
+        this.perfiles = perfiles;
     }
 
     // -------------------------------------------------------------------------
@@ -426,6 +428,21 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta decir de qué red es la cuenta.");
         }
         return fotos.traer(plataforma, url, channelId);
+    }
+
+    /**
+     * Nombre, descripción y foto de una cuenta, para rellenar la ficha de un
+     * creador sin teclear. Devuelve lo que se haya podido leer; no guarda
+     * nada en ningún creador.
+     */
+    @GetMapping("/cuenta")
+    public Dtos.CuentaDto cuenta(@RequestParam(required = false) String plataforma,
+                                 @RequestParam(required = false) String url,
+                                 @RequestParam(required = false) String channelId) {
+        if (plataforma == null || plataforma.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta decir de qué red es la cuenta.");
+        }
+        return perfiles.leer(plataforma, url, channelId);
     }
 
     // -------------------------------------------------------------------------
