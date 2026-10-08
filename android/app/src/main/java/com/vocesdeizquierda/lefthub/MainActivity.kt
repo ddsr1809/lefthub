@@ -167,6 +167,9 @@ private fun PantallaDeCarga() {
  * cuesta a quien tiene menos destreza. Todo lo que se toca vive en el tercio
  * inferior de la pantalla.
  */
+/** Las pantallas a las que se entra desde el directorio. */
+private val FICHAS = listOf("creador/", "productora/", "canal/")
+
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
@@ -213,12 +216,20 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             ) {
                 destinos.forEach { (destino, etiqueta) ->
                     NavigationBarItem(
-                        selected = ruta == destino,
+                        // La ficha de un creador, de una productora o de un
+                        // canal es parte del directorio: su pestaña sigue marcada.
+                        selected = ruta == destino ||
+                            (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }),
                         onClick = {
+                            // Cada pestaña abre siempre su pantalla principal.
+                            // Antes se guardaba dónde se había quedado cada
+                            // una, y al volver al Directorio aparecía la ficha
+                            // del último creador en vez de la lista: quien no
+                            // recordaba haberla abierto se quedaba sin saber
+                            // cómo volver.
                             nav.navigate(destino) {
-                                popUpTo(nav.graph.startDestinationId) { saveState = true }
+                                popUpTo(nav.graph.startDestinationId)
                                 launchSingleTop = true
-                                restoreState = true
                             }
                         },
                         // Sin icono a propósito: una etiqueta escrita no hay
