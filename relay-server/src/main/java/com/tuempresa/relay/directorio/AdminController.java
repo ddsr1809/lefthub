@@ -1,6 +1,7 @@
 package com.tuempresa.relay.directorio;
 
 import com.tuempresa.relay.directorio.CanalesService.Cambio;
+import com.tuempresa.relay.config.SeguridadConfig;
 import com.tuempresa.relay.modelo.*;
 import com.tuempresa.relay.push.Emisores;
 import com.tuempresa.relay.push.PushService;
@@ -51,6 +52,7 @@ public class AdminController {
     private final AjustesService ajustes;
     private final FotosService fotos;
     private final PerfilesService perfiles;
+    private final BorradoService borrado;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -63,7 +65,8 @@ public class AdminController {
                            CreadoresService servicio, ProductorasService servicioDeProductoras,
                            CanalesService canalesService, Catalogo catalogo,
                            ReplicaService replica, AjustesService ajustes,
-                           FotosService fotos, PerfilesService perfiles) {
+                           FotosService fotos, PerfilesService perfiles,
+                           BorradoService borrado) {
         this.creadores = creadores;
         this.productoras = productoras;
         this.canales = canales;
@@ -82,6 +85,7 @@ public class AdminController {
         this.ajustes = ajustes;
         this.fotos = fotos;
         this.perfiles = perfiles;
+        this.borrado = borrado;
     }
 
     // -------------------------------------------------------------------------
@@ -443,6 +447,28 @@ public class AdminController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Falta decir de qué red es la cuenta.");
         }
         return perfiles.leer(plataforma, url, channelId);
+    }
+
+    // -------------------------------------------------------------------------
+    // Borrar de golpe una parte del directorio
+    // -------------------------------------------------------------------------
+
+    /**
+     * Primer paso: cuenta lo que se perdería y da el número que hay que
+     * escribir para confirmar. No borra nada.
+     */
+    @PostMapping("/borrado/preparar")
+    public Dtos.BorradoPreparado prepararBorrado(@RequestBody(required = false) Dtos.PedirBorrado peticion) {
+        return borrado.preparar(SeguridadConfig.Sesion.exigir(),
+                peticion == null ? null : peticion.partes());
+    }
+
+    /** Segundo paso: borra, si el número es el que se dio en el primero. */
+    @PostMapping("/borrado")
+    public Dtos.BorradoHecho borrarDeGolpe(@RequestBody(required = false) Dtos.ConfirmarBorrado peticion) {
+        return borrado.ejecutar(SeguridadConfig.Sesion.exigir(),
+                peticion == null ? null : peticion.partes(),
+                peticion == null ? null : peticion.codigo());
     }
 
     // -------------------------------------------------------------------------
