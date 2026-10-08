@@ -457,7 +457,97 @@
         <section class="panel"><div class="panel-head"><h2>Qué revisar</h2></div>
           ${alertas.length ? '<ul class="alertas">' + alertas.map(([c, t, v]) => `<li><span><span class="badge ${c}">${c === 'b-warn' ? 'Atención' : 'Pendiente'}</span> ${esc(t)}</span><button class="link" data-ir="${v}">Revisar</button></li>`).join('') + '</ul>' : '<div class="empty">Todo en orden.</div>'}
         </section>
+        ${tarjetaBorrar()}
       </div>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Borrar de golpe una parte del directorio
+  // ---------------------------------------------------------------------------
+  // Lo que se puede borrar así, con lo que se lleva por delante cada cosa.
+  const PARTES_BORRABLES = [
+    ['creadores', 'Todos los creadores', 'con sus canales, sus redes, sus videos y quién los sigue'],
+    ['productoras', 'Todas las productoras', 'con sus canales propios, los videos de esos canales y quién las sigue'],
+    ['publicaciones', 'Todas las publicaciones', 'los videos que detectó el servidor'],
+    ['reportes', 'Todos los reportes', 'los avisos de enlaces rotos']
+  ];
+
+  function tarjetaBorrar() {
+    return `<section class="panel"><div class="panel-head"><h2>Borrar datos</h2><span class="badge b-bad">No se puede deshacer</span></div>
+      <div class="ajuste">
+        <p class="hint">Para vaciar de golpe una parte del directorio, por ejemplo después de hacer pruebas. Marca qué quieres borrar; antes de borrar nada verás cuánto se pierde y tendrás que escribir un número que te da el sistema. Los usuarios, los administradores y los ajustes no se tocan.</p>
+        <div class="borrables">${PARTES_BORRABLES.map(([clave, titulo, detalle]) => `<label class="check"><input type="checkbox" data-borrar="${clave}"> <span><b>${titulo}</b> <span class="hint">· ${detalle}</span></span></label>`).join('')}</div>
+        <div><button class="btn danger" data-accion="borrar-datos">Borrar lo marcado…</button></div>
+      </div></section>`;
+  }
+
+  // "5 creadores", "1 productora"… de lo que diga la cuenta, sin los ceros.
+  function cuentaEnPalabras(c) {
+    return [
+      [c.creadores, 'creador', 'creadores'], [c.productoras, 'productora', 'productoras'],
+      [c.canales, 'canal o red', 'canales y redes'], [c.publicaciones, 'video', 'videos'],
+      [c.reportes, 'reporte', 'reportes']
+    ].filter(([n]) => n > 0).map(([n, uno, varios]) => plural(n, uno, varios));
+  }
+
+  async function abrirBorrado(boton) {
+    const partes = $$('#main [data-borrar]:checked').map((x) => x.dataset.borrar);
+    if (!partes.length) { toast('Marca primero qué quieres borrar.', true); return; }
+
+    // El servidor cuenta lo que se perdería y da el número que hay que
+    // escribir. Sin ese número, la ruta de borrar no borra nada.
+    let p;
+    boton.disabled = true;
+    try {
+      p = await api('/api/admin/borrado/preparar', { metodo: 'POST', cuerpo: { partes } });
+    } catch (e) {
+      toast(e.message === 'Esa ruta no existe.' ? 'Este servidor todavía no sabe borrar de golpe. Actualízalo.' : e.message, true);
+      return;
+    } finally {
+      boton.disabled = false;
+    }
+
+    const titulos = PARTES_BORRABLES.filter(([clave]) => p.partes.includes(clave));
+    const cuenta = cuentaEnPalabras(p.cuenta);
+    const conDirectorio = p.partes.includes('creadores') || p.partes.includes('productoras');
+    const minutos = Math.max(1, Math.round(p.caducaEnSegundos / 60));
+
+    abrirModal('¿SEGURO QUE QUIERES BORRAR TODO ESTO?', `
+      <div class="stack" style="gap:14px">
+        <ul class="borrado-lista">${titulos.map(([, titulo, detalle]) => `<li><b>${titulo}</b>, ${detalle}.</li>`).join('')}</ul>
+        <p style="margin:0" id="bCuenta">${cuenta.length ? 'Ahora mismo son <b>' + esc(juntar(cuenta)) + '</b>.' : 'Ahora mismo no hay nada de eso: no se borraría nada.'}</p>
+        <p style="margin:0"><b>No se puede deshacer.</b> ${conDirectorio ? 'Quien los seguía en la app deja de seguirlos y de recibir sus avisos, y para recuperarlos habría que darlos de alta otra vez. Justo antes de borrar se guarda una versión del directorio (sección Versiones) para poder consultar cómo estaba.' : 'Lo borrado no vuelve.'}</p>
+        <div class="codigo-caja">
+          <span class="hint">Para confirmar, escribe este número:</span>
+          <div class="codigo" id="bCodigo" aria-label="Número de confirmación: ${esc(p.codigo.split('').join(' '))}">${esc(p.codigo.slice(0, 3))} ${esc(p.codigo.slice(3))}</div>
+          <input class="input" id="bEscrito" inputmode="numeric" autocomplete="off" maxlength="9" placeholder="Escribe aquí el número" aria-label="Escribe aquí el número">
+          <span class="hint">Vale ${minutos} minutos y una sola vez.</span>
+        </div>
+      </div>`, [
+      { texto: 'Cancelar' },
+      { texto: 'Borrar definitivamente', tipo: 'danger solid', alPulsar: async () => {
+        const escrito = $('#bEscrito').value.replace(/\s/g, '');
+        if (escrito !== p.codigo) {
+          toast(escrito ? 'El número no coincide. Revísalo.' : 'Escribe el número que se muestra arriba.', true);
+          $('#bEscrito').focus();
+          return false;
+        }
+        let r;
+        try {
+          r = await api('/api/admin/borrado', { metodo: 'POST', cuerpo: { partes: p.partes, codigo: escrito } });
+        } catch (e) {
+          toast(e.message, true);
+          // Un 409 es que el número ya no vale: no tiene sentido seguir aquí.
+          return e.estado === 409;
+        }
+        const borrado = cuentaEnPalabras(r.borrado);
+        toast((borrado.length ? 'Se borraron ' + juntar(borrado) + '.' : 'No había nada que borrar.')
+          + (r.version ? ' Quedó guardada la versión ' + r.version + '.' : ''));
+        // Lo que el panel tenía cargado ya no existe.
+        estado.creadores = null; estado.productoras = null; estado.publicaciones = null;
+        ir(estado.vista);
+      } }
+    ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -2190,6 +2280,8 @@
         }
 
         case 'mover': abrirMover(b.dataset.video); break;
+
+        case 'borrar-datos': await abrirBorrado(b); break;
 
         case 'filtro-pubs': {
           estado.filtroPubs = b.dataset.valor;
