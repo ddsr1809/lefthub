@@ -263,6 +263,8 @@
     productoras: null,      // igual: las usan el formulario de creador y los canales
     filtroCreadores: { q: '', categoria: '' },
     publicaciones: null,
+    filtroPubs: 'todos',    // todos | videos | cortos
+    ajustes: null,          // null: el servidor es anterior a los ajustes
     usuarios: null,         // la página que está en pantalla
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
   };
@@ -1023,25 +1025,57 @@
   // ---------------------------------------------------------------------------
   const ESTADOS_PUB = { ok: ['Normal', 'b-ok'], moved: ['Movido', 'b-info'], removed: ['Retirado', 'b-bad'] };
 
+  // Qué se lista: todo, solo los videos normales o solo los cortos.
+  const FILTROS_PUB = { todos: 'Todos', videos: 'Videos', cortos: 'Cortos' };
+  const VACIO_PUB = {
+    todos: 'Todavía no se ha detectado ningún video.',
+    videos: 'Todavía no se ha detectado ningún video normal.',
+    cortos: 'No hay ningún video corto guardado.'
+  };
+
+  // El interruptor general de los videos cortos. Con un servidor anterior a
+  // esto no hay ajustes que leer, y el panel no enseña nada de los cortos.
+  function tarjetaCortos(ajustes) {
+    const on = !!ajustes.cortos;
+    return `<section class="panel"><div class="panel-head"><h2>Videos cortos (Shorts)</h2>
+        <span class="badge ${on ? 'b-ok' : 'b-mute'}" id="cortosEstado">${on ? 'Encendidos' : 'Apagados'}</span></div>
+      <div class="ajuste">
+        <label class="check"><input type="checkbox" id="cortosOn" data-accion="ajuste-cortos" ${on ? 'checked' : ''}> Mostrar los videos cortos en la app</label>
+        <p class="hint">${on
+          ? 'Salen en un apartado propio de Novedades, nunca mezclados con los demás videos, y avisan solo a quien los quiere. Cada persona puede apagarlos para sí en los Ajustes de la app.'
+          : 'El servidor los guarda, pero no avisan a nadie ni salen en la app, y la app no ofrece la opción de verlos. Si los enciendes, aparecen en un apartado propio y cada persona decide si los quiere.'}</p>
+        <p class="hint">¿Hay videos normales marcados como cortos, o al revés? Corrígelos en la lista con «Es corto» / «No es corto», o deja que el servidor le pregunte a YouTube por los últimos: <button class="link" data-accion="revisar-cortos">Repasar los cortos guardados</button></p>
+      </div></section>`;
+  }
+
   async function vistaPublicaciones() {
-    const lista = await api('/api/admin/publicaciones?limite=100');
+    const filtro = FILTROS_PUB[estado.filtroPubs] ? estado.filtroPubs : 'todos';
+    const [lista, ajustes] = await Promise.all([
+      api('/api/admin/publicaciones?limite=100' + (filtro !== 'todos' ? '&tipo=' + filtro : '')),
+      api('/api/admin/ajustes').catch(() => null)
+    ]);
     estado.publicaciones = lista;
+    estado.ajustes = ajustes;
     main.innerHTML = `
-      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Los videos que detectó el servidor. Si una plataforma tumba uno, muévelo a otro enlace y avisa a quienes siguen a su creador o a su productora.</p></div></div>
+      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Los videos que detectó el servidor. Si una plataforma tumba uno, muévelo a otro enlace y avisa a quienes siguen a su creador o a su productora.</p></div>
+        ${ajustes ? `<div class="toolbar" id="filtroPubs">${Object.entries(FILTROS_PUB).map(([k, v]) => `<button class="btn sm ${k === filtro ? 'primary' : ''}" data-accion="filtro-pubs" data-valor="${k}" aria-pressed="${k === filtro}">${v}</button>`).join('')}</div>` : ''}</div>
+      <div class="stack">
+      ${ajustes ? tarjetaCortos(ajustes) : ''}
       <section class="panel"><div class="tablewrap"><table><thead><tr><th></th><th>Video</th><th>Creador</th><th>Estado</th><th>Publicado</th><th></th></tr></thead><tbody>
       ${lista.length ? lista.map((p) => {
         const [t, c] = ESTADOS_PUB[p.estado] || [p.estado, 'b-mute'];
         const enlace = p.estado === 'moved' && p.destinoUrl ? p.destinoUrl : p.url;
         return `<tr>
           <td>${p.miniaturaUrl ? `<img class="thumb" src="${esc(p.miniaturaUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : ''}</td>
-          <td><div class="clip" style="max-width:380px"><b>${esc(p.titulo)}</b></div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? 'Short' : 'Video'} · <span class="mono">${esc(p.videoId)}</span></span></td>
+          <td><div class="clip" style="max-width:380px"><b>${esc(p.titulo)}</b></div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? '<span class="badge b-warn">Corto</span>' : 'Video'} · <span class="mono">${esc(p.videoId)}</span></span></td>
           <td>${esc(p.creadorNombre || '—')}${p.productoraNombre && p.productoraNombre !== p.creadorNombre ? `<div class="muted" style="font-size:12.5px">${esc(p.productoraNombre)}</div>` : ''}</td>
           <td><span class="badge ${c}">${esc(t)}</span>${p.estado === 'moved' ? `<div class="muted" style="font-size:12.5px">a ${esc(PLATAFORMAS[p.destinoPlataforma] || p.destinoPlataforma || '')}</div>` : ''}</td>
           <td class="num">${esc(fmtFecha(p.publicadoEn))}</td>
-          <td class="acciones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button></td>
+          <td class="acciones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button>${ajustes && !p.enVivo ? `<button class="btn sm" data-accion="tipo-video" data-video="${esc(p.videoId)}" data-valor="${p.tipo === 'short' ? 'video' : 'short'}">${p.tipo === 'short' ? 'No es corto' : 'Es corto'}</button>` : ''}</td>
         </tr>`;
-      }).join('') : '<tr><td colspan="6"><div class="empty">Todavía no se ha detectado ningún video.</div></td></tr>'}
-      </tbody></table></div></section>`;
+      }).join('') : `<tr><td colspan="6"><div class="empty">${VACIO_PUB[ajustes ? filtro : 'todos']}</div></td></tr>`}
+      </tbody></table></div></section>
+      </div>`;
   }
 
   function abrirMover(videoId) {
@@ -1492,6 +1526,59 @@
         }
 
         case 'mover': abrirMover(b.dataset.video); break;
+
+        case 'filtro-pubs': {
+          estado.filtroPubs = b.dataset.valor;
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'ajuste-cortos': {
+          // La casilla ya cambió al pulsarla. Si algo falla o se cancela, se
+          // vuelve a pintar la sección con lo que diga el servidor.
+          const encender = b.checked;
+          try {
+            const seguro = await confirmar(
+              encender ? 'Mostrar los videos cortos' : 'Dejar de mostrar los videos cortos',
+              encender
+                ? 'La app enseñará un apartado de videos cortos en Novedades, con los que ya están guardados y los que lleguen. Cada persona podrá apagarlos para sí en Ajustes. No se avisa de los que ya estaban guardados.'
+                : 'Los videos cortos dejan de salir en la app y de avisar, y desaparece la opción en los Ajustes de la app. No se borra nada: si los vuelves a encender, ahí siguen.',
+              encender ? 'Mostrarlos' : 'Dejar de mostrarlos', !encender);
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { cortos: encender } });
+              toast(encender ? 'Videos cortos encendidos.' : 'Videos cortos apagados.');
+            }
+          } finally {
+            if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          }
+          break;
+        }
+
+        case 'tipo-video': {
+          const corto = b.dataset.valor === 'short';
+          await api('/api/admin/videos/' + encodeURIComponent(b.dataset.video) + '/tipo', { metodo: 'PUT', cuerpo: { tipo: b.dataset.valor } });
+          toast(corto ? 'Marcado como video corto.' : 'Marcado como video normal.');
+          if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
+
+        case 'revisar-cortos': {
+          b.disabled = true;
+          const antes = b.textContent;
+          b.textContent = 'Preguntando a YouTube…';
+          try {
+            const r = await api('/api/admin/videos/revisar-cortos', { metodo: 'POST' });
+            toast(!r.revisados ? 'No hay videos cortos guardados que repasar.'
+              : (r.corregidos ? plural(r.corregidos, 'video pasó', 'videos pasaron') + ' a normal' : 'Ninguno cambió')
+                + ' de ' + plural(r.revisados, 'corto repasado', 'cortos repasados')
+                + (r.sinRespuesta ? '; de ' + num(r.sinRespuesta) + ' YouTube no aclaró nada.' : '.'));
+          } finally {
+            b.disabled = false;
+            b.textContent = antes;
+          }
+          if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
 
         case 'ver-usuario': {
           b.disabled = true;
