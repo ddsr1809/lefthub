@@ -112,6 +112,69 @@ data class Productora(
     val canalesPropios: List<Canal> get() = canales.filter { it.creadorId == null }
 }
 
+/**
+ * Un canal de YouTube tal como sale en el listado de canales del directorio:
+ * el canal y lo que hace falta para pintar su fila sin buscar nada más.
+ */
+data class CanalListado(
+    val canal: Canal,
+    /** El nombre de su dueño y, si el canal tiene etiqueta, también: "Juan Pérez · Clips". */
+    val titulo: String,
+    val fotoUrl: String? = null,
+    /** El tema de su dueño, para filtrar igual que a los creadores. */
+    val categoria: String = "otros",
+    /** "De Estudio X", "Con Ana y Luis"… lo que haya; vacío si es solo de su creador. */
+    val deQuien: String = ""
+)
+
+/**
+ * Todos los canales de YouTube del directorio, uno por canal y por orden
+ * alfabético.
+ *
+ * Un mismo canal llega repetido: en la ficha de su dueño, en la de cada
+ * creador con el que aparece y en la de su productora. Aquí sale una vez.
+ * Los de un servidor anterior a las fichas de canal no traen id y no se
+ * listan: sin id no hay ficha que abrir.
+ */
+fun canalesDelDirectorio(creadores: List<Creador>, productoras: List<Productora>): List<CanalListado> {
+    val personas = creadores.filter { !it.esProductora }.associateBy { it.id }
+    // Una productora puede llegar por su lista o como una fila más de creadores.
+    val casas = productoras.associateBy { it.id }
+    val casasComoFila = creadores.filter { it.esProductora }.associateBy { it.id }
+
+    val vistos = LinkedHashMap<String, Canal>()
+    (creadores.flatMap { it.canales } + productoras.flatMap { it.canales })
+        .filter { it.esDeYouTube && it.id.isNotBlank() }
+        .forEach { vistos.putIfAbsent(it.id, it) }
+
+    return vistos.values.map { canal ->
+        val dueno = canal.creadorId?.let { personas[it] }
+        val casa = canal.productoraId?.let { casas[it] }
+        val casaFila = canal.productoraId?.let { casasComoFila[it] }
+        val nombreCasa = casa?.nombre ?: casaFila?.name
+
+        val quien = dueno?.name ?: nombreCasa ?: "Canal de YouTube"
+        val con = canal.tambien.mapNotNull { personas[it]?.name }.filter { it != dueno?.name }
+
+        CanalListado(
+            canal = canal,
+            titulo = canal.nombre?.takeIf { it.isNotBlank() }?.let { "$quien · $it" } ?: quien,
+            fotoUrl = dueno?.photoUrl ?: casa?.logoUrl ?: casaFila?.photoUrl,
+            categoria = dueno?.category ?: casaFila?.category ?: "otros",
+            deQuien = listOfNotNull(
+                // Solo si no es ya el título: en su canal propio, la casa es quien firma.
+                nombreCasa?.takeIf { dueno != null }?.let { "De $it" },
+                con.takeIf { it.isNotEmpty() }?.let { "Con ${enumerar(it)}" }
+            ).joinToString(" · ")
+        )
+    }.sortedBy { it.titulo.lowercase() }
+}
+
+/** "Ana", "Ana y Luis", "Ana, Luis y Rosa". */
+private fun enumerar(nombres: List<String>): String =
+    if (nombres.size <= 1) nombres.joinToString()
+    else nombres.dropLast(1).joinToString(", ") + " y " + nombres.last()
+
 data class Publicacion(
     val id: String = "",
     val videoId: String = "",

@@ -305,7 +305,9 @@ El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mism
 
 - **Creador.** *Canales de YouTube* y *Redes sociales* van en apartados distintos, y después sus productoras. De un canal que no es suyo dice de quién es. Si no tiene canal de YouTube lo dice, porque entonces no hay avisos de videos suyos.
 - **Canal de YouTube.** Se llega con "Ver los últimos videos de este canal", debajo del botón del canal (que sigue abriendo YouTube de un toque). Dice de quién es, de qué productora y con qué otros creadores aparece, cada uno con el camino a su ficha para seguirlo, y lista sus últimos videos.
-- **Productora.** Sus canales, con quién sale cada uno, sus creadores y el botón para seguirla. Está en la pestaña **Productoras** del directorio (solo si hay alguna) y, si aparece en el directorio, también entre los creadores.
+- **Productora.** Sus canales, con quién sale cada uno, sus creadores y el botón para seguirla. Está en la lista **Productoras** del directorio (solo si hay alguna).
+
+El Directorio de la app tiene arriba tres botones para elegir qué lista se ve: **Creadores** (solo las personas), **Canales de YouTube** (un canal por fila, con de quién es y con quién aparece; se toca para ver su ficha y sus últimos videos) y **Productoras**. Solo salen los botones de las listas que tienen algo. Los temas de debajo filtran a los creadores y a los canales.
 
 En Novedades, un video de un canal de productora se firma "Creador · Productora". "¿Estoy suscrito en YouTube?" se contesta canal por canal. La app nueva también funciona contra un servidor anterior: sin `canales` usa `conexiones`, sin la ruta de productoras no muestra la pestaña y sin la de videos la ficha del canal sale sin lista.
 
