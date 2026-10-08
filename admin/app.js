@@ -567,7 +567,7 @@
           <button class="btn" type="button" id="btnOtraPlat">Agregar</button>
         </div>
         <p class="hint" style="margin:10px 0 0">${conProductora
-          ? 'Elige la red, escribe su usuario (o pega el enlace) y pulsa Agregar; repítelo con cada una. Con una sola red ya se puede crear el creador: la app lo muestra en el directorio con sus enlaces. Los avisos de videos nuevos solo salen de sus canales de YouTube.'
+          ? 'Elige la red, escribe su usuario (o pega el enlace) y pulsa Agregar; repítelo con cada una. Al agregar la primera, el nombre, la descripción y la foto de abajo se llenan solos con lo que tenga en esa cuenta. Con una sola red ya se puede crear el creador. Los avisos de videos nuevos solo salen de sus canales de YouTube.'
           : 'X, Instagram, TikTok, Facebook, su página… Basta con su usuario.'}</p>
       </fieldset>`;
   }
@@ -617,14 +617,17 @@
 
     // Quien quiera enterarse de que la lista cambió (la sección de la foto,
     // que ofrece una fuente por cada cuenta).
-    let alCambiar = null;
+    const oyentes = [];
+    // Y quien quiera saber que se acaba de agregar una red a mano (para
+    // rellenar la ficha con sus datos).
+    let alAgregarRed = null;
 
     function pintar() {
       const html = { yt: [], redes: [] };
       lista.forEach((k, i) => html[grupo(k)].push(fila(k, i)));
       cajas.yt.innerHTML = html.yt.join('') || '<div class="hint">Sin canales de YouTube.</div>';
       cajas.redes.innerHTML = html.redes.join('') || '<div class="hint">Sin redes sociales.</div>';
-      if (alCambiar) alCambiar();
+      oyentes.forEach((fn) => fn());
     }
 
     const anotar = (e) => {
@@ -654,9 +657,11 @@
         $('#fOtraUrl').focus();
         return;
       }
-      lista.push({ id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '', creadores: [] });
+      const nueva = { id: null, plataforma, nombre: '', url, handle: null, channelId: null, productoraId: '', creadores: [] };
+      lista.push(nueva);
       $('#fOtraUrl').value = '';
       pintar();
+      if (alAgregarRed) alAgregarRed(nueva);
     });
 
     pintar();
@@ -664,7 +669,9 @@
       // Las cuentas que hay ahora en el formulario, guardadas o no.
       cuentas: () => lista.slice(),
       // Llama a `fn` ahora y cada vez que la lista cambie.
-      escuchar(fn) { alCambiar = fn; fn(); },
+      escuchar(fn) { oyentes.push(fn); fn(); },
+      // Llama a `fn` con la red que se acaba de agregar con el botón.
+      alAgregarRed(fn) { alAgregarRed = fn; },
       // Devuelve false si el canal ya estaba en la lista.
       agregarYouTube(d) {
         if (lista.some((k) => k.plataforma === 'youtube' && k.channelId === d.channelId)) return false;
@@ -773,53 +780,147 @@
   // Cómo se nombra una cuenta en su botón: "@usuario" o lo último del enlace.
   function nombreDeCuenta(k) {
     if (k.handle) return '@' + k.handle.replace(/^@/, '');
-    const fin = (k.url || '').split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || '';
+    const fin = ((k.url || '').split(/[?#]/)[0].replace(/\/+$/, '').split('/').pop() || '').replace(/^@/, '');
     return fin.length > 26 ? fin.slice(0, 25) + '…' : fin;
   }
 
-  /** Un botón por cada cuenta del formulario de la que se puede tomar la foto, y «Manual». */
-  function prepararFoto(editor) {
-    const fuentes = $('#fFotoFuentes');
+  /**
+   * Una fila de botones, uno por cada cuenta del formulario, y «Manual».
+   * Se repinta sola cuando se agregan o se quitan cuentas.
+   *
+   * @param caja      dónde van los botones
+   * @param opciones  etiqueta: el texto de delante; redes: de cuáles se ofrece;
+   *                  ocupado: el texto del botón mientras trabaja;
+   *                  alElegir(cuenta): async, lo que hace el botón;
+   *                  alManual(): lo que hace «Manual»
+   */
+  function botonesDeCuentas(caja, editor, opciones) {
     let cuentas = [];
 
     editor.escuchar(() => {
-      const todas = editor.cuentas().filter((k) => REDES_CON_FOTO.includes(k.plataforma) && (k.plataforma !== 'youtube' || k.channelId));
+      const todas = editor.cuentas().filter((k) => opciones.redes.includes(k.plataforma) && (k.plataforma !== 'youtube' || k.channelId));
       // YouTube primero: es la fuente más segura y no gasta del cupo diario.
       cuentas = todas.filter((k) => k.plataforma === 'youtube').concat(todas.filter((k) => k.plataforma !== 'youtube'));
-      fuentes.innerHTML = '<span class="hint">Tomarla de:</span>'
+      caja.innerHTML = `<span class="hint">${esc(opciones.etiqueta)}</span>`
         + cuentas.map((k, i) => `<button class="btn sm" type="button" data-fuente="${i}">${esc(PLATAFORMAS[k.plataforma] || k.plataforma)} · ${esc(nombreDeCuenta(k))}</button>`).join('')
         + '<button class="btn sm" type="button" data-fuente="manual">Manual</button>'
         + (cuentas.length ? '' : '<span class="hint">Agrega una red o un canal y aparecerá aquí.</span>');
     });
 
-    fuentes.addEventListener('click', async (e) => {
+    caja.addEventListener('click', async (e) => {
       const b = e.target.closest('[data-fuente]');
       if (!b) return;
-      if (b.dataset.fuente === 'manual') { $('#fFoto').focus(); $('#fFoto').select(); return; }
+      if (b.dataset.fuente === 'manual') { opciones.alManual(); return; }
 
-      const k = cuentas[Number(b.dataset.fuente)];
-      const red = PLATAFORMAS[k.plataforma] || k.plataforma;
       const texto = b.textContent;
-      b.disabled = true; b.textContent = 'Trayendo…';
+      b.disabled = true; b.textContent = opciones.ocupado;
       try {
-        const p = new URLSearchParams({ plataforma: k.plataforma, url: k.url || '' });
-        if (k.channelId) p.set('channelId', k.channelId);
-        const r = await api('/api/admin/foto?' + p.toString());
-        ponerFoto(r.url);
-        toast('Foto tomada de ' + red + '. Se guarda al guardar el formulario.');
-      } catch (err) {
-        // Un servidor anterior a esto no tiene la ruta.
-        toast(err.message === 'Esa ruta no existe.'
-          ? 'Este servidor todavía no sabe tomar fotos de las redes. Actualízalo, o pega la dirección de la imagen.'
-          : err.message, true);
+        await opciones.alElegir(cuentas[Number(b.dataset.fuente)]);
       } finally {
         // La lista pudo repintarse mientras tanto; entonces el botón ya es otro.
         if (b.isConnected) { b.disabled = false; b.textContent = texto; }
       }
     });
+  }
+
+  const paraCuenta = (k) => {
+    const p = new URLSearchParams({ plataforma: k.plataforma, url: k.url || '' });
+    if (k.channelId) p.set('channelId', k.channelId);
+    return p.toString();
+  };
+  // Un servidor anterior a esto no tiene estas rutas.
+  const avisoDeRuta = (err, queNoSabe) => (err.message === 'Esa ruta no existe.'
+    ? 'Este servidor todavía no sabe ' + queNoSabe + '. Actualízalo, o escríbelo a mano.'
+    : err.message);
+
+  /** Los botones de la sección de la foto: de qué cuenta tomarla. */
+  function prepararFoto(editor) {
+    botonesDeCuentas($('#fFotoFuentes'), editor, {
+      etiqueta: 'Tomarla de:', redes: REDES_CON_FOTO, ocupado: 'Trayendo…',
+      alManual: () => { $('#fFoto').focus(); $('#fFoto').select(); },
+      alElegir: async (k) => {
+        try {
+          const r = await api('/api/admin/foto?' + paraCuenta(k));
+          ponerFoto(r.url);
+          toast('Foto tomada de ' + (PLATAFORMAS[k.plataforma] || k.plataforma) + '. Se guarda al guardar el formulario.');
+        } catch (err) {
+          toast(avisoDeRuta(err, 'tomar fotos de las redes'), true);
+        }
+      }
+    });
 
     $('#fFoto').addEventListener('input', pintarFoto);
     pintarFoto();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Llenar la ficha con los datos de una cuenta
+  // ---------------------------------------------------------------------------
+  // De una página web también se puede leer el nombre y la descripción.
+  const REDES_CON_DATOS = REDES_CON_FOTO.concat('web');
+
+  function filaDeLlenado() {
+    return `<div class="llenar"><div class="foto-fuentes" id="fLlenarFuentes"></div>
+      <p class="hint" style="margin:6px 0 0">Pone el nombre, la descripción y la foto que tenga en esa cuenta. Revísalos antes de guardar: se pueden corregir a mano.</p></div>`;
+  }
+
+  const juntar = (partes) => (partes.length > 1 ? partes.slice(0, -1).join(', ') + ' y ' + partes[partes.length - 1] : partes[0] || '');
+
+  /**
+   * Trae los datos de la cuenta y los pone en el formulario.
+   *
+   * @param soloVacios true: solo rellena lo que esté vacío (al agregar una
+   *                   cuenta). false: pone todo lo que venga, que para eso se
+   *                   eligió esa cuenta.
+   */
+  async function llenarDesde(k, soloVacios) {
+    const red = PLATAFORMAS[k.plataforma] || k.plataforma;
+    let r;
+    try {
+      r = await api('/api/admin/cuenta?' + paraCuenta(k));
+    } catch (err) {
+      // Al agregar una cuenta nadie pidió nada: si el servidor no sabe, se calla.
+      if (!(soloVacios && err.message === 'Esa ruta no existe.')) toast(avisoDeRuta(err, 'leer los datos de una cuenta'), true);
+      return;
+    }
+    // El formulario pudo cerrarse mientras llegaba la respuesta.
+    if (!$('#fNombre')) return;
+
+    const puestos = [];
+    const poner = (campo, valor, que, alPoner) => {
+      if (!valor || (soloVacios && campo.value.trim())) return;
+      if (alPoner) alPoner(valor); else campo.value = valor;
+      puestos.push(que);
+    };
+    poner($('#fNombre'), r.nombre && r.nombre.slice(0, 60), 'el nombre');
+    poner($('#fBio'), r.descripcion && r.descripcion.slice(0, 600), 'la descripción');
+    poner($('#fFoto'), r.fotoUrl, 'la foto', ponerFoto);
+
+    const avisos = (r.avisos || []).join(' ');
+    // Con avisos se deja más tiempo en pantalla, para que dé tiempo a leerlos.
+    if (puestos.length) toast('De ' + red + ' se puso ' + juntar(puestos) + '.' + (avisos ? ' ' + avisos : ''), !!avisos);
+    else if (!soloVacios) toast(avisos || 'En ' + red + ' no había nada que poner.', true);
+  }
+
+  /** Los botones «Llenar con los datos de», y el llenado solo al agregar la primera cuenta. */
+  function prepararLlenado(editor, esAlta) {
+    const caja = $('#fLlenarFuentes');
+    if (!caja) return;
+
+    botonesDeCuentas(caja, editor, {
+      etiqueta: 'Llenar con los datos de:', redes: REDES_CON_DATOS, ocupado: 'Leyendo…',
+      alManual: () => { $('#fNombre').focus(); $('#fNombre').select(); },
+      alElegir: (k) => llenarDesde(k, false)
+    });
+
+    // En un alta, la primera cuenta que se agrega rellena la ficha sola. Si
+    // ya hay nombre, no: o lo escribió alguien o ya se llenó con otra cuenta.
+    // Al editar nunca: ahí los datos ya están y cambiarlos es cosa del botón.
+    if (esAlta) {
+      editor.alAgregarRed((k) => {
+        if (REDES_CON_DATOS.includes(k.plataforma) && !$('#fNombre').value.trim()) llenarDesde(k, true);
+      });
+    }
   }
 
   function prepararBusqueda(alEncontrar) {
@@ -851,14 +952,17 @@
     const compartidos = c.canalesCompartidos || [];
     return `
       <div class="stack" style="gap:14px">
-        <div class="form">
+        ${seccionRedes(true)}
+        ${seccionYouTube(true)}
+        <fieldset><legend>Datos</legend>
+        ${filaDeLlenado()}
+        <div class="form" style="margin-top:12px">
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
           <label class="f">Categoría<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(c.bio)}</textarea></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
-        ${seccionRedes(true)}
-        ${seccionYouTube(true)}
+        </fieldset>
         ${seccionFoto('Foto de perfil', c.fotoUrl)}
         ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
           <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
@@ -909,6 +1013,7 @@
         toast('Canal agregado: ' + (d.titulo || d.channelId));
       });
       prepararFoto(editor);
+      prepararLlenado(editor, !c);
     });
   }
 
@@ -958,6 +1063,7 @@
           <p class="hint" style="margin:10px 0 0">Sale en el listado de creadores, con sus canales, y la gente la sigue desde ahí. Sirve también para las versiones de la app que no tienen la pestaña de productoras.</p>
         </fieldset>` : ''}
         ${seccionesDeCanales(false)}
+        <fieldset><legend>Llenar sola</legend>${filaDeLlenado()}</fieldset>
         ${seccionFoto('Logo', p.logoUrl)}
         ${deCreadores.length ? `<fieldset><legend>Canales de creadores que son de esta productora</legend><div class="chips">${deCreadores.map((k) => chipCanal(k, true)).join('')}</div></fieldset>` : ''}
         <fieldset><legend>Creadores que figuran en ella</legend>
@@ -1005,6 +1111,7 @@
         toast('Canal agregado: ' + (d.titulo || d.channelId));
       });
       prepararFoto(editor);
+      prepararLlenado(editor, !p);
     });
   }
 

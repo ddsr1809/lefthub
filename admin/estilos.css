@@ -108,6 +108,7 @@ label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:60
 .foto-previa img{width:100%;height:100%;object-fit:cover}
 .foto-datos{flex:1 1 0;min-width:0;display:flex;flex-direction:column;gap:8px}
 .foto-fuentes{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.llenar{display:flex;flex-direction:column}
 .opcional{font-weight:500;font-size:12px;color:var(--muted);margin-left:6px}
 .ajuste{padding:14px 18px;display:flex;flex-direction:column;gap:8px}
 .ajuste .hint{margin:0;max-width:80ch;font-size:13.5px}
