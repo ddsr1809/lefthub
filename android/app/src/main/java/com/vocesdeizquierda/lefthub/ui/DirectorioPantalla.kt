@@ -15,6 +15,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
@@ -23,6 +24,7 @@ import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
+import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 // El directorio es cerrado: solo aparecen los creadores que el equipo aprobó.
@@ -42,8 +44,10 @@ private val TEMAS = listOf(
     "otros" to "Otros"
 )
 
-// No es un tema: es la otra mitad del directorio. Va como una pestaña más, al
-// final, para no añadir una pantalla que haya que descubrir.
+// Las tres listas del directorio. Se elige arriba cuál se ve; los temas de
+// debajo filtran dentro de la que esté elegida.
+private const val CREADORES = "creadores"
+private const val CANALES = "canales"
 private const val PRODUCTORAS = "productoras"
 
 @Composable
@@ -59,25 +63,46 @@ fun DirectorioPantalla(
     productoras: List<Productora> = emptyList(),
     productorasSeguidas: List<String> = emptyList(),
     onSeguirProductora: (String) -> Unit = {},
-    onAbrirProductora: (String) -> Unit = {}
+    onAbrirProductora: (String) -> Unit = {},
+    onAbrirCanal: (String) -> Unit = {}
 ) {
-    var elegido by remember { mutableStateOf("todos") }
+    var seccionElegida by remember { mutableStateOf(CREADORES) }
+    var temaElegido by remember { mutableStateOf("todos") }
     val esquema = MaterialTheme.colorScheme
 
-    // Si la última productora se retira mientras su pestaña está abierta, la
-    // pestaña desaparece y la lista vuelve a "Todos".
-    val tema = if (elegido == PRODUCTORAS && productoras.isEmpty()) "todos" else elegido
+    // Los creadores son las personas. Una productora que el servidor manda
+    // entre ellos (para las versiones de la app que no las conocen) va aquí
+    // en su propia lista, no mezclada.
+    val personas = remember(creadores) { creadores.filter { !it.esProductora } }
+    val canales = remember(creadores, productoras) { canalesDelDirectorio(creadores, productoras) }
 
-    val visibles = remember(creadores, tema) {
-        if (tema == "todos") creadores else creadores.filter { it.category == tema }
+    // Solo se ofrecen las listas que tienen algo. Una pestaña vacía es una
+    // promesa incumplida.
+    val secciones = listOfNotNull(
+        CREADORES to "Creadores",
+        (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
+        (PRODUCTORAS to "Productoras").takeIf { productoras.isNotEmpty() }
+    )
+    // Si la lista que se estaba viendo se queda vacía (se retiró la última
+    // productora, por ejemplo), su pestaña desaparece y se vuelve a los creadores.
+    val seccion = if (secciones.any { it.first == seccionElegida }) seccionElegida else CREADORES
+
+    // Los temas que de verdad tienen a alguien dentro de la lista elegida.
+    val temasConGente = remember(personas, canales, seccion) {
+        val usados = when (seccion) {
+            CANALES -> canales.map { it.categoria }
+            else -> personas.map { it.category }
+        }.toSet()
+        TEMAS.filter { it.first == "todos" || it.first in usados }
     }
+    // Al cambiar de lista, un tema que en la nueva no tiene a nadie no se queda puesto.
+    val tema = if (temasConGente.any { it.first == temaElegido }) temaElegido else "todos"
 
-    // Solo mostramos los temas que de verdad tienen a alguien dentro. Una
-    // pestaña vacía es una promesa incumplida.
-    val temasConGente = remember(creadores, productoras) {
-        val usados = creadores.map { it.category }.toSet()
-        TEMAS.filter { it.first == "todos" || it.first in usados } +
-            (if (productoras.isNotEmpty()) listOf(PRODUCTORAS to "Productoras") else emptyList())
+    val creadoresVisibles = remember(personas, tema) {
+        if (tema == "todos") personas else personas.filter { it.category == tema }
+    }
+    val canalesVisibles = remember(canales, tema) {
+        if (tema == "todos") canales else canales.filter { it.categoria == tema }
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -88,7 +113,43 @@ fun DirectorioPantalla(
             modifier = Modifier.padding(start = Espacio.md, end = Espacio.md, top = Espacio.sm)
         )
 
-        Row(
+        // Qué lista se ve. Solo aparece si hay más de una entre las que elegir.
+        if (secciones.size > 1) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = Espacio.md)
+                    .padding(top = Espacio.md)
+            ) {
+                secciones.forEach { (clave, nombre) ->
+                    val activa = clave == seccion
+                    Button(
+                        onClick = { seccionElegida = clave },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activa) esquema.primary else esquema.surface,
+                            contentColor = if (activa) esquema.onPrimary else esquema.onSurface
+                        ),
+                        border = if (activa) null
+                        else androidx.compose.foundation.BorderStroke(1.dp, esquema.outline),
+                        contentPadding = PaddingValues(horizontal = Espacio.lg, vertical = Espacio.sm),
+                        modifier = Modifier
+                            .heightIn(min = Tactil.principal)
+                            .semantics {
+                                role = Role.Tab
+                                selected = activa
+                            }
+                    ) {
+                        Text(nombre, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
+
+        // Los temas filtran a los creadores y a los canales. Las productoras
+        // no tienen tema: ahí la fila de temas no sale.
+        if (seccion != PRODUCTORAS) Row(
             horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
@@ -97,7 +158,7 @@ fun DirectorioPantalla(
             temasConGente.forEach { (clave, nombre) ->
                 val activo = clave == tema
                 OutlinedButton(
-                    onClick = { elegido = clave },
+                    onClick = { temaElegido = clave },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = if (activo) esquema.primary else Color.Transparent,
@@ -115,9 +176,9 @@ fun DirectorioPantalla(
             }
         }
 
-        if (tema == PRODUCTORAS) {
+        if (seccion == PRODUCTORAS) {
             LazyColumn(
-                contentPadding = PaddingValues(horizontal = Espacio.md),
+                contentPadding = PaddingValues(horizontal = Espacio.md, vertical = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
                 items(productoras, key = { it.id }) { productora ->
@@ -129,36 +190,38 @@ fun DirectorioPantalla(
                     )
                 }
             }
-        } else if (visibles.isEmpty()) {
+        } else if (seccion == CANALES) {
+            // No puede quedar vacía: la lista de temas sale de estos mismos canales.
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = Espacio.md),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(canalesVisibles, key = { it.canal.id }) { listado ->
+                    FilaCanal(
+                        listado = listado,
+                        onAbrir = { onAbrirCanal(listado.canal.id) },
+                        suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal)
+                    )
+                }
+            }
+        } else if (creadoresVisibles.isEmpty()) {
             Vacio(
-                titulo = "Nada en este tema todavía",
-                mensaje = "Estamos sumando creadores poco a poco. Prueba con otro tema."
+                titulo = "Todavía no hay creadores",
+                mensaje = "Estamos sumando creadores poco a poco. Vuelve pronto."
             )
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(visibles, key = { it.id }) { creador ->
-                    if (creador.esProductora) {
-                        // Una productora que aparece entre los creadores: se
-                        // abre su ficha y se la sigue como productora.
-                        FilaProductora(
-                            productora = productoras.firstOrNull { it.id == creador.id }
-                                ?: creador.comoProductora(),
-                            siguiendo = creador.id in productorasSeguidas,
-                            onAbrir = { onAbrirProductora(creador.id) },
-                            onSeguir = { onSeguirProductora(creador.id) }
-                        )
-                    } else {
-                        FilaCreador(
-                            creador = creador,
-                            siguiendo = creador.id in favoritos,
-                            onAbrir = { onAbrirCreador(creador.id) },
-                            onSeguir = { onSeguir(creador.id) },
-                            suscritoEnYouTube = youtube.suscritoA(creador.id)
-                        )
-                    }
+                items(creadoresVisibles, key = { it.id }) { creador ->
+                    FilaCreador(
+                        creador = creador,
+                        siguiendo = creador.id in favoritos,
+                        onAbrir = { onAbrirCreador(creador.id) },
+                        onSeguir = { onSeguir(creador.id) },
+                        suscritoEnYouTube = youtube.suscritoA(creador.id)
+                    )
                 }
             }
         }
@@ -460,12 +523,3 @@ internal fun BotonCanal(
         }
     }
 }
-
-/**
- * La productora que hay detrás de una fila del listado, armada con lo que
- * trae la propia fila. Solo hace falta mientras llega la lista de productoras.
- */
-private fun Creador.comoProductora() = Productora(
-    id = id, nombre = name, descripcion = bio, logoUrl = photoUrl,
-    canales = canales, enDirectorio = true
-)

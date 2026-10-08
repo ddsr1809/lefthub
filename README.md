@@ -305,7 +305,9 @@ El panel son archivos estáticos que Apache sirve desde el clon del VPS, el mism
 
 - **Creador.** *Canales de YouTube* y *Redes sociales* van en apartados distintos, y después sus productoras. De un canal que no es suyo dice de quién es. Si no tiene canal de YouTube lo dice, porque entonces no hay avisos de videos suyos.
 - **Canal de YouTube.** Se llega con "Ver los últimos videos de este canal", debajo del botón del canal (que sigue abriendo YouTube de un toque). Dice de quién es, de qué productora y con qué otros creadores aparece, cada uno con el camino a su ficha para seguirlo, y lista sus últimos videos.
-- **Productora.** Sus canales, con quién sale cada uno, sus creadores y el botón para seguirla. Está en la pestaña **Productoras** del directorio (solo si hay alguna) y, si aparece en el directorio, también entre los creadores.
+- **Productora.** Sus canales, con quién sale cada uno, sus creadores y el botón para seguirla. Está en la lista **Productoras** del directorio (solo si hay alguna).
+
+El Directorio de la app tiene arriba tres botones para elegir qué lista se ve: **Creadores** (solo las personas), **Canales de YouTube** (un canal por fila, con de quién es y con quién aparece; se toca para ver su ficha y sus últimos videos) y **Productoras**. Solo salen los botones de las listas que tienen algo. Los temas de debajo filtran a los creadores y a los canales.
 
 En Novedades, un video de un canal de productora se firma "Creador · Productora". "¿Estoy suscrito en YouTube?" se contesta canal por canal. La app nueva también funciona contra un servidor anterior: sin `canales` usa `conexiones`, sin la ruta de productoras no muestra la pestaña y sin la de videos la ficha del canal sale sin lista.
 
@@ -622,78 +624,6 @@ Canjear folios tiene un límite por cuenta: cinco equivocados seguidos y luego
 uno cada tres minutos.
 
 ---
-
-## El panel como app, y avisos al teléfono
-
-El panel de administración se puede **instalar como app** en el teléfono o la
-computadora, y **avisar** cuando pasa algo que hay que atender, aunque esté
-cerrado. Es el mismo panel de siempre (`admin/`), no otro código: lo que cambie
-en el panel cambia en la app.
-
-### Instalarla
-
-Abre el panel en el teléfono (`https://leftapp.vocesdeizquierda.com/admin`),
-entra, y en **Más → App y avisos** está el botón **Instalar la app** (Android,
-Chrome, Edge) o los pasos para hacerlo a mano (en iPhone: Safari → Compartir →
-Agregar a inicio).
-
-- **Producción y pruebas son dos apps distintas.** La de producción es verde y
-  se llama "Voces Admin"; la de pruebas (y la de tu servidor local) es azul y se
-  llama "Voces Admin (pruebas)". Lo decide `admin/ambiente.js` por el dominio.
-- **La app instalada conserva la sesión** hasta que caduca (`relay.jwt.dias-validez`,
-  30 días) o cierras sesión. En el navegador sigue como antes: se olvida al
-  cerrarlo.
-- **Se actualiza sola.** No hay tienda ni versión que subir: después de un
-  `git pull` en el VPS, la app trae lo nuevo la próxima vez que se abre con
-  conexión. Sin conexión abre con lo último que tenía y dice que no hay red.
-- En el teléfono la navegación va abajo (Resumen, Creadores, Canales, Reportes
-  y **Más** para el resto), cada fila de una tabla se lee como una tarjeta, y el
-  botón Atrás cierra el formulario o el menú abierto en vez de salir de la app.
-
-### Avisos
-
-En **App y avisos**, **Activar avisos** en cada dispositivo donde los quieras.
-Avisa de dos cosas:
-
-| Qué pasó | Cuándo avisa |
-|---|---|
-| Llegó un **reporte** (enlace roto u otra incidencia) | Al momento. Si varias personas reportan el mismo video, avisa el primero; mientras siga sin resolver, los demás solo suman en el panel. |
-| Un **canal visible dejó de recibir publicaciones** | Cuando su suscripción de YouTube lleva más de 30 minutos sin estar activa, o sea, después de que el servidor ya la reintentó solo. Un aviso por caída; varios canales a la vez van en un solo aviso. |
-
-Tocar el aviso abre la app en la sección que toca. **Enviar aviso de prueba**
-comprueba el camino entero sin esperar a que pase algo.
-
-Cómo está hecho, por si hay que tocarlo:
-
-- Son avisos de navegador (**Web Push**), no de Firebase. El navegador entrega
-  una dirección de su propio servicio de avisos y dos claves; el servidor cifra
-  el aviso para ese navegador y lo firma (`avisos/WebPush.java`, sin
-  bibliotecas). No usa `FCM_CREDENCIALES` ni comparte nada con los avisos de
-  publicaciones de la app.
-- **No hay nada que configurar.** Las claves con las que el servidor firma se
-  crean solas la primera vez y quedan en la tabla `ajustes`
-  (`avisos_panel_publica` y `avisos_panel_privada`); cada ambiente tiene las
-  suyas. Si alguna vez se borran, cada dispositivo tiene que activar los avisos
-  de nuevo.
-- Cada dispositivo es una fila de `dispositivos_admin` (V12). Se le avisa
-  mientras su cuenta sea administradora: quitarle el rol corta los avisos. Si el
-  navegador contesta que ese dispositivo ya no existe (desinstalaron la app,
-  quitaron el permiso), la fila se borra sola.
-- Cerrar sesión en un dispositivo apaga sus avisos. Que la sesión caduque, no.
-- El servidor solo manda a los servicios de avisos de los navegadores (Google,
-  Apple, Mozilla, Microsoft). La lista está en `WebPush.SERVICIOS`.
-- En **iPhone y iPad** los avisos solo funcionan con la app instalada en la
-  pantalla de inicio (iOS 16.4 o posterior); en Safari sin instalar, no.
-
-En la API, todo bajo `/api/admin/avisos` (rol de administrador; cada quien ve
-solo sus dispositivos): `GET` (la clave pública y la lista), `POST
-/dispositivos`, `POST /dispositivos/baja`, `DELETE /dispositivos/{id}` y `POST
-/prueba`.
-
-Como el panel llega al VPS con `git pull` y el servidor con el pipeline, puede
-pasar que el panel nuevo hable con un servidor anterior: entonces la app se
-instala y funciona igual, y la tarjeta de avisos dice que ese servidor todavía
-no los tiene.
 
 ## Cosas que se rompen y cómo notarlo
 

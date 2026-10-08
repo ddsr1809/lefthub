@@ -93,25 +93,17 @@
   // ---------------------------------------------------------------------------
   // Sesión
   // ---------------------------------------------------------------------------
-  // ¿Está abierto como app instalada (con su icono, sin barra del navegador)?
-  const INSTALADA = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
-    || window.navigator.standalone === true;
-
-  // En el navegador, sessionStorage y no localStorage: el token de
-  // administrador se olvida al cerrar el navegador, y volver a entrar es un
-  // clic. La app instalada sí lo conserva (localStorage) hasta que caduca o se
-  // cierra sesión: una app que pide entrar cada vez que se abre no sirve, y al
-  // tocar un aviso tiene que abrir directo en lo que avisa.
+  // sessionStorage y no localStorage: el token de administrador se olvida al
+  // cerrar el navegador. Volver a entrar es un clic.
   const CLAVE = 'vocesleft_admin';
-  const almacen = () => (INSTALADA ? localStorage : sessionStorage);
   let sesion = null;
-  try { sesion = JSON.parse(almacen().getItem(CLAVE) || 'null'); } catch (e) { sesion = null; }
+  try { sesion = JSON.parse(sessionStorage.getItem(CLAVE) || 'null'); } catch (e) { sesion = null; }
 
   function guardarSesion(s) {
     sesion = s;
     try {
-      if (s) almacen().setItem(CLAVE, JSON.stringify(s));
-      else { sessionStorage.removeItem(CLAVE); localStorage.removeItem(CLAVE); }
+      if (s) sessionStorage.setItem(CLAVE, JSON.stringify(s));
+      else sessionStorage.removeItem(CLAVE);
     } catch (e) { /* modo privado: la sesión vive solo en memoria */ }
   }
 
@@ -124,9 +116,6 @@
 
   function salir(motivo) {
     guardarSesion(null);
-    cerrarMenu();
-    cerrarModal();
-    ponerInsignia(0);
     $('#app').hidden = true;
     $('#puerta').hidden = false;
     mostrarErrorPuerta(motivo || '');
@@ -179,10 +168,12 @@
   // ---------------------------------------------------------------------------
   // Entrada con Google
   // ---------------------------------------------------------------------------
+  const host = location.hostname;
   const config = {
     googleClientId: CONFIG.googleClientId || '',
-    // produccion | pruebas | local. Lo decide ambiente.js, que carga antes.
-    ambiente: window.VOCESLEFT_AMBIENTE || 'produccion'
+    ambiente: host.startsWith('testapp.') || host.includes('test') ? 'pruebas'
+      : (host === 'localhost' || host === '127.0.0.1' || location.protocol === 'file:') ? 'local'
+      : 'produccion'
   };
 
   function arrancar() {
@@ -206,16 +197,7 @@
     el.textContent = textos[config.ambiente];
     el.hidden = false;
     document.title = (config.ambiente === 'produccion' ? '' : '[' + config.ambiente + '] ') + 'Panel de VocesLeft';
-    pintarBarraDelSistema();
   }
-
-  // En la app instalada, la barra de estado del teléfono toma el color de la
-  // franja: producción se sigue reconociendo de un vistazo.
-  function pintarBarraDelSistema() {
-    const meta = $('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', getComputedStyle($('#ambiente')).backgroundColor);
-  }
-  try { window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', pintarBarraDelSistema); } catch (e) { /* navegador viejo */ }
 
   let googleListo = false;
   function prepararGoogle(intentos = 0) {
@@ -267,17 +249,10 @@
     $('#quien').textContent = sesion.email || 'Administrador';
     ir(estado.vista);
     refrescarContadores();
-    confirmarAvisos();
   }
 
-  // Cerrar sesión a propósito también apaga los avisos de este dispositivo:
-  // quien sale ya no espera que le sigan llegando. Si la sesión caduca sola,
-  // no: los avisos siguen, y al tocarlos se pide entrar otra vez.
-  async function cerrarSesion() {
-    await apagarAvisos().catch(() => null);
-    salir('');
-  }
-  $('#salir').addEventListener('click', cerrarSesion);
+  $('#salir').addEventListener('click', () => salir(''));
+  $('#salirMovil').addEventListener('click', () => salir(''));
 
   // ---------------------------------------------------------------------------
   // Estado y navegación
@@ -307,13 +282,8 @@
     reportes: vistaReportes,
     anuncios: vistaAnuncios,
     usuarios: vistaUsuarios,
-    administradores: vistaAdministradores,
-    avisos: vistaAvisos
+    administradores: vistaAdministradores
   };
-
-  // Las que tienen botón propio en la barra de abajo del teléfono. Las demás
-  // se abren desde «Más».
-  const EN_LA_BARRA = ['resumen', 'creadores', 'canales', 'reportes'];
 
   // La sección se llamaba Suscripciones: los enlaces guardados siguen valiendo.
   const ALIAS = { suscripciones: 'canales' };
@@ -321,12 +291,9 @@
   function ir(vista) {
     vista = ALIAS[vista] || vista;
     if (!VISTAS[vista]) vista = 'resumen';
-    cerrarMenu();
     estado.vista = vista;
-    estado.pintadoEn = Date.now();
-    if (location.hash !== '#' + vista) history.replaceState(history.state, '', '#' + vista);
-    $$('#nav button, #barra button[data-vista]').forEach((b) => b.setAttribute('aria-current', b.dataset.vista === vista ? 'page' : 'false'));
-    $('#mas').setAttribute('aria-current', EN_LA_BARRA.includes(vista) ? 'false' : 'page');
+    if (location.hash !== '#' + vista) history.replaceState(null, '', '#' + vista);
+    $$('#nav button').forEach((b) => b.setAttribute('aria-current', b.dataset.vista === vista ? 'page' : 'false'));
     main.innerHTML = '<div class="cargando">Cargando…</div>';
     main.focus({ preventScroll: true });
     window.scrollTo(0, 0);
@@ -339,66 +306,6 @@
   $('#nav').addEventListener('click', (e) => {
     const b = e.target.closest('button[data-vista]');
     if (b) ir(b.dataset.vista);
-  });
-  $('#barra').addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-vista]');
-    if (b) ir(b.dataset.vista);
-  });
-
-  // «Más»: en el teléfono, el menú completo sube desde abajo.
-  const velo = document.createElement('div');
-  velo.className = 'velo';
-  velo.hidden = true;
-  $('#app').appendChild(velo);
-  function abrirMenu() {
-    $('#app').classList.add('menu-abierto');
-    velo.hidden = false;
-    $('#mas').setAttribute('aria-expanded', 'true');
-    abrirCapa(cerrarMenu);
-  }
-  function cerrarMenu() {
-    const app = $('#app');
-    if (!app.classList.contains('menu-abierto')) return;
-    app.classList.remove('menu-abierto');
-    velo.hidden = true;
-    $('#mas').setAttribute('aria-expanded', 'false');
-    capaCerrada(cerrarMenu);
-  }
-  $('#mas').addEventListener('click', () => ($('#app').classList.contains('menu-abierto') ? cerrarMenu() : abrirMenu()));
-  velo.addEventListener('click', cerrarMenu);
-
-  // ---------------------------------------------------------------------------
-  // El botón Atrás del teléfono
-  // ---------------------------------------------------------------------------
-  // En la app instalada no hay barra del navegador, y Atrás sale de la app. Si
-  // hay algo abierto encima (un formulario, el menú), Atrás tiene que cerrar
-  // eso y nada más: perder un formulario a medio llenar por un gesto es caro.
-  // Mientras hay una capa abierta hay una entrada de más en el historial; al
-  // cerrarla por cualquier vía, esa entrada se quita.
-  let capa = null;            // la función que cierra lo que está abierto encima
-  let quitandoEntrada = false;
-  function abrirCapa(cerrar) {
-    if (!capa) history.pushState({ capa: true }, '');
-    capa = cerrar;
-  }
-  function capaCerrada(cerrar) {
-    if (capa !== cerrar) return;
-    capa = null;
-    if (history.state && history.state.capa) { quitandoEntrada = true; history.back(); }
-  }
-  window.addEventListener('popstate', () => {
-    const laQuitamosNosotros = quitandoEntrada;
-    quitandoEntrada = false;
-    if (!laQuitamosNosotros) {
-      if (!capa) return;          // historial normal: lo atiende `hashchange`
-      const cerrar = capa;
-      capa = null;
-      cerrar();
-    }
-    // La entrada que queda debajo puede traer en la dirección la sección
-    // anterior (se cambió de sección con la capa abierta). Se pone la de
-    // ahora, y así el `hashchange` que viene detrás no devuelve a la otra.
-    if (sesion && location.hash !== '#' + estado.vista) history.replaceState(null, '', '#' + estado.vista);
   });
 
   async function cargarCreadores(forzar) {
@@ -428,21 +335,11 @@
       const [creadores, productoras, reportes] = await Promise.all([
         cargarCreadores(true), cargarProductoras(true), api('/api/admin/reportes?limite=200')]);
       const problemas = vigilados().filter(conProblema).length;
-      [['#n-susc', problemas], ['#b-susc', problemas], ['#n-rep', reportes.length], ['#b-rep', reportes.length]].forEach(([sel, n]) => {
-        const el = $(sel);
-        el.textContent = n > 99 ? '99+' : n; el.hidden = !n;
-      });
-      ponerInsignia(problemas + reportes.length);
+      const ns = $('#n-susc'), nr = $('#n-rep');
+      ns.textContent = problemas; ns.hidden = !problemas;
+      nr.textContent = reportes.length; nr.hidden = !reportes.length;
       return { creadores, productoras, reportes };
     } catch (e) { return null; }
-  }
-
-  // El numerito sobre el icono de la app instalada: lo que espera atención.
-  function ponerInsignia(n) {
-    try {
-      if (n && navigator.setAppBadge) navigator.setAppBadge(n).catch(() => null);
-      else if (!n && navigator.clearAppBadge) navigator.clearAppBadge().catch(() => null);
-    } catch (e) { /* no todos los navegadores lo tienen */ }
   }
 
   // Los canales de un creador. Un servidor anterior solo manda `conexiones`
@@ -501,7 +398,6 @@
       pie.appendChild(b);
     });
     if (typeof modal.showModal === 'function') { if (!modal.open) modal.showModal(); } else modal.setAttribute('open', '');
-    abrirCapa(cerrarModal);
     if (alAbrir) alAbrir();
     const primero = $('#mCuerpo input:not([type=hidden]), #mCuerpo select, #mCuerpo textarea');
     if (primero) setTimeout(() => primero.focus(), 30);
@@ -510,9 +406,6 @@
     if (!modal.open) return;
     if (typeof modal.close === 'function') modal.close(); else modal.removeAttribute('open');
   }
-  // Se cierre como se cierre (un botón, Escape, Atrás). Si entre tanto se
-  // abrió otro diálogo (una confirmación tras un formulario), sigue abierto.
-  modal.addEventListener('close', () => { if (!modal.open) capaCerrada(cerrarModal); });
   function confirmar(titulo, texto, textoOk, peligroso) {
     return new Promise((resolver) => {
       let decidido = false;
@@ -1840,265 +1733,6 @@
   }
 
   // ---------------------------------------------------------------------------
-  // App y avisos
-  // ---------------------------------------------------------------------------
-  // El panel se puede instalar como app (manifest.json + sw.js) y avisar en el
-  // dispositivo cuando llega un reporte o un canal deja de recibir
-  // publicaciones. Los avisos son de navegador (Web Push): el navegador da una
-  // dirección y dos claves, el panel se las pasa al servidor, y el servidor
-  // escribe a esa dirección. Quien los muestra es sw.js, aunque el panel esté
-  // cerrado.
-  const AVISOS_POSIBLES = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-  const ES_IOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
-
-  // sw.js se registra siempre que se pueda, con avisos o sin ellos: es también
-  // lo que deja instalar el panel y abrirlo sin conexión.
-  let registroSW = null;
-  if ('serviceWorker' in navigator && (location.protocol === 'https:' || config.ambiente === 'local') && location.protocol !== 'file:') {
-    registroSW = navigator.serviceWorker.register('sw.js').catch(() => null);
-
-    navigator.serviceWorker.addEventListener('message', (e) => {
-      const d = e.data || {};
-      if (!sesion || $('#app').hidden) return;
-      if (d.tipo === 'ir' && VISTAS[d.vista]) {
-        // Se tocó un aviso. Con un formulario abierto no se cambia de sección
-        // por debajo: los contadores ya dicen que hay algo.
-        if (modal.open) refrescarContadores(); else ir(d.vista);
-      } else if (d.tipo === 'aviso') {
-        refrescarContadores();
-        if (!modal.open && d.vista === estado.vista && document.visibilityState === 'visible') ir(estado.vista);
-      }
-    });
-  }
-
-  // El navegador ofrece instalar con este evento (Chrome, Edge, Samsung). Se
-  // guarda para lanzarlo desde nuestro botón. Safari no lo tiene: ahí se
-  // instala desde el menú Compartir.
-  let ofertaDeInstalar = null;
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    ofertaDeInstalar = e;
-    if (estado.vista === 'avisos' && sesion) vistaAvisos().catch(() => null);
-  });
-  window.addEventListener('appinstalled', () => {
-    ofertaDeInstalar = null;
-    toast('App instalada. Búscala entre tus aplicaciones.');
-    if (estado.vista === 'avisos' && sesion) vistaAvisos().catch(() => null);
-  });
-
-  const aBytes = (b64) => {
-    const t = String(b64).replace(/-/g, '+').replace(/_/g, '/');
-    const bin = atob(t + '='.repeat((4 - (t.length % 4)) % 4));
-    return Uint8Array.from(bin, (c) => c.charCodeAt(0));
-  };
-
-  /** La suscripción de este navegador, o null si no tiene (o no puede tener). */
-  async function suscripcionDeAqui() {
-    if (!AVISOS_POSIBLES || !registroSW) return null;
-    const reg = await registroSW;
-    return reg ? reg.pushManager.getSubscription() : null;
-  }
-
-  /** ¿La suscripción se hizo con la clave de este servidor? Si no, no le llega nada. */
-  function conLaClave(sub, clavePublica) {
-    try {
-      const suya = new Uint8Array(sub.options.applicationServerKey);
-      const esta = aBytes(clavePublica);
-      return suya.length === esta.length && suya.every((b, i) => b === esta[i]);
-    } catch (e) { return true; }   // un navegador que no la enseña: se da por buena
-  }
-
-  /** "Chrome en Android": para reconocer el dispositivo en la lista. */
-  function nombreDeAqui() {
-    const ua = navigator.userAgent;
-    const navegador = /Edg\//.test(ua) ? 'Edge' : /OPR\//.test(ua) ? 'Opera' : /SamsungBrowser/.test(ua) ? 'Samsung Internet'
-      : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Chrome|CriOS/.test(ua) ? 'Chrome' : /Safari/.test(ua) ? 'Safari' : 'Navegador';
-    const sistema = /Android/.test(ua) ? 'Android' : /iPhone|iPod/.test(ua) ? 'iPhone' : ES_IOS ? 'iPad'
-      : /Windows/.test(ua) ? 'Windows' : /CrOS/.test(ua) ? 'Chromebook' : /Macintosh/.test(ua) ? 'Mac' : /Linux/.test(ua) ? 'Linux' : '';
-    return (INSTALADA ? 'App · ' : '') + navegador + (sistema ? ' en ' + sistema : '');
-  }
-
-  const cuerpoDeSuscripcion = (sub) => {
-    const j = sub.toJSON();
-    return { endpoint: j.endpoint, p256dh: j.keys.p256dh, auth: j.keys.auth, nombre: nombreDeAqui() };
-  };
-
-  /** Lo que sabe el servidor: su clave y los dispositivos de la cuenta. Null si es anterior a los avisos. */
-  async function leerAvisos() {
-    try {
-      return await api('/api/admin/avisos');
-    } catch (e) {
-      if (e.estado === 404) return null;
-      throw e;
-    }
-  }
-
-  // Al entrar, si este dispositivo ya tenía los avisos activados, se le
-  // confirma al servidor: así se entera si el navegador cambió sus claves, y
-  // si la suscripción quedó hecha con otra clave se quita, porque no serviría.
-  async function confirmarAvisos() {
-    try {
-      if (!AVISOS_POSIBLES || Notification.permission !== 'granted') return;
-      const sub = await suscripcionDeAqui();
-      if (!sub) return;
-      const servidor = await leerAvisos();
-      if (!servidor) return;
-      if (!conLaClave(sub, servidor.clavePublica)) { await sub.unsubscribe(); return; }
-      await api('/api/admin/avisos/dispositivos', { metodo: 'POST', cuerpo: cuerpoDeSuscripcion(sub) });
-    } catch (e) { /* no es motivo para estorbar la entrada al panel */ }
-  }
-
-  async function encenderAvisos() {
-    const servidor = await leerAvisos();
-    if (!servidor) throw new Error('Este servidor todavía no tiene la versión con avisos.');
-    if (await Notification.requestPermission() !== 'granted') {
-      throw new Error('No diste permiso para los avisos. Puedes cambiarlo en los ajustes del navegador para este sitio.');
-    }
-    const reg = await registroSW;
-    if (!reg) throw new Error('El navegador no dejó preparar los avisos. Recarga la página e inténtalo de nuevo.');
-    await navigator.serviceWorker.ready;
-
-    let sub = await reg.pushManager.getSubscription();
-    if (sub && !conLaClave(sub, servidor.clavePublica)) { await sub.unsubscribe(); sub = null; }
-    if (!sub) {
-      try {
-        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: aBytes(servidor.clavePublica) });
-      } catch (e) {
-        throw new Error('El navegador no pudo activar los avisos' + (e && e.message ? ': ' + e.message : '.'));
-      }
-    }
-    return api('/api/admin/avisos/dispositivos', { metodo: 'POST', cuerpo: cuerpoDeSuscripcion(sub) });
-  }
-
-  /** Este dispositivo deja de recibir avisos: se le dice al servidor y al navegador. */
-  async function apagarAvisos() {
-    const sub = await suscripcionDeAqui();
-    if (!sub) return;
-    if (sesion) await api('/api/admin/avisos/dispositivos/baja', { metodo: 'POST', cuerpo: { endpoint: sub.endpoint } }).catch(() => null);
-    await sub.unsubscribe().catch(() => null);
-  }
-
-  function tarjetaInstalar() {
-    let cuerpo;
-    if (INSTALADA) {
-      cuerpo = '<p style="margin:0">Estás usando el panel como app. Se actualiza sola: cada vez que se abre con conexión trae la versión más reciente.</p>';
-    } else if (ofertaDeInstalar) {
-      cuerpo = `<p style="margin:0 0 12px">Queda con su propio icono, abre a pantalla completa y entra directo, sin pedir la cuenta cada vez.</p>
-        <button class="btn primary" data-accion="instalar-app">Instalar la app</button>`;
-    } else {
-      const pasos = ES_IOS
-        ? 'En Safari, toca <b>Compartir</b> y luego <b>Agregar a inicio</b>.'
-        : /Android/.test(navigator.userAgent)
-          ? 'En el menú del navegador (⋮), toca <b>Instalar app</b> o <b>Agregar a pantalla principal</b>.'
-          : 'En Chrome o Edge, usa el icono de instalar que aparece al final de la barra de direcciones, o el menú (⋮) → <b>Instalar</b>.';
-      cuerpo = `<p style="margin:0 0 6px">Queda con su propio icono, abre a pantalla completa y entra directo, sin pedir la cuenta cada vez.</p>
-        <p class="hint" style="margin:0;font-size:13.5px">${pasos}</p>`;
-    }
-    return `<section class="panel"><div class="panel-head"><h2>La app</h2>
-        ${INSTALADA ? '<span class="badge b-ok">Instalada</span>' : '<span class="badge b-mute">Sin instalar</span>'}</div>
-      <div class="panel-body">${cuerpo}
-        ${config.ambiente !== 'produccion' ? `<p class="hint" style="margin:10px 0 0">Esta es la app de ${config.ambiente === 'pruebas' ? 'pruebas' : 'tu servidor local'}: se instala aparte de la de producción, con el icono azul.</p>` : ''}
-      </div></section>`;
-  }
-
-  function tarjetaAvisos(servidor, sub) {
-    const cabeza = (insignia) => `<div class="panel-head"><h2>Avisos en este dispositivo</h2>${insignia}</div>`;
-    const queAvisa = '<p class="hint" style="margin:0;font-size:13.5px">Avisa cuando llega un reporte nuevo y cuando un canal visible lleva más de media hora sin poder recibir publicaciones.</p>';
-    const caja = (insignia, cuerpo) => `<section class="panel">${cabeza(insignia)}<div class="panel-body stack" style="gap:12px">${cuerpo}</div></section>`;
-
-    if (!servidor) return caja('<span class="badge b-mute">No disponibles</span>', '<p style="margin:0">Este servidor todavía no tiene la versión con avisos. Aparecerán aquí cuando se despliegue.</p>');
-    if (!AVISOS_POSIBLES || !registroSW) {
-      return caja('<span class="badge b-mute">No disponibles</span>', ES_IOS && !INSTALADA
-        ? '<p style="margin:0">En iPhone y iPad los avisos solo funcionan con la app instalada. Agrégala a la pantalla de inicio (arriba dice cómo), ábrela desde su icono y actívalos ahí.</p>'
-        : '<p style="margin:0">Este navegador no permite avisos, o el panel no está abierto por https.</p>');
-    }
-    if (Notification.permission === 'denied') {
-      return caja('<span class="badge b-warn">Bloqueados</span>', '<p style="margin:0">Los avisos de este sitio están bloqueados en el navegador. Permítelos en los ajustes del sitio (el candado de la barra de direcciones, o los ajustes de la app) y vuelve aquí.</p>');
-    }
-    const activos = sub && servidor.dispositivos.some((d) => d.endpoint === sub.endpoint);
-    if (!activos) {
-      return caja('<span class="badge b-mute">Desactivados</span>', queAvisa
-        + '<div><button class="btn primary" data-accion="activar-avisos">Activar avisos</button></div>');
-    }
-    return caja('<span class="badge b-ok">Activados</span>', queAvisa
-      + `<div class="toolbar"><button class="btn" data-accion="probar-avisos">Enviar aviso de prueba</button>
-         <button class="btn danger" data-accion="desactivar-avisos">Desactivar</button></div>`);
-  }
-
-  function tarjetaDispositivos(servidor, sub) {
-    if (!servidor || !servidor.dispositivos.length) return '';
-    return `<section class="panel"><div class="panel-head"><h2>Tus dispositivos con avisos</h2></div>
-      <div class="tablewrap"><table><thead><tr><th>Dispositivo</th><th>Activado</th><th>Último aviso</th><th></th></tr></thead><tbody>
-      ${servidor.dispositivos.map((d) => {
-        const esEste = sub && d.endpoint === sub.endpoint;
-        return `<tr>
-          <td><b>${esc(d.nombre || 'Dispositivo')}</b>${esEste ? ' <span class="badge b-info">Este</span>' : ''}</td>
-          <td class="num">${esc(fmtDia(d.creadoEn))}</td>
-          <td>${d.ultimoError ? `<span class="badge b-bad">Falló</span><div class="muted" style="font-size:12.5px">${esc(d.ultimoError)}</div>`
-            : d.ultimoEnvio ? esc(relativo(d.ultimoEnvio)) : '<span class="muted">Ninguno todavía</span>'}</td>
-          <td class="acciones">${esEste ? '' : `<button class="btn sm danger" data-accion="quitar-dispositivo" data-id="${esc(d.id)}" data-nombre="${esc(d.nombre || 'ese dispositivo')}">Quitar</button>`}</td>
-        </tr>`;
-      }).join('')}
-      </tbody></table></div></section>`;
-  }
-
-  async function vistaAvisos() {
-    const [servidor, sub] = await Promise.all([leerAvisos(), suscripcionDeAqui().catch(() => null)]);
-    if (estado.vista !== 'avisos') return;
-    main.innerHTML = `
-      <div class="head"><div><h1>App y avisos</h1><p class="sub">Instala el panel como app en tu teléfono o tu computadora, y recibe un aviso cuando pase algo que haya que atender, aunque el panel esté cerrado.</p></div></div>
-      <div class="stack">
-        ${tarjetaInstalar()}
-        ${tarjetaAvisos(servidor, sub)}
-        ${tarjetaDispositivos(servidor, sub)}
-      </div>`;
-  }
-
-  // ---------------------------------------------------------------------------
-  // En pantalla chica, cada fila de una tabla se pinta como una tarjeta
-  // ---------------------------------------------------------------------------
-  // Las tablas se escriben una sola vez, como tablas. Aquí se anota en cada
-  // celda el título de su columna (data-th) y estilos.css hace el resto: en el
-  // teléfono la fila se apila y cada dato lleva su etiqueta delante. La primera
-  // columna con título es el nombre de la fila y va sin etiqueta.
-  function etiquetarTablas(raiz) {
-    $$('.tablewrap table', raiz).forEach((tabla) => {
-      const titulos = $$('thead th', tabla).map((th) => th.textContent.trim());
-      const principal = titulos.findIndex((t) => t);
-      $$('tbody tr', tabla).forEach((fila) => {
-        Array.from(fila.children).forEach((celda, i) => {
-          if (celda.colSpan > 1 || i === principal || !titulos[i] || celda.dataset.th === titulos[i]) return;
-          celda.dataset.th = titulos[i];
-        });
-      });
-    });
-  }
-  if (window.MutationObserver) {
-    const alCambiar = new MutationObserver(() => { etiquetarTablas(main); etiquetarTablas(modal); });
-    alCambiar.observe(main, { childList: true, subtree: true });
-    alCambiar.observe(modal, { childList: true, subtree: true });
-  }
-
-  // La explicación de cada sección ocupa media pantalla en el teléfono: ahí
-  // sale recortada (estilos.css) y se abre al tocarla.
-  main.addEventListener('click', (e) => {
-    const sub = e.target.closest('.head .sub');
-    if (sub && !e.target.closest('a, button')) sub.classList.toggle('abierta');
-  });
-
-  // Una app instalada puede pasar días abierta en segundo plano. Al volver a
-  // ella después de un rato se trae lo de ahora, salvo que haya algo a medias:
-  // un formulario abierto o una migración en pantalla.
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState !== 'visible' || !sesion || $('#app').hidden) return;
-    if (caducado(sesion.token)) { salir('Tu sesión caducó. Vuelve a entrar.'); return; }
-    if (Date.now() - (estado.pintadoEn || 0) < 5 * 60e3) return;
-    if (modal.open || estado.vista === 'versiones') { refrescarContadores(); return; }
-    ir(estado.vista);
-    refrescarContadores();
-  });
-
-  // ---------------------------------------------------------------------------
   // Versiones y migración de pruebas a producción
   // ---------------------------------------------------------------------------
   // Qué cambia, qué choca y qué se guarda lo decide versiones.js. Aquí está la
@@ -2744,52 +2378,6 @@
           $('#admResultado').innerHTML = '<div class="aviso-ok">' + esc(r.mensaje || 'Listo.') + '</div>';
           $('#admCorreo').value = '';
           b.disabled = false;
-          break;
-        }
-
-        case 'instalar-app': {
-          if (!ofertaDeInstalar) { vistaAvisos(); break; }
-          const oferta = ofertaDeInstalar;
-          ofertaDeInstalar = null;      // el navegador solo la deja usar una vez
-          oferta.prompt();
-          await oferta.userChoice.catch(() => null);
-          vistaAvisos();
-          break;
-        }
-
-        case 'activar-avisos': {
-          b.disabled = true;
-          await encenderAvisos();
-          toast('Avisos activados en este dispositivo.');
-          await vistaAvisos();
-          break;
-        }
-
-        case 'desactivar-avisos': {
-          b.disabled = true;
-          await apagarAvisos();
-          toast('Este dispositivo ya no recibe avisos.');
-          await vistaAvisos();
-          break;
-        }
-
-        case 'probar-avisos': {
-          const sub = await suscripcionDeAqui();
-          if (!sub) { await vistaAvisos(); break; }
-          b.disabled = true;
-          const r = await api('/api/admin/avisos/prueba', { metodo: 'POST', cuerpo: { endpoint: sub.endpoint } });
-          b.disabled = false;
-          toast(r.mensaje || (r.ok ? 'Aviso de prueba enviado.' : 'No se pudo enviar.'), !r.ok);
-          if (!r.ok) await vistaAvisos();
-          break;
-        }
-
-        case 'quitar-dispositivo': {
-          const ok = await confirmar('¿Quitar ' + b.dataset.nombre + '?', 'Dejará de recibir avisos. Se pueden activar otra vez desde ese dispositivo.', 'Quitar', true);
-          if (!ok) break;
-          await api('/api/admin/avisos/dispositivos/' + encodeURIComponent(id), { metodo: 'DELETE' });
-          toast('Dispositivo quitado.');
-          await vistaAvisos();
           break;
         }
       }

@@ -2,19 +2,10 @@
 <html lang="es">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
 <title>Panel de VocesLeft</title>
-<!-- El panel se puede instalar como app. ambiente.js cambia estos tres enlaces
-     en pruebas, para que se instale con otro nombre y otro color. -->
-<meta name="theme-color" content="#0B3B32">
-<meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Voces Admin">
-<link rel="manifest" id="manifiesto" href="manifest.json">
-<link rel="icon" id="icono" type="image/png" href="iconos/icono-192.png">
-<link rel="apple-touch-icon" id="iconoApple" href="iconos/apple-180.png">
-<script src="ambiente.js"></script>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🛠️</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -35,7 +26,7 @@
 </section>
 
 <div class="shell" id="app" hidden>
-  <aside id="menu">
+  <aside>
     <div class="brand"><div class="marca">V</div><b>VocesLeft</b></div>
     <nav id="nav" aria-label="Secciones">
       <button data-vista="resumen">Resumen</button>
@@ -48,21 +39,11 @@
       <button data-vista="anuncios">Anuncios</button>
       <button data-vista="usuarios">Usuarios</button>
       <button data-vista="administradores">Administradores</button>
-      <button data-vista="avisos">App y avisos</button>
+      <button class="solo-movil" id="salirMovil">Cerrar sesión</button>
     </nav>
     <div class="quien"><span id="quien"></span><br><button id="salir">Cerrar sesión</button></div>
   </aside>
   <main id="main" tabindex="-1"></main>
-
-  <!-- En el teléfono, la navegación va abajo: lo de todos los días a un toque
-       y el resto en «Más», que abre el menú completo de arriba. -->
-  <nav class="barra" id="barra" aria-label="Secciones principales">
-    <button data-vista="resumen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4.5v-5.5h-5V20H5a1 1 0 0 1-1-1z"/></svg><span>Resumen</span></button>
-    <button data-vista="creadores"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="8.5" r="3.2"/><path d="M3 19c.4-3.2 2.9-5 6-5s5.6 1.8 6 5"/><path d="M15.5 5.600a3 3 0 0 1 0 5.800M17.5 14.300c1.9.600 3.2 2.2 3.5 4.7"/></svg><span>Creadores</span></button>
-    <button data-vista="canales"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="6" width="18" height="12.5" rx="3"/><path d="m10.3 9.8 4.2 2.450-4.2 2.450z"/></svg><span>Canales</span><i class="cuenta" id="b-susc" hidden></i></button>
-    <button data-vista="reportes"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 20V5m0 1.500c3.5-2 5.5 1.5 9 0 1.6-.700 3-.800 5-.500v8c-2-.300-3.4-.200-5 .500-3.5 1.5-5.5-2-9 0"/></svg><span>Reportes</span><i class="cuenta" id="b-rep" hidden></i></button>
-    <button id="mas" aria-haspopup="true" aria-expanded="false" aria-controls="menu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><span>Más</span></button>
-  </nav>
 </div>
 
 <dialog id="modal" aria-labelledby="mTitulo">

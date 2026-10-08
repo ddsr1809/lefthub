@@ -320,7 +320,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     productoras = estado.productoras,
                     productorasSeguidas = estado.perfil.productoras,
                     onSeguirProductora = { modelo.alternarProductora(it) },
-                    onAbrirProductora = { nav.navigate("productora/$it") }
+                    onAbrirProductora = { nav.navigate("productora/$it") },
+                    onAbrirCanal = { nav.navigate("canal/$it") }
                 )
             }
 
