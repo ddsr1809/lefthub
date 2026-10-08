@@ -88,7 +88,7 @@ fun NovedadesPantalla(
     if (!hayFavoritos) {
         Vacio(
             titulo = "Todavía no sigues a nadie",
-            mensaje = "Elige a los creadores y productoras que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
+            mensaje = "Elige a los creadores y medios que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
             accion = { BotonGrande("Ver el directorio", onClick = onIrAlDirectorio) }
         )
         return
@@ -347,7 +347,7 @@ private fun EtiquetaDeEstado(abierto: Boolean) {
 /** "2 creadores", "1 productora" o "2 creadores y 1 productora". */
 private fun aQuienSigue(creadores: Int, productoras: Int): String = listOfNotNull(
     "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 },
-    "$productoras ${if (productoras == 1) "productora" else "productoras"}".takeIf { productoras > 0 }
+    "$productoras ${if (productoras == 1) "medio" else "medios"}".takeIf { productoras > 0 }
 ).joinToString(" y ")
 
 /**

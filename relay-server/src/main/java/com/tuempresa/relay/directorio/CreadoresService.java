@@ -64,7 +64,7 @@ public class CreadoresService {
 
             if (productoras.findAllById(pedidas).size() != pedidas.size()) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Una de las productoras ya no existe.");
+                        "Uno de los medios ya no existe.");
             }
             // Sobre el mismo conjunto: Hibernate vigila esa instancia.
             creador.getProductoras().retainAll(pedidas);

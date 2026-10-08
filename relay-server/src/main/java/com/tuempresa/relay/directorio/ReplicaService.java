@@ -186,7 +186,7 @@ public class ReplicaService {
         for (Productora productora : casas) {
             String fallo = enviar(productora);
             if (fallo == null) replicados++;
-            else errores.add("Productora " + productora.getNombre() + ": " + fallo);
+            else errores.add("Medio " + productora.getNombre() + ": " + fallo);
         }
         for (Creador creador : todos) {
             String fallo = enviar(creador);
@@ -200,7 +200,7 @@ public class ReplicaService {
         for (Productora productora : casas) {
             if (!conCompartidos(canales.propiosDeProductora(productora.getId()))) continue;
             String fallo = enviar(productora);
-            if (fallo != null) errores.add("Productora " + productora.getNombre() + " (canales compartidos): " + fallo);
+            if (fallo != null) errores.add("Medio " + productora.getNombre() + " (canales compartidos): " + fallo);
         }
         for (Creador creador : todos) {
             if (!conCompartidos(canales.deCreador(creador.getId()))) continue;

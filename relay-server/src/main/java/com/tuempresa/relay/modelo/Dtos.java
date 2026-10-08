@@ -441,7 +441,7 @@ public final class Dtos {
     public record GuardarProductora(
             UUID id,
 
-            @NotBlank(message = "La productora necesita un nombre.")
+            @NotBlank(message = "El medio necesita un nombre.")
             @Size(min = 2, max = 60, message = "El nombre debe tener entre 2 y 60 caracteres.")
             String nombre,
 

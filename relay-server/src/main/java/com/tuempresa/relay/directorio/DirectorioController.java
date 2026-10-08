@@ -146,7 +146,7 @@ public class DirectorioController {
         Productora productora = vista.productoraVisible(id);
         if (productora == null) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "Esa productora ya no está en el directorio.");
+                    "Ese medio ya no está en el directorio.");
         }
         return vista.ficha(productora);
     }
@@ -321,7 +321,7 @@ public class DirectorioController {
     @Transactional
     public Dtos.RespuestaSimple seguirProductora(@PathVariable UUID productoraId) {
         if (!productoras.existsById(productoraId)) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Esa productora no existe.");
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ese medio no existe.");
         }
 
         Usuario usuario = usuarioActual();

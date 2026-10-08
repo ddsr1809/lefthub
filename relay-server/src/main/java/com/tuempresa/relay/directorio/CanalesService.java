@@ -204,7 +204,7 @@ public class CanalesService {
 
         if (productoras.findAllById(pedidas).size() != pedidas.size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Uno de los canales apunta a una productora que ya no existe.");
+                    "Uno de los canales apunta a un medio que ya no existe.");
         }
     }
 
@@ -271,14 +271,14 @@ public class CanalesService {
 
         if (creadorId == null && productoraId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "El canal tiene que ser de un creador o de una productora.");
+                    "El canal tiene que ser de un creador o de un medio.");
         }
         Creador dueno = creadorId == null ? null : creadores.findById(creadorId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
                         "Ese creador ya no existe."));
         Productora casa = productoraId == null ? null : productoras.findById(productoraId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                        "Esa productora ya no existe."));
+                        "Ese medio ya no existe."));
 
         List<UUID> conQuien = peticion.creadores() != null ? peticion.creadores() : List.of();
         comprobarQueExisten(conQuien.stream().filter(Objects::nonNull).toList());
@@ -398,7 +398,7 @@ public class CanalesService {
                     .map(c -> c.getNombre()).orElse("otro creador");
         }
         return productoras.findById(canal.getProductoraId())
-                .map(p -> "la productora " + p.getNombre()).orElse("una productora");
+                .map(p -> "el medio " + p.getNombre()).orElse("un medio");
     }
 
     // -------------------------------------------------------------------------

@@ -142,8 +142,8 @@ fun CanalPantalla(
         if (productora != null) {
             BotonGrande(
                 titulo = productora.nombre,
-                subtitulo = if (dueno == null) "Es su canal. Ver la productora"
-                    else "El canal es de esta productora. Ver su ficha",
+                subtitulo = if (dueno == null) "Es su canal. Ver el medio"
+                    else "El canal es de este medio. Ver su ficha",
                 variante = VarianteBoton.SECUNDARIO,
                 onClick = { onAbrirProductora(productora.id) }
             )
@@ -224,8 +224,8 @@ fun CanalPantalla(
 /** "Canal de YouTube de Juan Pérez", "…de la productora Estudio X", o las dos cosas. */
 private fun deQuienEs(dueno: Creador?, productora: Productora?): String = when {
     dueno != null && productora != null ->
-        "Canal de YouTube de ${dueno.name}, de la productora ${productora.nombre}"
+        "Canal de YouTube de ${dueno.name}, del medio ${productora.nombre}"
     dueno != null -> "Canal de YouTube de ${dueno.name}"
-    productora != null -> "Canal de YouTube de la productora ${productora.nombre}"
+    productora != null -> "Canal de YouTube del medio ${productora.nombre}"
     else -> "Canal de YouTube"
 }

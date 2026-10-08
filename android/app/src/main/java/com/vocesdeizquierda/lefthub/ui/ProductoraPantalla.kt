@@ -39,8 +39,8 @@ fun ProductoraPantalla(
 
     if (productora == null) {
         Vacio(
-            titulo = "Esta productora ya no está",
-            mensaje = "Puede que la hayamos retirado del directorio. Vuelve al listado para ver las demás.",
+            titulo = "Este medio ya no está",
+            mensaje = "Puede que lo hayamos retirado del directorio. Vuelve al listado para ver los demás.",
             accion = { BotonGrande("Volver al directorio", onClick = onVolver) }
         )
         return
@@ -81,7 +81,7 @@ fun ProductoraPantalla(
             subtitulo = if (siguiendo)
                 "Toca para dejar de recibirlos"
             else
-                "Te avisamos de lo que salga en los canales de esta productora",
+                "Te avisamos de lo que salga en los canales de este medio",
             variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
             onClick = onSeguir
         )
