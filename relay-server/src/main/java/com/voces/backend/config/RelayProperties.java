@@ -22,7 +22,9 @@ public record RelayProperties(
         @DefaultValue Replica replica,
         @DefaultValue Fotos fotos,
         @DefaultValue Perfiles perfiles,
-        @DefaultValue Compras compras
+        @DefaultValue Compras compras,
+        @DefaultValue Servidor servidor,
+        @DefaultValue Apps apps
 ) {
 
     public record Jwt(
@@ -137,6 +139,27 @@ public record RelayProperties(
         public boolean envia() { return !url.isBlank(); }
 
         public boolean recibe() { return url.isBlank() && !token.isBlank(); }
+    }
+
+    /**
+     * De qué compilación salió este servidor.
+     *
+     * @param commit el commit de la imagen. Lo pone el pipeline al construirla;
+     *               vacío si se compiló a mano
+     */
+    public record Servidor(@DefaultValue("") String commit) {}
+
+    /**
+     * La versión más vieja de cada app que todavía se atiende. Vacío = todas.
+     * Ver FiltroVersionMinima.
+     */
+    public record Apps(
+            @DefaultValue("") String minimaAndroid,
+            @DefaultValue("") String minimaIos
+    ) {
+        public boolean hayMinima() {
+            return !minimaAndroid.isBlank() || !minimaIos.isBlank();
+        }
     }
 
     /** URL exacta que registramos como hub.callback. */

@@ -318,6 +318,12 @@ object ApiRelay {
 
     private suspend fun ejecutar(peticion: Request.Builder, conToken: Boolean = true): String =
         withContext(Dispatchers.IO) {
+            // Qué app es esta. El servidor lo usa para dejar de atender a las
+            // versiones anteriores a la mínima: responde 426 y su mensaje,
+            // que dice que hay que actualizar, se muestra como cualquier otro.
+            peticion.header("X-App-Version", BuildConfig.VERSION_NAME)
+            peticion.header("X-App-Plataforma", "android")
+
             if (conToken) {
                 val actual = token ?: throw IOException("No hay sesión activa.")
                 peticion.header("Authorization", "Bearer $actual")

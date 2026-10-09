@@ -1,7 +1,7 @@
 {
   "name": "creator-hub-functions",
   "description": "Backend serverless del Directorio de Creadores",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "commonjs",
   "main": "index.js",
   "engines": {
