@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
@@ -30,9 +31,11 @@ import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.AyudaTele
+import com.vocesdeizquierda.lefthub.data.EstadoServidor
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import com.vocesdeizquierda.lefthub.ui.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -74,17 +77,35 @@ class MainActivity : ComponentActivity() {
                 // no la atiende. No tiene sentido enseñar pantallas vacías.
                 val bloqueo by ApiRelay.bloqueo.collectAsState()
 
+                // El servidor está en mantenimiento o no responde. Se le
+                // pregunta cada vez que la app pasa a primer plano.
+                val servidor by ApiRelay.servidor.collectAsState()
+
                 TemaRelay(
                     preferencia = estado.perfil.tema,
                     escala = EscalaTexto.desde(estado.perfil.escalaTexto)
                 ) {
                     val aviso = bloqueo
-                    if (aviso != null) {
-                        ActualizarPantalla(mensaje = aviso)
-                    } else if (!estado.listo) {
-                        PantallaDeCarga()
-                    } else {
-                        Navegacion(modelo, estado)
+                    val estadoDelServidor = servidor
+                    when {
+                        aviso != null -> ActualizarPantalla(mensaje = aviso)
+
+                        estadoDelServidor is EstadoServidor.Mantenimiento -> ServidorPantalla(
+                            titulo = "Estamos en mantenimiento",
+                            mensaje = estadoDelServidor.mensaje,
+                            onReintentar = { comprobarServidor() }
+                        )
+
+                        estadoDelServidor is EstadoServidor.Caido -> ServidorPantalla(
+                            titulo = "No podemos conectar con el servidor",
+                            mensaje = "El servidor no está respondiendo en este momento. " +
+                                "Suele durar poco.",
+                            onReintentar = { comprobarServidor() }
+                        )
+
+                        !estado.listo -> PantallaDeCarga()
+
+                        else -> Navegacion(modelo, estado)
                     }
                 }
 
@@ -124,11 +145,37 @@ class MainActivity : ComponentActivity() {
         // Pedir el ViewModel lo crea, y al crearse abre la cuenta anónima:
         // antes de la aceptación no se toca.
         if (!Aceptacion.vigente(this)) return
+        // Cada vez que se entra: ¿está vivo el servidor? ¿en mantenimiento?
+        comprobarServidor()
         val modelo = ViewModelProvider(this)[AppViewModel::class.java]
         modelo.verificarYouTube(applicationContext)
         // Si al abrir no se pudo hablar con Google Play (sin conexión, por
         // ejemplo), se reintenta al volver. Si ya se pudo, esto no hace nada.
         modelo.prepararTienda(applicationContext, soloSiFalta = true)
+    }
+
+    /**
+     * Pregunta al servidor si atiende a la app. El resultado queda en
+     * ApiRelay.servidor, que es lo que pinta la interfaz.
+     *
+     * Si no atendía y ahora sí (terminó el mantenimiento, o volvió), la app
+     * arranca de nuevo: lo que se pidió mientras tanto falló, y empezar de
+     * cero es la forma segura de que nada se quede a medias o vacío.
+     */
+    private fun comprobarServidor() {
+        lifecycleScope.launch {
+            val antes = ApiRelay.servidor.value
+            val ahora = ApiRelay.comprobarServidor()
+            if (antes !is EstadoServidor.Vivo && ahora is EstadoServidor.Vivo) reiniciar()
+        }
+    }
+
+    private fun reiniciar() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        )
+        finish()
     }
 
     override fun onNewIntent(intent: Intent) {

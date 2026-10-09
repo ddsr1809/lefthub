@@ -2,6 +2,8 @@ package com.vocesdeizquierda.lefthub.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import com.vocesdeizquierda.lefthub.BuildConfig
 import kotlinx.coroutines.Dispatchers
@@ -31,6 +33,21 @@ import java.util.concurrent.TimeUnit
  * de sesión: es lo que permite recuperar la cuenta anónima al reabrir la app
  * sin pedirle nada al usuario.
  */
+/**
+ * Si el servidor atiende a la app. Lo dice [ApiRelay.comprobarServidor], que
+ * se llama cada vez que la app pasa a primer plano.
+ */
+sealed interface EstadoServidor {
+    /** Responde con normalidad, o todavía no se le ha preguntado. */
+    object Vivo : EstadoServidor
+
+    /** El equipo lo puso en mantenimiento desde el panel. */
+    data class Mantenimiento(val mensaje: String) : EstadoServidor
+
+    /** No responde, y el teléfono sí tiene internet. */
+    object Caido : EstadoServidor
+}
+
 object ApiRelay {
 
     private const val TAG = "ApiRelay"
@@ -46,10 +63,12 @@ object ApiRelay {
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
     private lateinit var prefs: SharedPreferences
+    private var redes: ConnectivityManager? = null
 
     /** Se llama una vez desde LeftVocesApp.onCreate(). */
     fun inicializar(contexto: Context) {
         prefs = contexto.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        redes = contexto.applicationContext.getSystemService(ConnectivityManager::class.java)
     }
 
     /**
@@ -104,6 +123,75 @@ object ApiRelay {
     val bloqueo: StateFlow<String?> = _bloqueo.asStateFlow()
 
     private const val ACTUALIZACION_OBLIGATORIA = 426
+
+    /**
+     * Si el servidor atiende a la app: vivo, en mantenimiento o caído.
+     * MainActivity lo mira y, si no está vivo, enseña solo el aviso.
+     */
+    private val _servidor = MutableStateFlow<EstadoServidor>(EstadoServidor.Vivo)
+    val servidor: StateFlow<EstadoServidor> = _servidor.asStateFlow()
+
+    private const val SIN_SERVICIO = 503
+    // Lo que contesta el proxy cuando el servidor de detrás no está.
+    private val SERVIDOR_CAIDO = setOf(502, 503, 504)
+    private const val MENSAJE_MANTENIMIENTO =
+        "Estamos haciendo mejoras en el servidor. Vuelve a intentarlo en un rato."
+
+    /**
+     * Pregunta al servidor si está vivo. No necesita sesión.
+     *
+     * Solo se da por caído cuando el proxy contesta que no hay nadie detrás,
+     * o cuando no se logra conectar y Android tiene comprobado que el
+     * teléfono sí sale a internet. Sin internet no se sabe, y entonces se
+     * queda lo que se supiera: de eso ya avisa cada pantalla a su manera.
+     */
+    suspend fun comprobarServidor(): EstadoServidor = withContext(Dispatchers.IO) {
+        val peticion = Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/servidor")
+            .header("X-App-Version", BuildConfig.VERSION_NAME)
+            .header("X-App-Plataforma", "android")
+            .get()
+            .build()
+
+        val visto: EstadoServidor? = try {
+            cliente.newCall(peticion).execute().use { respuesta ->
+                val cuerpo = respuesta.body?.string().orEmpty()
+                val json = runCatching { JSONObject(cuerpo) }.getOrNull()
+                when {
+                    json?.optBoolean("mantenimiento") == true ->
+                        EstadoServidor.Mantenimiento(mensajeDeMantenimiento(json))
+                    respuesta.code in SERVIDOR_CAIDO -> EstadoServidor.Caido
+                    // Cualquier otra respuesta, también el 404 de un servidor
+                    // anterior a esta ruta, la da un servidor que está vivo.
+                    else -> EstadoServidor.Vivo
+                }
+            }
+        } catch (e: IOException) {
+            // No se pudo ni conectar. Con internet comprobado, el problema
+            // es del servidor; sin él, es del teléfono y no se sabe nada.
+            if (hayInternet()) EstadoServidor.Caido else null
+        }
+
+        if (visto != null) _servidor.value = visto
+        _servidor.value
+    }
+
+    /** En /api/servidor el texto va en `mensaje`; en un error 503, en `message`. */
+    private fun mensajeDeMantenimiento(json: JSONObject?): String =
+        json?.optString("mensaje")?.takeIf { it.isNotBlank() }
+            ?: json?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: MENSAJE_MANTENIMIENTO
+
+    /**
+     * Si Android tiene comprobado que la red del teléfono llega a internet
+     * (VALIDATED), y no solo que hay una red conectada. Ante la duda, no:
+     * es preferible no avisar a decir que el servidor falla cuando no es él.
+     */
+    private fun hayInternet(): Boolean = runCatching {
+        val gestor = redes ?: return@runCatching false
+        val capacidades = gestor.getNetworkCapabilities(gestor.activeNetwork)
+        capacidades?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }.getOrDefault(false)
 
     /** Datos de la sesión actual, sin tocar la red. */
     var sesion: Sesion? = null
@@ -363,6 +451,15 @@ object ApiRelay {
                     val motivo = runCatching {
                         JSONObject(cuerpo).optString("message").takeIf { it.isNotBlank() }
                     }.getOrNull()
+
+                    // El equipo puso el servidor en mantenimiento con la app
+                    // ya abierta: se nota en la siguiente petición.
+                    if (respuesta.code == SIN_SERVICIO) {
+                        val json = runCatching { JSONObject(cuerpo) }.getOrNull()
+                        if (json?.optBoolean("mantenimiento") == true) {
+                            _servidor.value = EstadoServidor.Mantenimiento(mensajeDeMantenimiento(json))
+                        }
+                    }
 
                     if (respuesta.code == ACTUALIZACION_OBLIGATORIA) {
                         _bloqueo.value = motivo
