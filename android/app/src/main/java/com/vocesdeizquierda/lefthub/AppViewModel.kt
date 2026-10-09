@@ -32,6 +32,8 @@ data class EstadoApp(
     /** Dejó de estar suscrito en YouTube a alguien: hay un aviso por enseñar. */
     val bajasDeYouTube: BajasDeYouTube? = null,
     val videos: VideosDeCanal = VideosDeCanal(),
+    /** Los últimos videos del creador cuya ficha está abierta. `canalId` es aquí el id del creador. */
+    val videosDeCreador: VideosDeCanal = VideosDeCanal(),
     /**
      * Lo que cuesta quitar los anuncios, ya escrito con su moneda. Null
      * mientras no se sepa o si en este teléfono no se puede comprar: entonces
@@ -179,6 +181,33 @@ class AppViewModel(
             else e.copy(videos = VideosDeCanal(
                 canalId = canalId,
                 lista = resultado.getOrDefault(e.videos.lista),
+                fallo = resultado.isFailure
+            ))
+        }
+    }
+
+    /**
+     * Trae los últimos videos de un creador para el mini feed de su ficha.
+     * Mismo trato que los de un canal: al volver a la misma ficha se ve lo
+     * que ya había mientras llega lo nuevo.
+     */
+    fun cargarVideosDeCreador(creadorId: String) = viewModelScope.launch {
+        if (creadorId.isBlank()) return@launch
+
+        _estado.update { e ->
+            val previos = if (e.videosDeCreador.canalId == creadorId) e.videosDeCreador.lista else emptyList()
+            e.copy(videosDeCreador = VideosDeCanal(creadorId, cargando = true, lista = previos))
+        }
+
+        val resultado = runCatching { directorio.videosDeCreador(creadorId) }
+
+        _estado.update { e ->
+            // Si mientras tanto se abrió la ficha de otro creador, esta
+            // respuesta ya no es la que hay que pintar.
+            if (e.videosDeCreador.canalId != creadorId) e
+            else e.copy(videosDeCreador = VideosDeCanal(
+                canalId = creadorId,
+                lista = resultado.getOrDefault(e.videosDeCreador.lista),
                 fallo = resultado.isFailure
             ))
         }

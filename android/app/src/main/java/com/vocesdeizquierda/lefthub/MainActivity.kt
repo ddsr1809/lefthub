@@ -330,6 +330,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 arguments = listOf(navArgument("creatorId") { type = NavType.StringType })
             ) { entrada ->
                 val id = entrada.arguments?.getString("creatorId").orEmpty()
+
+                // Sus últimos videos se piden al abrir su ficha.
+                LaunchedEffect(id) { modelo.cargarVideosDeCreador(id) }
+
                 CreadorPantalla(
                     creador = modelo.creador(id),
                     siguiendo = id in estado.perfil.favoritos,
@@ -341,7 +345,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     productoras = estado.productoras,
                     onAbrirProductora = { nav.navigate("productora/$it") },
                     creadores = estado.creadores,
-                    onAbrirCanal = { nav.navigate("canal/$it") }
+                    onAbrirCanal = { nav.navigate("canal/$it") },
+                    // Mientras llegan los de este creador, no se pintan los del anterior.
+                    videos = estado.videosDeCreador.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    abiertos = Abiertos.videos
                 )
             }
 

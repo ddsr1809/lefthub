@@ -20,11 +20,13 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
@@ -267,9 +269,14 @@ fun CreadorPantalla(
     onAbrirProductora: (String) -> Unit = {},
     // El directorio: para decir de quién es un canal ajeno en el que aparece.
     creadores: List<Creador> = emptyList(),
-    onAbrirCanal: (String) -> Unit = {}
+    onAbrirCanal: (String) -> Unit = {},
+    /** Sus últimos videos: el mini feed de arriba. */
+    videos: VideosDeCanal = VideosDeCanal(),
+    /** Los videos que ya abrió desde la app: su fila se ve distinta. */
+    abiertos: Set<String> = emptySet()
 ) {
     val esquema = MaterialTheme.colorScheme
+    val contexto = LocalContext.current
 
     if (creador == null) {
         Vacio(
@@ -319,6 +326,36 @@ fun CreadorPantalla(
             variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
             onClick = onSeguir
         )
+
+        // Lo último que publicó, lo primero que se ve: unos pocos videos en
+        // filas pequeñas. Si no hay ninguno (no tiene YouTube, o todavía no
+        // ha publicado desde que entró al directorio) el apartado no sale.
+        if (videos.lista.isNotEmpty()) {
+            Text(
+                "Sus últimos videos",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            videos.lista.forEach { publicacion ->
+                FilaVideo(
+                    publicacion = publicacion,
+                    abierto = publicacion.videoId in abiertos,
+                    sinFirmarPor = creador.name,
+                    onAbrir = {
+                        val destino = publicacion.destino
+                        Enrutador.abrirVideo(
+                            contexto,
+                            destino.plataforma,
+                            destino.videoId,
+                            destino.url,
+                            campana = "perfil_creador"
+                        )
+                        Abiertos.marcar(contexto, publicacion.videoId)
+                    }
+                )
+            }
+        }
 
         // La misma división que en su ficha del panel: de un lado sus
         // canales de YouTube, que es de donde salen los videos y los avisos;

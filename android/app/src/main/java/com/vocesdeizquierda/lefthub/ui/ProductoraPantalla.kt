@@ -86,6 +86,32 @@ fun ProductoraPantalla(
             onClick = onSeguir
         )
 
+        // Lo primero, por dónde seguir: sus creadores y sus canales. Sus
+        // creadores son los que figuran en el medio y, además, los dueños de
+        // sus canales y quienes aparecen en ellos, aunque nadie los haya
+        // marcado como parte de la casa.
+        val enlazados = productora.canales.flatMap { listOfNotNull(it.creadorId) + it.tambien }.toSet()
+        val figuran = creadores.filter {
+            !it.esProductora && (it.id in productora.creadores || it.id in enlazados)
+        }
+        if (figuran.isNotEmpty()) {
+            Text(
+                "Sus creadores",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.sm)
+            )
+            figuran.forEach { creador ->
+                FilaCreador(
+                    creador = creador,
+                    siguiendo = creador.id in favoritos,
+                    onAbrir = { onAbrirCreador(creador.id) },
+                    onSeguir = { onSeguirCreador(creador.id) },
+                    suscritoEnYouTube = youtube.suscritoA(creador.id)
+                )
+            }
+        }
+
         Text(
             "Sus canales",
             style = MaterialTheme.typography.headlineMedium,
@@ -130,25 +156,6 @@ fun ProductoraPantalla(
                 onVerFicha = canal.id.takeIf { it.isNotBlank() && canal.esDeYouTube }
                     ?.let { id -> { onAbrirCanal(id) } }
             )
-        }
-
-        val figuran = creadores.filter { it.id in productora.creadores }
-        if (figuran.isNotEmpty()) {
-            Text(
-                "Sus creadores",
-                style = MaterialTheme.typography.headlineMedium,
-                color = esquema.onBackground,
-                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.sm)
-            )
-            figuran.forEach { creador ->
-                FilaCreador(
-                    creador = creador,
-                    siguiendo = creador.id in favoritos,
-                    onAbrir = { onAbrirCreador(creador.id) },
-                    onSeguir = { onSeguirCreador(creador.id) },
-                    suscritoEnYouTube = youtube.suscritoA(creador.id)
-                )
-            }
         }
 
         Text(

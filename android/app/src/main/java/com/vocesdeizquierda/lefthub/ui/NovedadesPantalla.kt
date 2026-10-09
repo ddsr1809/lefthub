@@ -20,7 +20,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -344,7 +346,83 @@ private fun EtiquetaDeEstado(abierto: Boolean) {
     )
 }
 
-/** "2 creadores", "1 productora" o "2 creadores y 1 productora". */
+/**
+ * Un video en una sola fila: miniatura pequeña, título y cuándo salió. Es la
+ * versión corta de la tarjeta de Novedades, para el mini feed de la ficha de
+ * un creador. Toda la fila se toca y abre el video.
+ *
+ * @param sinFirmarPor el nombre de quien es la ficha: de sus propios videos
+ *                     no hace falta repetirlo; de los que salieron en el
+ *                     canal de otro, sí se dice de quién.
+ */
+@Composable
+internal fun FilaVideo(
+    publicacion: Publicacion,
+    onAbrir: () -> Unit,
+    abierto: Boolean = false,
+    sinFirmarPor: String? = null
+) {
+    val esquema = MaterialTheme.colorScheme
+    val detalle = listOf(
+        if (publicacion.esEnVivo) "En vivo" else "",
+        publicacion.firma.takeIf { it != sinFirmarPor }.orEmpty(),
+        tiempoRelativo(publicacion.publishedAt),
+        if (abierto) "Ya lo abriste" else ""
+    ).filter { it.isNotBlank() }.joinToString(" · ")
+
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Espacio.md),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Espacio.sm)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (abierto) esquema.surfaceVariant else esquema.surface)
+            .border(1.dp, esquema.outline, RoundedCornerShape(12.dp))
+            .clickable(onClick = onAbrir)
+            .heightIn(min = Tactil.principal)
+            .semantics(mergeDescendants = true) {
+                role = Role.Button
+                contentDescription = "Abrir el video ${publicacion.title}. $detalle"
+            }
+            .padding(Espacio.sm)
+    ) {
+        if (!publicacion.thumbnailUrl.isNullOrBlank()) {
+            AsyncImage(
+                model = publicacion.thumbnailUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(112.dp)
+                    .aspectRatio(16f / 9f)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(esquema.surfaceVariant)
+                    .alpha(if (abierto) 0.45f else 1f)
+            )
+        }
+        Column(Modifier.weight(1f)) {
+            Text(
+                publicacion.title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = esquema.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (detalle.isNotBlank()) {
+                Text(
+                    detalle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = esquema.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+        }
+    }
+}
+
+/** "2 creadores", "1 medio" o "2 creadores y 1 medio". */
 private fun aQuienSigue(creadores: Int, productoras: Int): String = listOfNotNull(
     "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 },
     "$productoras ${if (productoras == 1) "medio" else "medios"}".takeIf { productoras > 0 }
