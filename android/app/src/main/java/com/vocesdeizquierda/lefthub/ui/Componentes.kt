@@ -151,15 +151,17 @@ fun FilaProductora(
 /**
  * Fila de un canal de YouTube en el directorio.
  *
- * A un canal no se le sigue: se sigue a su creador o a su productora, y eso
- * se hace en su ficha. Por eso aquí el botón de la derecha no es "Seguir"
- * sino "Ver", que abre la ficha del canal igual que tocar la fila.
+ * Un canal se puede seguir por sí solo, sin seguir a su creador ni a su
+ * medio. El botón de la derecha es el mismo "Seguir" de las otras filas; sale
+ * como "Siguiendo" también cuando sus avisos ya llegan por seguir a su dueño.
  */
 @Composable
 fun FilaCanal(
     listado: CanalListado,
     onAbrir: () -> Unit,
-    suscritoEnYouTube: Boolean? = null
+    suscritoEnYouTube: Boolean? = null,
+    siguiendo: Boolean = false,
+    onSeguir: () -> Unit = {}
 ) {
     val arroba = listado.canal.handle?.takeIf { it.isNotBlank() }?.let { "@" + it.removePrefix("@") }
     val textoYouTube = when (suscritoEnYouTube) {
@@ -173,20 +175,19 @@ fun FilaCanal(
         fotoUrl = listado.fotoUrl,
         detalle = listOfNotNull("Canal de YouTube", arroba, listado.deQuien.takeIf { it.isNotBlank() })
             .joinToString(" · "),
-        siguiendo = false,
+        siguiendo = siguiendo,
         onAbrir = onAbrir,
-        onSeguir = onAbrir,
+        onSeguir = onSeguir,
         descripcionAlAbrir = "Canal de YouTube de ${listado.titulo}. " +
             (textoYouTube?.let { "$it. " } ?: "") + "Ver el canal y sus últimos videos.",
         lineaExtra = textoYouTube,
-        lineaExtraDestacada = suscritoEnYouTube == true,
-        soloVer = true
+        lineaExtraDestacada = suscritoEnYouTube == true
     )
 }
 
 /**
  * Lo que comparten las filas: a la izquierda quién es, y al tocarlo se abre
- * su ficha; a la derecha, el botón de seguir (o el de ver, en un canal).
+ * su ficha; a la derecha, el botón de seguir.
  */
 @Composable
 private fun FilaDeDirectorio(
@@ -198,9 +199,7 @@ private fun FilaDeDirectorio(
     onSeguir: () -> Unit,
     descripcionAlAbrir: String,
     lineaExtra: String? = null,
-    lineaExtraDestacada: Boolean = false,
-    // El botón de la derecha dice "Ver" y hace lo mismo que tocar la fila.
-    soloVer: Boolean = false
+    lineaExtraDestacada: Boolean = false
 ) {
     val esquema = MaterialTheme.colorScheme
 
@@ -273,20 +272,15 @@ private fun FilaDeDirectorio(
                 .heightIn(min = Tactil.minimo)
                 .widthIn(min = 100.dp)
                 .semantics {
-                    if (soloVer) {
-                        role = Role.Button
-                        contentDescription = "Ver el canal de $nombre"
-                    } else {
-                        role = Role.Switch
-                        contentDescription = if (siguiendo)
-                            "Dejar de recibir avisos de $nombre"
-                        else
-                            "Recibir avisos de $nombre"
-                    }
+                    role = Role.Switch
+                    contentDescription = if (siguiendo)
+                        "Dejar de recibir avisos de $nombre"
+                    else
+                        "Recibir avisos de $nombre"
                 }
         ) {
             Text(
-                if (soloVer) "Ver" else if (siguiendo) "Siguiendo" else "Seguir",
+                if (siguiendo) "Siguiendo" else "Seguir",
                 style = MaterialTheme.typography.bodySmall
             )
         }

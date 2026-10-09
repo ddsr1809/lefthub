@@ -289,9 +289,10 @@ public class DirectorioController {
 
     /**
      * Los canales que entran en las novedades de la persona sin ser de un
-     * creador que sigue: los de las productoras visibles que sigue, y los de
-     * otros en los que aparece alguno de sus creadores. Un canal con el dueño
-     * oculto no cuenta: es lo mismo que enseñan las fichas.
+     * creador que sigue: los de las productoras visibles que sigue, los de
+     * otros en los que aparece alguno de sus creadores, y los que sigue por sí
+     * solos. Un canal con el dueño oculto no cuenta: es lo mismo que enseñan
+     * las fichas.
      */
     static List<UUID> canalesSeguidos(Usuario usuario, Catalogo.Vista vista) {
         Set<UUID> ids = new LinkedHashSet<>();
@@ -307,6 +308,10 @@ public class DirectorioController {
             vista.compartidosCon(creadorId).stream()
                     .filter(vista::vivo)
                     .forEach(k -> ids.add(k.getId()));
+        }
+        for (UUID canalId : usuario.getCanalesSeguidos()) {
+            Canal canal = vista.canal(canalId);
+            if (canal != null && vista.vivo(canal)) ids.add(canalId);
         }
         return List.copyOf(ids);
     }
@@ -402,6 +407,36 @@ public class DirectorioController {
         usuario.getProductorasSeguidas().remove(productoraId);
 
         return Dtos.RespuestaSimple.de("Dejaste de recibir sus avisos.");
+    }
+
+    /**
+     * Seguir un canal de YouTube por sí solo: avisa de lo que publique ese
+     * canal y nada más, sin seguir a su creador ni a su medio. El topic de
+     * FCM (canal_<id>) lo suscribe la app en el dispositivo.
+     *
+     * Solo canales de YouTube: son los únicos de los que salen videos.
+     */
+    @PutMapping("/favoritos/canales/{canalId}")
+    @Transactional
+    public Dtos.RespuestaSimple seguirCanal(@PathVariable UUID canalId) {
+        Canal canal = catalogo.vista().canal(canalId);
+        if (canal == null || canal.getCanalDeYouTube() == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Ese canal no existe.");
+        }
+
+        Usuario usuario = usuarioActual();
+        usuario.getCanalesSeguidos().add(canalId);
+
+        return Dtos.RespuestaSimple.de("Ahora recibes los avisos de este canal.");
+    }
+
+    @DeleteMapping("/favoritos/canales/{canalId}")
+    @Transactional
+    public Dtos.RespuestaSimple dejarDeSeguirCanal(@PathVariable UUID canalId) {
+        Usuario usuario = usuarioActual();
+        usuario.getCanalesSeguidos().remove(canalId);
+
+        return Dtos.RespuestaSimple.de("Dejaste de recibir los avisos de este canal.");
     }
 
     /**

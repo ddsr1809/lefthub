@@ -140,9 +140,10 @@ class AppViewModel(
         viewModelScope.launch {
             perfilFlow
                 // Seguir a una productora también cambia lo que sale en Novedades.
-                .map { it.favoritos to it.productoras }
+                // Y seguir un canal suelto, lo mismo.
+                .map { Seguidos(it.favoritos, it.productoras, it.canales) }
                 .distinctUntilChanged()
-                .flatMapLatest { (favoritos, productoras) -> directorio.publicaciones(favoritos, productoras) }
+                .flatMapLatest { s -> directorio.publicaciones(s.favoritos, s.productoras, s.canales) }
                 .collect { lista -> _estado.update { it.copy(publicaciones = lista) } }
         }
 
@@ -150,11 +151,9 @@ class AppViewModel(
             perfilFlow
                 // Los cortos dependen además de si la persona los ve: al
                 // apagarlos, o si el equipo los apaga, la lista se vacía.
-                .map { Triple(it.favoritos, it.productoras, it.veCortos) }
+                .map { Seguidos(it.favoritos, it.productoras, it.canales, it.veCortos) }
                 .distinctUntilChanged()
-                .flatMapLatest { (favoritos, productoras, losVe) ->
-                    directorio.cortos(favoritos, productoras, losVe)
-                }
+                .flatMapLatest { s -> directorio.cortos(s.favoritos, s.productoras, s.veCortos, s.canales) }
                 .collect { lista -> _estado.update { it.copy(cortos = lista) } }
         }
 
@@ -273,7 +272,7 @@ class AppViewModel(
         _estado.update { it.copy(perfil = p) }
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
-        directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos)
+        directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos, p.canales)
     }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
@@ -331,6 +330,41 @@ class AppViewModel(
             }
     }
 
+    /**
+     * Seguir o dejar de seguir un canal de YouTube por sí solo, sin seguir a
+     * su creador ni a su medio.
+     *
+     * Si sus avisos ya llegan porque se sigue al creador o al medio entero,
+     * no hay nada que cambiar aquí: se explica y se deja como está.
+     */
+    fun alternarCanal(canal: Canal) = viewModelScope.launch {
+        val perfil = _estado.value.perfil
+        val siguiendo = perfil.sigueCanal(canal)
+
+        if (!siguiendo && perfil.loRecibePorOtros(canal)) {
+            avisar("Ya recibes los avisos de este canal porque sigues a su creador o a su medio.")
+            return@launch
+        }
+
+        val id = canal.id
+        versionPerfil++
+        _estado.update { it.copy(perfil = it.perfil.conCanal(id, !siguiendo)) }
+
+        val resultado = escrituras.withLock {
+            runCatching {
+                directorio.alternarCanal(id, siguiendo, _estado.value.perfil.veCortos)
+            }
+        }
+        versionPerfil++
+
+        resultado
+            .onSuccess { perfilFlow.update { p -> p.conCanal(id, !siguiendo) } }
+            .onFailure {
+                _estado.update { e -> e.copy(perfil = e.perfil.conCanal(id, siguiendo)) }
+                avisar("No se pudo guardar el cambio. Revisa tu conexión.")
+            }
+    }
+
     /** Tema, tamaño de letra, avisos y videos cortos: mismo trato que los favoritos. */
     fun guardarPreferencia(clave: String, valor: Any) = viewModelScope.launch {
         val anterior = _estado.value.perfil.preferencia(clave)
@@ -350,7 +384,7 @@ class AppViewModel(
                 // este aparato.
                 perfilFlow.update { p -> p.conPreferencia(clave, valor) }
                 val p = _estado.value.perfil
-                directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos)
+                directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos, p.canales)
             }
         }
 
@@ -779,6 +813,18 @@ class AppViewModel(
 
 private fun Perfil.conFavorito(id: String, siguiendo: Boolean): Perfil = copy(
     favoritos = if (siguiendo) (favoritos + id).distinct() else favoritos - id
+)
+
+/** De quién se piden las novedades: cambia cuando cambia a quién se sigue. */
+private data class Seguidos(
+    val favoritos: List<String>,
+    val productoras: List<String>,
+    val canales: List<String>,
+    val veCortos: Boolean = false
+)
+
+private fun Perfil.conCanal(id: String, siguiendo: Boolean): Perfil = copy(
+    canales = if (siguiendo) (canales + id).distinct() else canales - id
 )
 
 private fun Perfil.conProductora(id: String, siguiendo: Boolean): Perfil = copy(

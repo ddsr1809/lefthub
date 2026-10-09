@@ -43,7 +43,9 @@ public class Emisores {
     }
 
     public Optional<Emisor> de(Canal canal) {
-        return resolver(canal.getCreadorId(), canal.getProductoraId(), canal.getVinculados(), true);
+        return resolver(canal.getCreadorId(), canal.getProductoraId(), canal.getVinculados(), true)
+                // A quien sigue este canal por sí solo también le llega.
+                .map(emisor -> emisor.conCanal(canal.getId()));
     }
 
     /**
@@ -56,7 +58,8 @@ public class Emisores {
         Canal canal = canalDe(publicacion);
         return resolver(publicacion.getCreadorId(),
                 canal != null ? canal.getProductoraId() : null,
-                canal != null ? canal.getVinculados() : Set.of(), true);
+                canal != null ? canal.getVinculados() : Set.of(), true)
+                .map(emisor -> canal != null ? emisor.conCanal(canal.getId()) : emisor);
     }
 
     /**
@@ -68,7 +71,8 @@ public class Emisores {
         Canal canal = canalDe(publicacion);
         return resolver(publicacion.getCreadorId(),
                 canal != null ? canal.getProductoraId() : null,
-                canal != null ? canal.getVinculados() : Set.of(), false);
+                canal != null ? canal.getVinculados() : Set.of(), false)
+                .map(emisor -> canal != null ? emisor.conCanal(canal.getId()) : emisor);
     }
 
     private Canal canalDe(Publicacion publicacion) {

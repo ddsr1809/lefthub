@@ -111,6 +111,11 @@ public class PushService {
         return "productora_" + productoraId;
     }
 
+    /** El topic de quien sigue un canal por sí solo, sin seguir a su dueño. */
+    public static String topicDeCanal(Object canalId) {
+        return "canal_" + canalId;
+    }
+
     /**
      * Los videos cortos van por topics aparte: el de siempre con este final.
      * Así cada teléfono decide si los quiere con solo suscribirse o no, y una
@@ -128,7 +133,8 @@ public class PushService {
      * son los demás creadores con los que aparece el canal: no firman, pero a
      * quienes los siguen también les llega.
      */
-    public record Emisor(String nombre, UUID creadorId, UUID productoraId, List<UUID> tambien) {
+    public record Emisor(String nombre, UUID creadorId, UUID productoraId, List<UUID> tambien,
+                         UUID canalId) {
 
         /** FCM no admite más de cinco topics en una condición. */
         static final int TOPICS_POR_MENSAJE = 5;
@@ -145,7 +151,16 @@ public class PushService {
                     creador != null ? creador.getNombre() : productora.getNombre(),
                     creador != null ? creador.getId() : null,
                     productora != null ? productora.getId() : null,
-                    tambien != null ? List.copyOf(tambien) : List.of());
+                    tambien != null ? List.copyOf(tambien) : List.of(),
+                    null);
+        }
+
+        /**
+         * El mismo aviso, diciendo de qué canal sale: así llega también a
+         * quien sigue ese canal por sí solo, sin seguir a su dueño.
+         */
+        public Emisor conCanal(UUID canal) {
+            return new Emisor(nombre, creadorId, productoraId, tambien, canal);
         }
 
         public static Emisor de(Creador creador, Productora productora) {
@@ -171,6 +186,7 @@ public class PushService {
         public List<String> topics() {
             Set<String> todos = new LinkedHashSet<>();
             if (creadorId != null) todos.add(topicDe(creadorId));
+            if (canalId != null) todos.add(topicDeCanal(canalId));
             if (productoraId != null) {
                 todos.add(topicDeProductora(productoraId));
                 todos.add(topicDe(productoraId));
@@ -189,6 +205,7 @@ public class PushService {
         public List<String> topicsDeCortos() {
             Set<String> todos = new LinkedHashSet<>();
             if (creadorId != null) todos.add(topicDe(creadorId) + SUFIJO_CORTOS);
+            if (canalId != null) todos.add(topicDeCanal(canalId) + SUFIJO_CORTOS);
             if (productoraId != null) todos.add(topicDeProductora(productoraId) + SUFIJO_CORTOS);
             tambien.forEach(id -> todos.add(topicDe(id) + SUFIJO_CORTOS));
             return List.copyOf(todos);

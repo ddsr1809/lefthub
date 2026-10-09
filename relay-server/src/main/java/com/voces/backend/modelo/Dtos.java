@@ -195,6 +195,11 @@ public final class Dtos {
             boolean avisos,
             /** Productoras que sigue. */
             List<UUID> productoras,
+            /**
+             * Canales de YouTube que sigue por sí solos. Los de un creador o
+             * un medio que sigue no vienen aquí: esos ya los recibe todos.
+             */
+            List<UUID> canales,
             /** Quiere ver los videos cortos. Solo cuenta si están disponibles. */
             boolean cortos,
             /**
@@ -231,6 +236,7 @@ public final class Dtos {
             return new PerfilDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
                     seguidos, u.getEscalaTexto(), u.getTema(), u.isAvisos(),
                     List.copyOf(u.getProductorasSeguidas()),
+                    List.copyOf(u.getCanalesSeguidos()),
                     u.isCortos(), cortosDisponibles,
                     anuncios, u.isSinAnuncios(), compraDisponible);
         }

@@ -325,6 +325,40 @@ En Novedades, un video de un canal de productora se firma "Creador · Productora
 
 ---
 
+## Seguir un canal de YouTube por sí solo
+
+Hay dos maneras de seguir, y conviven:
+
+- **Seguir a un creador o a un medio** es seguir **todos** sus canales, los de
+  hoy y los que se le agreguen después. Es el botón grande de su ficha, que
+  cuando hay varios canales dice "Seguir todos sus canales".
+- **Seguir un canal suelto** trae solo lo que salga en ese canal, sin seguir a
+  su creador ni a su medio. Se puede desde la ficha del canal, desde la lista
+  "Canales de YouTube" del Directorio y, si el creador o el medio tiene varios
+  canales, debajo de cada uno en su ficha ("Seguir solo este canal").
+
+Si alguien ya sigue al creador o al medio, debajo de cada canal no hay botón
+sino una frase: sus avisos ya le llegan. Quien quiera quedarse con un solo
+canal deja de seguir al creador y sigue ese canal.
+
+Por dentro:
+
+- La tabla `favoritos_canales` (V14) guarda qué canales sigue cada cuenta. Solo
+  se pueden seguir canales de YouTube; las redes son enlaces y no avisan.
+- `PUT` y `DELETE /api/favoritos/canales/{canalId}` siguen y dejan de seguir.
+  El perfil (`GET /api/perfil`) trae la lista en `canales`.
+- Novedades junta los videos de los canales de los creadores y medios que se
+  siguen con los de los canales sueltos, sin repetir.
+- Cada canal tiene su topic, `canal_<id>` (y `canal_<id>_cortos` para los
+  videos cortos). El aviso de un video sale en un solo mensaje para "quien siga
+  al creador, al medio **o** al canal", así que a quien sigue las dos cosas le
+  llega una vez.
+- Al borrar un canal, o una cuenta, sus filas de `favoritos_canales` se van
+  con él.
+
+Las apps anteriores no saben seguir canales sueltos y siguen funcionando igual:
+solo cambian cosas para quien actualiza.
+
 ## Etiquetas
 
 Las etiquetas son la forma de agrupar el directorio, y las decide el equipo:

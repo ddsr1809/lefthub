@@ -61,6 +61,8 @@ fun NovedadesPantalla(
     onIrAlDirectorio: () -> Unit,
     onReportar: (Publicacion) -> Unit,
     cuantasProductoras: Int = 0,
+    /** Canales de YouTube que sigue sueltos, sin seguir a su creador ni a su medio. */
+    cuantosCanales: Int = 0,
     /** Los videos cortos de quienes sigue. Solo se enseñan con `verCortos`. */
     cortos: List<Publicacion> = emptyList(),
     /** El equipo permite los cortos y la persona no los apagó en Ajustes. */
@@ -143,7 +145,7 @@ fun NovedadesPantalla(
                 Vacio(
                     titulo = if (viendoCortos) "Sin videos cortos por ahora"
                     else "Sin novedades por ahora",
-                    mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras)}. " +
+                    mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras, cuantosCanales)}. " +
                         if (viendoCortos) "En cuanto publiquen un video corto, aparece aquí."
                         else "En cuanto publiquen algo, el aviso llega a este teléfono."
                 )
@@ -426,10 +428,13 @@ internal fun FilaVideo(
 }
 
 /** "2 creadores", "1 medio" o "2 creadores y 1 medio". */
-private fun aQuienSigue(creadores: Int, productoras: Int): String = listOfNotNull(
-    "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 },
-    "$productoras ${if (productoras == 1) "medio" else "medios"}".takeIf { productoras > 0 }
-).joinToString(" y ")
+private fun aQuienSigue(creadores: Int, productoras: Int, canales: Int = 0): String = enumerar(
+    listOfNotNull(
+        "$creadores ${if (creadores == 1) "creador" else "creadores"}".takeIf { creadores > 0 },
+        "$productoras ${if (productoras == 1) "medio" else "medios"}".takeIf { productoras > 0 },
+        "$canales ${if (canales == 1) "canal" else "canales"}".takeIf { canales > 0 }
+    )
+)
 
 /**
  * Fechas en palabras. "hace 2 horas" se entiende de un vistazo; una marca

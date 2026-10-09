@@ -14,6 +14,7 @@ import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.Publicacion
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
@@ -44,7 +45,10 @@ fun CanalPantalla(
     onReportar: (Publicacion) -> Unit = {},
     onReintentar: () -> Unit = {},
     /** Los videos que ya abrió desde la app: su tarjeta se ve distinta. */
-    abiertos: Set<String> = emptySet()
+    abiertos: Set<String> = emptySet(),
+    /** A quién sigue: para saber si sigue este canal, suelto o por su dueño. */
+    perfil: Perfil = Perfil(),
+    onSeguirCanal: (Canal) -> Unit = {}
 ) {
     val contexto = LocalContext.current
     val esquema = MaterialTheme.colorScheme
@@ -97,10 +101,20 @@ fun CanalPantalla(
             )
         }
 
-        // Lo primero de la ficha: de quién es el canal. Su medio, si tiene,
-        // su creador y con quién más aparece. Es también de dónde llegan sus
-        // avisos: de seguir a cualquiera de estos. Cada uno lleva a su ficha,
-        // que es donde está el botón.
+        // El canal se puede seguir por sí solo, sin seguir a su creador ni a
+        // su medio: es el botón principal de su ficha.
+        if (canal.sePuedeSeguir) {
+            SeguirCanal(
+                siguiendo = perfil.sigueCanal(canal),
+                incluido = perfil.loRecibePorOtros(canal),
+                onSeguir = { onSeguirCanal(canal) },
+                destacado = true
+            )
+        }
+
+        // Después, de quién es el canal. Su medio, si tiene, su creador y con
+        // quién más aparece. Seguir a cualquiera de estos también trae los
+        // avisos de este canal, junto con los de sus otros canales.
         Text(
             "De quién es este canal",
             style = MaterialTheme.typography.headlineMedium,
@@ -108,7 +122,8 @@ fun CanalPantalla(
             modifier = Modifier.padding(top = Espacio.sm, bottom = Espacio.sm)
         )
         Text(
-            "Sus videos le llegan a quien sigue a cualquiera de estos. Toca uno para ver su ficha:",
+            "Si sigues a cualquiera de estos, recibes los avisos de todos sus canales, " +
+                "este incluido. Toca uno para ver su ficha:",
             style = MaterialTheme.typography.bodyLarge,
             color = esquema.onSurfaceVariant,
             modifier = Modifier.padding(bottom = Espacio.md)
