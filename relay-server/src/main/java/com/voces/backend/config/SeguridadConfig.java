@@ -1,6 +1,8 @@
 package com.voces.backend.config;
 
 import com.voces.backend.auth.ServicioJwt;
+import com.voces.backend.version.FiltroVersionMinima;
+import com.voces.backend.version.VersionDeApp;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -57,11 +59,18 @@ public class SeguridadConfig {
                         // teléfono o el navegador al pintar una imagen, sin token.
                         .requestMatchers(HttpMethod.GET, "/api/fotos/**").permitAll()
 
+                        // Qué versión del servidor es esta. Sin token, para
+                        // poder preguntarlo desde fuera con un curl.
+                        .requestMatchers(HttpMethod.GET, "/api/servidor").permitAll()
+
                         .requestMatchers("/api/admin/**").hasRole("ADMIN")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll()
                 )
-                .addFilterBefore(new FiltroJwt(jwt), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new FiltroJwt(jwt), UsernamePasswordAuthenticationFilter.class)
+                // Las apps anteriores a la versión mínima no pasan de aquí.
+                .addFilterBefore(new FiltroVersionMinima(config.apps()),
+                        UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -75,7 +84,8 @@ public class SeguridadConfig {
         CorsConfiguration configuracion = new CorsConfiguration();
         configuracion.setAllowedOrigins(origenes);
         configuracion.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        configuracion.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        configuracion.setAllowedHeaders(List.of("Authorization", "Content-Type",
+                VersionDeApp.CABECERA_VERSION, VersionDeApp.CABECERA_PLATAFORMA));
         configuracion.setAllowCredentials(true);
         configuracion.setMaxAge(3600L);
 

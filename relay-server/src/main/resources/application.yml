@@ -146,6 +146,21 @@ relay:
   cors:
     origenes: ${CORS_ORIGENES:http://localhost:5000}
 
+  servidor:
+    # El commit del que salió la imagen. Lo pone el pipeline al construirla y
+    # se consulta en GET /api/servidor, junto con la versión.
+    commit: ${SERVIDOR_COMMIT:}
+
+  apps:
+    # La versión más vieja de cada app que todavía se atiende, por ejemplo
+    # 1.0.1. Vacío = se atiende a todas. Con una mínima puesta, la app que no
+    # llegue recibe un 426 con el aviso de que hay que actualizarla.
+    #
+    # Las apps anteriores a la 1.0.1 no dicen qué versión son: cuentan como
+    # la más vieja de todas, así que cualquier mínima las deja fuera.
+    minima-android: ${APP_VERSION_MINIMA_ANDROID:}
+    minima-ios: ${APP_VERSION_MINIMA_IOS:}
+
   replica:
     # Solo en producción: URL del servidor de testing. Cada creador que se
     # guarda en el panel se copia allá. Vacío = no se copia nada.

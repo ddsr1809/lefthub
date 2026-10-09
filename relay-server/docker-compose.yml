@@ -54,6 +54,10 @@ services:
       CORS_ORIGENES: ${CORS_ORIGENES}
       REPLICA_URL: ${REPLICA_URL:-}
       REPLICA_TOKEN: ${REPLICA_TOKEN:-}
+      # Opcional. La version mas vieja de cada app que todavia se atiende.
+      # Vacio = se atiende a todas. Ver "Versiones" en PIPELINE.md.
+      APP_VERSION_MINIMA_ANDROID: ${APP_VERSION_MINIMA_ANDROID:-}
+      APP_VERSION_MINIMA_IOS: ${APP_VERSION_MINIMA_IOS:-}
       APPLE_BUNDLE_ID: ${APPLE_BUNDLE_ID:-}
       APPLE_TEAM_ID: ${APPLE_TEAM_ID:-}
       APPLE_KEY_ID: ${APPLE_KEY_ID:-}
