@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Para distinguir "el servidor no responde" de "este telefono no tiene
+         internet" antes de ensenar el aviso de servidor caido. Es un permiso
+         normal: no se le pregunta nada al usuario. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Android 13 en adelante exige pedir el permiso en tiempo de ejecucion.
          Sin el, las notificaciones no aparecen y la app pierde su razon de ser. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
@@ -15,6 +19,11 @@
         <package android:name="com.ss.android.ugc.trill" />   <!-- TikTok (otras regiones) -->
         <package android:name="tv.twitch.android.app" />
         <package android:name="com.instagram.android" />
+        <package android:name="com.twitter.android" />        <!-- X -->
+        <package android:name="com.facebook.katana" />
+        <package android:name="com.facebook.lite" />
+        <package android:name="com.instagram.barcelona" />    <!-- Threads -->
+        <package android:name="org.telegram.messenger" />
         <package android:name="com.spotify.music" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
@@ -49,6 +58,20 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- AdMob. El ID de la app sale de build.gradle.kts, uno por sabor. Sin
+             esta línea la biblioteca de anuncios tumba la app al arrancar. -->
+        <meta-data
+            android:name="com.google.android.gms.ads.APPLICATION_ID"
+            android:value="${admobAppId}" />
+
+        <!-- Que la biblioteca de anuncios no mida nada por su cuenta al
+             arrancar. Solo empieza cuando la app la inicia, y la app solo la
+             inicia para quien ve anuncios y después de preguntar por el
+             consentimiento donde la ley lo pide (ver anuncios/Anuncios.kt). -->
+        <meta-data
+            android:name="com.google.android.gms.ads.DELAY_APP_MEASUREMENT_INIT"
+            android:value="true" />
 
         <!-- Canal por defecto para cualquier aviso que llegue sin channelId -->
         <meta-data

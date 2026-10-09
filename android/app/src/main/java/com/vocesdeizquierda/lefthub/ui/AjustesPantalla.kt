@@ -2,14 +2,23 @@ package com.vocesdeizquierda.lefthub.ui
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.EstadoApp
+import com.vocesdeizquierda.lefthub.EstadoFolio
+import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
@@ -21,11 +30,19 @@ fun AjustesPantalla(
     onCerrarSesion: () -> Unit,
     onBorrarCuenta: () -> Unit,
     onConectarYouTube: () -> Unit = {},
-    onDesconectarYouTube: () -> Unit = {}
+    onDesconectarYouTube: () -> Unit = {},
+    /** Abre la pantalla de pago de Google Play. */
+    onComprarSinAnuncios: () -> Unit = {},
+    onCanjearFolio: (String) -> Unit = {},
+    /** Se cerró la ventanita del folio sin canjear. */
+    onFolioCerrado: () -> Unit = {},
+    /** Abre el formulario de Google para cambiar la elección de privacidad. */
+    onPrivacidadDeAnuncios: () -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
     var confirmandoBorrado by remember { mutableStateOf(false) }
+    var pidiendoFolio by rememberSaveable { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -78,6 +95,102 @@ fun AjustesPantalla(
                 variante = if (estado.perfil.tema == "sistema") VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
                 onClick = { onGuardarPreferencia("tema", "sistema") }
             )
+        }
+
+        // --- Videos cortos --------------------------------------------------
+        // Solo si el equipo los permite. Si los apaga desde el panel, esta
+        // sección desaparece entera: no hay nada que elegir.
+        if (estado.perfil.cortosDisponibles) {
+            Seccion("Videos cortos") {
+                Text(
+                    "Son los videos de menos de tres minutos que se ven en vertical " +
+                        "(los Shorts de YouTube). Van aparte, en su propio apartado de " +
+                        "Novedades, y nunca se mezclan con los demás videos.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                BotonGrande(
+                    titulo = "Verlos",
+                    subtitulo = "En su apartado, y con aviso cuando publiquen uno",
+                    variante = if (estado.perfil.cortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+                    onClick = { onGuardarPreferencia("cortos", true) }
+                )
+                BotonGrande(
+                    titulo = "No verlos",
+                    subtitulo = "Solo los videos de siempre, sin avisos de cortos",
+                    variante = if (!estado.perfil.cortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+                    onClick = { onGuardarPreferencia("cortos", false) }
+                )
+            }
+        }
+
+        // --- Ver en la tele -------------------------------------------------
+        // La misma explicación que sale una vez en Novedades. Aquí se queda
+        // para siempre, por si hace falta volver a leerla.
+        Seccion("Ver los videos en la tele") {
+            ComoVerEnLaTele()
+        }
+
+        // --- Anuncios -------------------------------------------------------
+        // Solo si el equipo los tiene encendidos. Apagados no hay nada que
+        // quitar, y la sección desaparece entera.
+        if (estado.perfil.anuncios) {
+            Seccion("Anuncios") {
+                if (estado.perfil.sinAnuncios) {
+                    Text(
+                        "Ya no ves anuncios en esta cuenta. Gracias.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = esquema.onSurfaceVariant
+                    )
+                    if (estado.esAnonimo) {
+                        Text(
+                            "Guarda tu cuenta con Google, aquí abajo, para que siga así " +
+                                "si cambias de teléfono.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = esquema.onSurfaceVariant,
+                            modifier = Modifier.padding(top = Espacio.sm)
+                        )
+                    }
+                } else {
+                    Text(
+                        "La app muestra anuncios entre los videos de Novedades. Puedes " +
+                            "quitarlos para siempre con un solo pago, o con un folio de " +
+                            "regalo si te dieron uno.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = esquema.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = Espacio.md)
+                    )
+
+                    // El botón de comprar solo sale cuando Google Play ya
+                    // dijo el precio: nadie debe pagar sin saber cuánto.
+                    val precio = estado.precioSinAnuncios
+                    if (estado.perfil.compraDisponible && precio != null) {
+                        BotonGrande(
+                            titulo = "Quitar los anuncios",
+                            subtitulo = "Un solo pago de $precio. Se cobra en Google Play",
+                            onClick = onComprarSinAnuncios
+                        )
+                    }
+                    BotonGrande(
+                        titulo = "Tengo un folio de regalo",
+                        subtitulo = "Quita los anuncios sin pagar",
+                        variante = VarianteBoton.SECUNDARIO,
+                        onClick = { pidiendoFolio = true }
+                    )
+
+                    // Solo donde la ley pide consentimiento para los anuncios
+                    // (Europa, por ejemplo). En el resto, este botón no existe.
+                    if (Anuncios.hayOpcionesDePrivacidad) {
+                        BotonGrande(
+                            titulo = "Privacidad de los anuncios",
+                            subtitulo = "Cambia lo que elegiste sobre el uso de tus datos",
+                            variante = VarianteBoton.SECUNDARIO,
+                            onClick = onPrivacidadDeAnuncios
+                        )
+                    }
+                }
+            }
         }
 
         // --- Cuenta ---------------------------------------------------------
@@ -214,7 +327,13 @@ fun AjustesPantalla(
             text = {
                 Text(
                     "Se elimina tu cuenta y todo lo que guardaste: los creadores que sigues " +
-                        "y tus preferencias. No se puede deshacer."
+                        "y tus preferencias. No se puede deshacer." +
+                        // Un folio se gasta al usarlo: no hay forma de devolverlo.
+                        if (estado.perfil.sinAnuncios)
+                            " Si quitaste los anuncios con un folio de regalo, eso también " +
+                                "se pierde. Si los compraste, Google Play te devuelve la " +
+                                "compra sin pagar otra vez."
+                        else ""
                 )
             },
             confirmButton = {
@@ -233,6 +352,94 @@ fun AjustesPantalla(
             }
         )
     }
+
+    // Al canjearlo bien el perfil pasa a "sin anuncios" y la ventanita se
+    // cierra sola; si falla, se queda abierta con el motivo para corregirlo.
+    if (pidiendoFolio && !estado.perfil.sinAnuncios) {
+        VentanaDeFolio(
+            folio = estado.folio,
+            onCanjear = onCanjearFolio,
+            onCerrar = { pidiendoFolio = false; onFolioCerrado() }
+        )
+    }
+    LaunchedEffect(estado.perfil.sinAnuncios) {
+        if (estado.perfil.sinAnuncios) pidiendoFolio = false
+    }
+}
+
+/**
+ * Donde se teclea el folio de regalo.
+ *
+ * Es el único sitio de la app donde hay que escribir, así que perdona todo lo
+ * que puede: da igual poner el guion o no, las minúsculas se vuelven
+ * mayúsculas solas, y si el folio no vale lo dice aquí mismo, sin cerrar la
+ * ventana ni borrar lo escrito.
+ */
+@Composable
+private fun VentanaDeFolio(
+    folio: EstadoFolio,
+    onCanjear: (String) -> Unit,
+    onCerrar: () -> Unit
+) {
+    val esquema = MaterialTheme.colorScheme
+    var codigo by rememberSaveable { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onCerrar,
+        title = { Text("Folio de regalo") },
+        text = {
+            Column {
+                Text(
+                    "Escribe el folio tal como te lo dieron. Son diez letras y números, " +
+                        "como ABCDE-FGHJK. Sirve una sola vez."
+                )
+                OutlinedTextField(
+                    value = codigo,
+                    // Un folio no pasa de once caracteres con el guion; el
+                    // margen es por si alguien pone espacios de más.
+                    onValueChange = { codigo = it.uppercase().take(24) },
+                    label = { Text("Folio") },
+                    singleLine = true,
+                    enabled = !folio.enviando,
+                    isError = folio.error != null,
+                    textStyle = MaterialTheme.typography.bodyLarge,
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.Characters,
+                        imeAction = ImeAction.Done
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = Espacio.md)
+                )
+                if (folio.error != null) {
+                    Text(
+                        folio.error,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = esquema.error,
+                        modifier = Modifier
+                            .padding(top = Espacio.sm)
+                            // Que el lector de pantalla lo diga al aparecer.
+                            .semantics { liveRegion = LiveRegionMode.Polite }
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onCanjear(codigo) },
+                enabled = codigo.isNotBlank() && !folio.enviando,
+                modifier = Modifier.heightIn(min = Tactil.minimo)
+            ) {
+                Text(if (folio.enviando) "Comprobando…" else "Canjear")
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onCerrar,
+                modifier = Modifier.heightIn(min = Tactil.minimo)
+            ) { Text("Cancelar") }
+        }
+    )
 }
 
 @Composable

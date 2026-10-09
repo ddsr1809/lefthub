@@ -2,9 +2,14 @@ package com.vocesdeizquierda.lefthub.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.util.Log
 import com.vocesdeizquierda.lefthub.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -14,7 +19,6 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
-import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -29,6 +33,21 @@ import java.util.concurrent.TimeUnit
  * de sesión: es lo que permite recuperar la cuenta anónima al reabrir la app
  * sin pedirle nada al usuario.
  */
+/**
+ * Si el servidor atiende a la app. Lo dice [ApiRelay.comprobarServidor], que
+ * se llama cada vez que la app pasa a primer plano.
+ */
+sealed interface EstadoServidor {
+    /** Responde con normalidad, o todavía no se le ha preguntado. */
+    object Vivo : EstadoServidor
+
+    /** El equipo lo puso en mantenimiento desde el panel. */
+    data class Mantenimiento(val mensaje: String) : EstadoServidor
+
+    /** No responde, y el teléfono sí tiene internet. */
+    object Caido : EstadoServidor
+}
+
 object ApiRelay {
 
     private const val TAG = "ApiRelay"
@@ -44,10 +63,12 @@ object ApiRelay {
     private val JSON = "application/json; charset=utf-8".toMediaType()
 
     private lateinit var prefs: SharedPreferences
+    private var redes: ConnectivityManager? = null
 
     /** Se llama una vez desde LeftVocesApp.onCreate(). */
     fun inicializar(contexto: Context) {
         prefs = contexto.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        redes = contexto.applicationContext.getSystemService(ConnectivityManager::class.java)
     }
 
     /**
@@ -88,6 +109,89 @@ object ApiRelay {
      * un caso de otro, como YouTubeRepo con el 412.
      */
     class ErrorHttp(val codigo: Int, mensaje: String) : IOException(mensaje)
+
+    /**
+     * El aviso del servidor cuando esta versión de la app ya no se atiende:
+     * el equipo la dio de baja y hay que actualizar. Null mientras la app
+     * funciona.
+     *
+     * El servidor contesta 426 a cualquier petición de una versión dada de
+     * baja. MainActivity mira este valor y, si lo hay, enseña solo la
+     * pantalla de actualizar.
+     */
+    private val _bloqueo = MutableStateFlow<String?>(null)
+    val bloqueo: StateFlow<String?> = _bloqueo.asStateFlow()
+
+    private const val ACTUALIZACION_OBLIGATORIA = 426
+
+    /**
+     * Si el servidor atiende a la app: vivo, en mantenimiento o caído.
+     * MainActivity lo mira y, si no está vivo, enseña solo el aviso.
+     */
+    private val _servidor = MutableStateFlow<EstadoServidor>(EstadoServidor.Vivo)
+    val servidor: StateFlow<EstadoServidor> = _servidor.asStateFlow()
+
+    private const val SIN_SERVICIO = 503
+    // Lo que contesta el proxy cuando el servidor de detrás no está.
+    private val SERVIDOR_CAIDO = setOf(502, 503, 504)
+    private const val MENSAJE_MANTENIMIENTO =
+        "Estamos haciendo mejoras en el servidor. Vuelve a intentarlo en un rato."
+
+    /**
+     * Pregunta al servidor si está vivo. No necesita sesión.
+     *
+     * Solo se da por caído cuando el proxy contesta que no hay nadie detrás,
+     * o cuando no se logra conectar y Android tiene comprobado que el
+     * teléfono sí sale a internet. Sin internet no se sabe, y entonces se
+     * queda lo que se supiera: de eso ya avisa cada pantalla a su manera.
+     */
+    suspend fun comprobarServidor(): EstadoServidor = withContext(Dispatchers.IO) {
+        val peticion = Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/servidor")
+            .header("X-App-Version", BuildConfig.VERSION_NAME)
+            .header("X-App-Plataforma", "android")
+            .get()
+            .build()
+
+        val visto: EstadoServidor? = try {
+            cliente.newCall(peticion).execute().use { respuesta ->
+                val cuerpo = respuesta.body?.string().orEmpty()
+                val json = runCatching { JSONObject(cuerpo) }.getOrNull()
+                when {
+                    json?.optBoolean("mantenimiento") == true ->
+                        EstadoServidor.Mantenimiento(mensajeDeMantenimiento(json))
+                    respuesta.code in SERVIDOR_CAIDO -> EstadoServidor.Caido
+                    // Cualquier otra respuesta, también el 404 de un servidor
+                    // anterior a esta ruta, la da un servidor que está vivo.
+                    else -> EstadoServidor.Vivo
+                }
+            }
+        } catch (e: IOException) {
+            // No se pudo ni conectar. Con internet comprobado, el problema
+            // es del servidor; sin él, es del teléfono y no se sabe nada.
+            if (hayInternet()) EstadoServidor.Caido else null
+        }
+
+        if (visto != null) _servidor.value = visto
+        _servidor.value
+    }
+
+    /** En /api/servidor el texto va en `mensaje`; en un error 503, en `message`. */
+    private fun mensajeDeMantenimiento(json: JSONObject?): String =
+        json?.optString("mensaje")?.takeIf { it.isNotBlank() }
+            ?: json?.optString("message")?.takeIf { it.isNotBlank() }
+            ?: MENSAJE_MANTENIMIENTO
+
+    /**
+     * Si Android tiene comprobado que la red del teléfono llega a internet
+     * (VALIDATED), y no solo que hay una red conectada. Ante la duda, no:
+     * es preferible no avisar a decir que el servidor falla cuando no es él.
+     */
+    private fun hayInternet(): Boolean = runCatching {
+        val gestor = redes ?: return@runCatching false
+        val capacidades = gestor.getNetworkCapabilities(gestor.activeNetwork)
+        capacidades?.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) == true
+    }.getOrDefault(false)
 
     /** Datos de la sesión actual, sin tocar la red. */
     var sesion: Sesion? = null
@@ -145,18 +249,70 @@ object ApiRelay {
         return getArray(ruta).mapJson { creadorDe(it) }
     }
 
-    suspend fun publicaciones(limite: Int = 50): List<Publicacion> =
-        getArray("/api/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
-
-    suspend fun perfil(): Perfil {
-        val json = getObject("/api/perfil")
-        return Perfil(
-            favoritos = json.optJSONArray("favoritos").mapJsonStrings(),
-            escalaTexto = json.optString("escalaTexto", "normal"),
-            tema = json.optString("tema", "sistema"),
-            avisos = json.optBoolean("avisos", true)
-        )
+    /**
+     * Las productoras visibles, con sus canales y los ids de sus creadores.
+     *
+     * Un servidor anterior a las productoras no tiene la ruta y contesta 404:
+     * para la app eso es "no hay ninguna", no un error.
+     */
+    suspend fun productoras(): List<Productora> = try {
+        getArray("/api/productoras").mapJson { productoraDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
     }
+
+    /**
+     * Las etiquetas encendidas, con lo que lleva cada una. Sin ninguna, o con
+     * un servidor anterior a las etiquetas (404), lista vacía: entonces el
+     * directorio no enseña ningún filtro.
+     */
+    suspend fun etiquetas(): List<Etiqueta> = try {
+        getArray("/api/etiquetas").mapJson { etiquetaDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
+     * Las novedades de la persona: los videos normales o, con `cortos`, los
+     * videos cortos. Son dos listas distintas y nunca se mezclan.
+     *
+     * El filtro de después es por si el servidor es anterior a esto: ese no
+     * entiende `tipo` y lo manda todo junto.
+     */
+    suspend fun publicaciones(limite: Int = 50, cortos: Boolean = false): List<Publicacion> =
+        getArray("/api/publicaciones?limite=$limite" + if (cortos) "&tipo=cortos" else "")
+            .mapJson { publicacionDe(it) }
+            .filter { it.esCorto == cortos }
+
+    /**
+     * Lo último que publicó un canal. Un servidor anterior a las fichas de
+     * canal no tiene la ruta: para la app eso es "nada que mostrar".
+     */
+    suspend fun publicacionesDeCanal(canalId: String, limite: Int = 20): List<Publicacion> = try {
+        getArray("/api/canales/$canalId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
+     * Los últimos videos de un creador, para el mini feed de su ficha: los
+     * de sus canales y los de canales de otros en los que aparece. Un
+     * servidor anterior no tiene la ruta: para la app eso es "nada que mostrar".
+     */
+    suspend fun publicacionesDeCreador(creadorId: String, limite: Int = 5): List<Publicacion> = try {
+        getArray("/api/creadores/$creadorId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /** Lo mismo para un medio: lo último que salió en los canales que le pertenecen. */
+    suspend fun publicacionesDeProductora(productoraId: String, limite: Int = 5): List<Publicacion> = try {
+        getArray("/api/productoras/$productoraId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
 
     suspend fun seguir(creadorId: String) {
         ejecutar(Request.Builder()
@@ -167,6 +323,31 @@ object ApiRelay {
     suspend fun dejarDeSeguir(creadorId: String) {
         ejecutar(Request.Builder()
             .url(BuildConfig.API_BASE + "/api/favoritos/$creadorId")
+            .delete())
+    }
+
+    suspend fun seguirProductora(productoraId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/productoras/$productoraId")
+            .put(vacio()))
+    }
+
+    suspend fun dejarDeSeguirProductora(productoraId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/productoras/$productoraId")
+            .delete())
+    }
+
+    /** Seguir un canal de YouTube por sí solo, sin seguir a su creador ni a su medio. */
+    suspend fun seguirCanal(canalId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/canales/$canalId")
+            .put(vacio()))
+    }
+
+    suspend fun dejarDeSeguirCanal(canalId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/canales/$canalId")
             .delete())
     }
 
@@ -191,6 +372,25 @@ object ApiRelay {
     }
 
     // -------------------------------------------------------------------------
+    // Anuncios: quitarlos con un folio de regalo o con una compra
+    // -------------------------------------------------------------------------
+    // Las dos devuelven la frase que el servidor escribió para la pantalla. Si
+    // no se puede, lanzan ErrorHttp con el motivo, también escrito para leerse.
+
+    /** Canjea un folio de regalo. Vale una sola vez: al usarlo se borra. */
+    suspend fun canjearFolio(codigo: String): String =
+        post("/api/anuncios/folio", JSONObject().put("codigo", codigo))
+            .optStringONull("mensaje") ?: "Listo. Ya no verás anuncios en esta cuenta."
+
+    /**
+     * Le pasa al servidor el comprobante de una compra de Google Play para
+     * que la confirme con Google y la apunte en la cuenta.
+     */
+    suspend fun registrarCompra(producto: String, token: String): String =
+        post("/api/anuncios/compra", JSONObject().put("producto", producto).put("token", token))
+            .optStringONull("mensaje") ?: "Gracias por tu compra. Ya no verás anuncios."
+
+    // -------------------------------------------------------------------------
     // Suscripciones de YouTube
     // -------------------------------------------------------------------------
 
@@ -211,66 +411,7 @@ object ApiRelay {
             .delete())
     }
 
-    private fun suscripcionesDe(json: JSONObject) = SuscripcionesYouTube(
-        suscritos = json.optJSONArray("suscritos").mapJsonStrings().toSet(),
-        noSuscritos = json.optJSONArray("noSuscritos").mapJsonStrings().toSet(),
-        verificadoEn = json.optStringONull("verificadoEn")?.let {
-            runCatching { Instant.parse(it) }.getOrNull()
-        }
-    )
-
-    // -------------------------------------------------------------------------
-    // Mapeo
-    // -------------------------------------------------------------------------
-    // El servidor usa nombres en español; los modelos de la app conservan los
-    // suyos para no tocar ni una línea de la interfaz. La traducción vive aquí,
-    // en un solo sitio.
-
-    private fun creadorDe(json: JSONObject): Creador {
-        val conexiones = mutableMapOf<String, Conexion>()
-        json.optJSONArray("conexiones")?.let { arr ->
-            for (i in 0 until arr.length()) {
-                val c = arr.getJSONObject(i)
-                conexiones[c.getString("plataforma")] = Conexion(
-                    url = c.optString("url", ""),
-                    handle = c.optStringONull("handle"),
-                    channelId = c.optStringONull("channelId")
-                )
-            }
-        }
-
-        return Creador(
-            id = json.getString("id"),
-            name = json.optString("nombre", ""),
-            category = json.optString("categoria", "otros"),
-            bio = json.optStringONull("bio"),
-            photoUrl = json.optStringONull("fotoUrl"),
-            platforms = conexiones,
-            active = true
-        )
-    }
-
-    private fun publicacionDe(json: JSONObject): Publicacion {
-        val videoId = json.optString("videoId", "")
-        return Publicacion(
-            id = videoId,
-            videoId = videoId,
-            creatorId = json.optString("creadorId", ""),
-            creatorName = json.optStringONull("creadorNombre"),
-            platform = json.optString("plataforma", "youtube"),
-            title = json.optString("titulo", "Video nuevo"),
-            thumbnailUrl = json.optStringONull("miniaturaUrl"),
-            url = json.optStringONull("url"),
-            publishedAt = json.optStringONull("publicadoEn")?.let {
-                runCatching { Instant.parse(it) }.getOrNull()
-            },
-            status = json.optString("estado", "ok"),
-            overrideUrl = json.optStringONull("destinoUrl"),
-            overridePlatform = json.optStringONull("destinoPlataforma"),
-            esEnVivo = json.optBoolean("enVivo", false),
-            tipo = json.optString("tipo", "video")
-        )
-    }
+    // El paso del JSON del servidor a los modelos de la app está en Mapeo.kt.
 
     // -------------------------------------------------------------------------
     // HTTP
@@ -295,6 +436,12 @@ object ApiRelay {
 
     private suspend fun ejecutar(peticion: Request.Builder, conToken: Boolean = true): String =
         withContext(Dispatchers.IO) {
+            // Qué app es esta. El servidor lo usa para dejar de atender a las
+            // versiones anteriores a la mínima: responde 426 y su mensaje,
+            // que dice que hay que actualizar, se muestra como cualquier otro.
+            peticion.header("X-App-Version", BuildConfig.VERSION_NAME)
+            peticion.header("X-App-Plataforma", "android")
+
             if (conToken) {
                 val actual = token ?: throw IOException("No hay sesión activa.")
                 peticion.header("Authorization", "Bearer $actual")
@@ -318,24 +465,29 @@ object ApiRelay {
                         JSONObject(cuerpo).optString("message").takeIf { it.isNotBlank() }
                     }.getOrNull()
 
+                    // El equipo puso el servidor en mantenimiento con la app
+                    // ya abierta: se nota en la siguiente petición.
+                    if (respuesta.code == SIN_SERVICIO) {
+                        val json = runCatching { JSONObject(cuerpo) }.getOrNull()
+                        if (json?.optBoolean("mantenimiento") == true) {
+                            _servidor.value = EstadoServidor.Mantenimiento(mensajeDeMantenimiento(json))
+                        }
+                    }
+
+                    if (respuesta.code == ACTUALIZACION_OBLIGATORIA) {
+                        _bloqueo.value = motivo
+                            ?: "Esta versión de la app ya no funciona. Actualízala para seguir usándola."
+                    }
+
                     Log.w(TAG, "Respuesta ${respuesta.code} de ${respuesta.request.url}")
                     throw ErrorHttp(respuesta.code, motivo ?: "No se pudo completar la operación.")
                 }
+
+                // Si el servidor vuelve a responder es que la versión se
+                // atiende otra vez: el equipo la reactivó desde el panel.
+                if (_bloqueo.value != null) _bloqueo.value = null
 
                 cuerpo
             }
         }
 }
-
-// --- Utilidades de JSON ------------------------------------------------------
-// org.json devuelve la cadena "null" en vez de null cuando el campo viene nulo,
-// que es una fuente clásica de textos con "null" impreso en la pantalla.
-
-internal fun JSONObject.optStringONull(clave: String): String? =
-    if (isNull(clave)) null else optString(clave).takeIf { it.isNotBlank() }
-
-internal fun <T> JSONArray.mapJson(transformar: (JSONObject) -> T): List<T> =
-    (0 until length()).map { transformar(getJSONObject(it)) }
-
-internal fun JSONArray?.mapJsonStrings(): List<String> =
-    this?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: emptyList()

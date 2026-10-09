@@ -44,7 +44,7 @@ spring:
 logging:
   level:
     root: INFO
-    com.tuempresa.relay: DEBUG
+    com.voces.backend: DEBUG
 
 management:
   endpoints:
@@ -84,6 +84,24 @@ relay:
 
   youtube:
     api-key: ${YOUTUBE_API_KEY:}
+    # Las direcciones de YouTube. No hay que tocarlas: existen como variables
+    # solo para poder apuntar las pruebas a un servidor de pega.
+    api-base: ${YOUTUBE_API_BASE:https://www.googleapis.com/youtube/v3}
+    url-shorts: ${YOUTUBE_URL_SHORTS:https://www.youtube.com/shorts/}
+
+  fotos:
+    # El servicio que encuentra la foto de perfil de una cuenta de X,
+    # Instagram, TikTok... Solo se usa desde el panel, al pulsar el botón.
+    # Sin clave da 25 fotos al día, que sobra para dar de alta creadores.
+    base: ${FOTOS_BASE:https://unavatar.io}
+    api-key: ${FOTOS_API_KEY:}
+
+  perfiles:
+    # El servicio que lee el nombre y la descripción del perfil de una cuenta
+    # de X, Instagram, TikTok... para rellenar la ficha desde el panel.
+    # Sin clave da 25 consultas al día.
+    base: ${PERFILES_BASE:https://api.microlink.io}
+    api-key: ${PERFILES_API_KEY:}
 
   fcm:
     # ID del proyecto de Firebase y ruta al JSON de la cuenta de servicio.
@@ -91,6 +109,20 @@ relay:
     # gratis e ilimitado, y es la única vía de entregar push a Android e iOS.
     proyecto-id: ${FCM_PROYECTO_ID:}
     credenciales: ${FCM_CREDENCIALES:}
+
+  compras:
+    # Quitar los anuncios pagando, en Google Play. Sin COMPRAS_PAQUETE la app
+    # no ofrece la compra (los folios de regalo funcionan igual).
+    #
+    # paquete: el applicationId con el que la app está en Play Console.
+    # producto: el ID del producto de pago único, como se dio de alta allí.
+    paquete: ${COMPRAS_PAQUETE:}
+    producto: ${COMPRAS_PRODUCTO:sin_anuncios}
+    # La cuenta de servicio que le pregunta a Google si una compra es de
+    # verdad. Por defecto es la misma de FCM: solo hay que invitarla en Play
+    # Console (ver "Anuncios" en el README). Pon otra ruta si prefieres una
+    # cuenta aparte.
+    credenciales: ${COMPRAS_CREDENCIALES:${FCM_CREDENCIALES:}}
 
   google:
     # client_id de tipo web. Se usa como audiencia al verificar los tokens
@@ -113,6 +145,21 @@ relay:
 
   cors:
     origenes: ${CORS_ORIGENES:http://localhost:5000}
+
+  servidor:
+    # El commit del que salió la imagen. Lo pone el pipeline al construirla y
+    # se consulta en GET /api/servidor, junto con la versión.
+    commit: ${SERVIDOR_COMMIT:}
+
+  apps:
+    # La versión más vieja de cada app que todavía se atiende, por ejemplo
+    # 1.0.1. Vacío = se atiende a todas. Con una mínima puesta, la app que no
+    # llegue recibe un 426 con el aviso de que hay que actualizarla.
+    #
+    # Las apps anteriores a la 1.0.1 no dicen qué versión son: cuentan como
+    # la más vieja de todas, así que cualquier mínima las deja fuera.
+    minima-android: ${APP_VERSION_MINIMA_ANDROID:}
+    minima-ios: ${APP_VERSION_MINIMA_IOS:}
 
   replica:
     # Solo en producción: URL del servidor de testing. Cada creador que se

@@ -268,6 +268,8 @@ final class AutenticacionStore: NSObject, ObservableObject {
         do {
             try await ApiRelay.borrarCuenta()
             try? Auth.auth().signOut()
+            // Borrar la cuenta es empezar de cero también en el teléfono.
+            Abiertos.olvidar()
             await iniciarSesionInvisible()
             mensaje = "Cuenta borrada. Puedes seguir usando la app como invitado."
         } catch {

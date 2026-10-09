@@ -137,11 +137,24 @@ struct NovedadesVista: View {
     }
 }
 
+/// La tarjeta de un video.
+///
+/// Un video que la persona ya abrió se distingue de uno que no por tres cosas
+/// a la vez, para que no dependa solo del color: la leyenda escrita ("Nuevo" o
+/// "Ya lo abriste"), el fondo de la tarjeta con la miniatura apagada, y el
+/// botón, que deja de ir relleno.
 private struct TarjetaPublicacion: View {
     let publicacion: Publicacion
 
     @EnvironmentObject private var directorio: DirectorioStore
     @Environment(\.paleta) private var paleta
+
+    /// Los videos abiertos desde la app; se guardan solo en este teléfono.
+    @AppStorage(Abiertos.clave) private var abiertos = ""
+
+    private var abierto: Bool {
+        Abiertos.contiene(abiertos, publicacion.videoId)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -158,9 +171,11 @@ private struct TarjetaPublicacion: View {
                         .frame(maxWidth: .infinity)
                         .aspectRatio(16 / 9, contentMode: .fit)
                         .clipped()
+                        .opacity(abierto ? 0.45 : 1)
                     }
 
                     VStack(alignment: .leading, spacing: 4) {
+                        etiquetaDeEstado
                         TextoRelay(encabezado, estilo: .secundario)
                         TextoRelay(publicacion.title, estilo: .cuerpoFuerte)
                             .lineLimit(3)
@@ -180,13 +195,19 @@ private struct TarjetaPublicacion: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Abrir el video \(publicacion.title) de \(publicacion.creatorName ?? "")")
+            .accessibilityLabel(
+                "Abrir el video \(publicacion.title) de \(publicacion.creatorName ?? ""). "
+                    + (abierto ? "Ya lo abriste." : "Nuevo.")
+            )
             .accessibilityAddTraits(.isButton)
 
             VStack(spacing: 0) {
                 BotonGrande(
                     titulo: publicacion.esEnVivo ? "Ver en vivo" : "Ver el video",
                     subtitulo: "Se abre en \(Enrutador.nombreDe(publicacion.destino.plataforma))",
+                    // Un directo que sigue al aire conserva el botón relleno
+                    // aunque ya se haya abierto: es lo único que no puede esperar.
+                    variante: abierto && !publicacion.esEnVivo ? .secundario : .primario,
                     accion: abrir
                 )
 
@@ -207,11 +228,31 @@ private struct TarjetaPublicacion: View {
             .padding(.horizontal, Espacio.md)
             .padding(.bottom, Espacio.sm)
         }
-        .background(paleta.superficie)
+        .background(abierto ? paleta.superficieAlta : paleta.superficie)
         .overlay(
             RoundedRectangle(cornerRadius: 20).strokeBorder(paleta.borde, lineWidth: 1)
         )
         .clipShape(RoundedRectangle(cornerRadius: 20))
+    }
+
+    /// La leyenda que dice si el video ya se abrió. Va escrita, no solo
+    /// pintada: quien no distingue bien los colores la lee igual.
+    private var etiquetaDeEstado: some View {
+        TextoRelay(
+            abierto ? "✓ Ya lo abriste" : "Nuevo",
+            estilo: .secundario,
+            color: abierto ? paleta.texto : paleta.acentoTexto
+        )
+        .fontWeight(.semibold)
+        .padding(.horizontal, Espacio.sm)
+        .padding(.vertical, Espacio.xs)
+        .background(abierto ? paleta.superficie : paleta.acento)
+        .overlay(
+            RoundedRectangle(cornerRadius: 8)
+                .strokeBorder(abierto ? paleta.borde : .clear, lineWidth: 1)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .padding(.bottom, Espacio.xs)
     }
 
     private func abrir() {
@@ -222,6 +263,7 @@ private struct TarjetaPublicacion: View {
             url: destino.url,
             campana: "novedades"
         )
+        Abiertos.marcar(publicacion.videoId)
     }
 
     private var encabezado: String {

@@ -15,12 +15,21 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.data.Abiertos
+import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.Etiqueta
+import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
+import com.vocesdeizquierda.lefthub.data.Productora
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
+import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 // El directorio es cerrado: solo aparecen los creadores que el equipo aprobó.
@@ -28,17 +37,15 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 // en la categoría de "directorio genérico" que la Guideline 3.2.2 de Apple
 // rechaza y que Play Store también penaliza.
 
-private val TEMAS = listOf(
-    "todos" to "Todos",
-    "comida" to "Comida",
-    "cine" to "Cine",
-    "politica" to "Política",
-    "musica" to "Música",
-    "noticias" to "Noticias",
-    "salud" to "Salud",
-    "tecnologia" to "Tecnología",
-    "otros" to "Otros"
-)
+// Los temas fijos de antes (comida, cine, política…) ya no se enseñan. El
+// directorio se filtra con las etiquetas que el equipo crea y enciende en el
+// panel; mientras no haya ninguna encendida que alguien lleve, no hay filtro.
+
+// Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
+// de debajo filtran dentro de la que esté elegida.
+private const val CREADORES = "creadores"
+private const val CANALES = "canales"
+private const val PRODUCTORAS = "productoras"
 
 @Composable
 fun DirectorioPantalla(
@@ -49,21 +56,68 @@ fun DirectorioPantalla(
     favoritos: List<String>,
     onSeguir: (String) -> Unit,
     onAbrirCreador: (String) -> Unit,
-    youtube: EstadoYouTube = EstadoYouTube()
+    youtube: EstadoYouTube = EstadoYouTube(),
+    productoras: List<Productora> = emptyList(),
+    productorasSeguidas: List<String> = emptyList(),
+    onSeguirProductora: (String) -> Unit = {},
+    onAbrirProductora: (String) -> Unit = {},
+    onAbrirCanal: (String) -> Unit = {},
+    /** Las etiquetas encendidas, con lo que lleva cada una. */
+    etiquetas: List<Etiqueta> = emptyList(),
+    /** A quién sigue: de aquí sale si un canal ya le manda sus avisos. */
+    perfil: Perfil = Perfil(),
+    onSeguirCanal: (Canal) -> Unit = {}
 ) {
-    var tema by remember { mutableStateOf("todos") }
+    var seccionElegida by remember { mutableStateOf(CREADORES) }
+    // El id de la etiqueta elegida; null es "Todos".
+    var etiquetaElegida by remember { mutableStateOf<String?>(null) }
     val esquema = MaterialTheme.colorScheme
 
-    val visibles = remember(creadores, tema) {
-        if (tema == "todos") creadores else creadores.filter { it.category == tema }
+    // Los creadores son las personas. Una productora que el servidor manda
+    // entre ellos (para las versiones de la app que no las conocen) va aquí
+    // en su propia lista, no mezclada.
+    val personas = remember(creadores) { creadores.filter { !it.esProductora } }
+    val canales = remember(creadores, productoras) { canalesDelDirectorio(creadores, productoras) }
+
+    // Solo se ofrecen las listas que tienen algo. Una pestaña vacía es una
+    // promesa incumplida.
+    val secciones = listOfNotNull(
+        CREADORES to "Creadores",
+        (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
+        (PRODUCTORAS to "Medios").takeIf { productoras.isNotEmpty() }
+    )
+    // Si la lista que se estaba viendo se queda vacía (se retiró la última
+    // productora, por ejemplo), su pestaña desaparece y se vuelve a los creadores.
+    val seccion = if (secciones.any { it.first == seccionElegida }) seccionElegida else CREADORES
+
+    // Las etiquetas que de verdad llevan a alguien de la lista elegida. Una
+    // etiqueta sin nadie no se enseña; y sin ninguna, no hay fila de filtros.
+    val etiquetasConGente = remember(etiquetas, seccion, personas, canales, productoras) {
+        etiquetas.filter { e ->
+            when (seccion) {
+                CANALES -> canales.any { it.canal.id in e.canales }
+                PRODUCTORAS -> productoras.any { it.id in e.productoras }
+                else -> personas.any { it.id in e.creadores }
+            }
+        }
+    }
+    // Al cambiar de lista, o si el equipo apaga la etiqueta mientras estaba
+    // elegida, se vuelve a "Todos".
+    val etiqueta = etiquetasConGente.firstOrNull { it.id == etiquetaElegida }
+
+    val creadoresVisibles = remember(personas, etiqueta) {
+        if (etiqueta == null) personas else personas.filter { it.id in etiqueta.creadores }
+    }
+    val canalesVisibles = remember(canales, etiqueta) {
+        if (etiqueta == null) canales else canales.filter { it.canal.id in etiqueta.canales }
+    }
+    val productorasVisibles = remember(productoras, etiqueta) {
+        if (etiqueta == null) productoras else productoras.filter { it.id in etiqueta.productoras }
     }
 
-    // Solo mostramos los temas que de verdad tienen a alguien dentro. Una
-    // pestaña vacía es una promesa incumplida.
-    val temasConGente = remember(creadores) {
-        val usados = creadores.map { it.category }.toSet()
-        TEMAS.filter { it.first == "todos" || it.first in usados }
-    }
+    // El anuncio que explica la etiqueta verde solo sale cuando hay etiquetas
+    // que explicar: con YouTube conectado y ya comprobado.
+    val verLeyendaYouTube = BuildConfig.SUSCRIPCIONES_YOUTUBE && youtube.haySuscripciones
 
     Column(Modifier.fillMaxSize()) {
         Text(
@@ -73,16 +127,56 @@ fun DirectorioPantalla(
             modifier = Modifier.padding(start = Espacio.md, end = Espacio.md, top = Espacio.sm)
         )
 
-        Row(
+        // Qué lista se ve. Solo aparece si hay más de una entre las que elegir.
+        if (secciones.size > 1) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
+                modifier = Modifier
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = Espacio.md)
+                    .padding(top = Espacio.md)
+            ) {
+                secciones.forEach { (clave, nombre) ->
+                    val activa = clave == seccion
+                    Button(
+                        onClick = { seccionElegida = clave },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (activa) esquema.primary else esquema.surface,
+                            contentColor = if (activa) esquema.onPrimary else esquema.onSurface
+                        ),
+                        border = if (activa) null
+                        else androidx.compose.foundation.BorderStroke(1.dp, esquema.outline),
+                        contentPadding = PaddingValues(horizontal = Espacio.lg, vertical = Espacio.sm),
+                        modifier = Modifier
+                            .heightIn(min = Tactil.principal)
+                            .semantics {
+                                role = Role.Tab
+                                selected = activa
+                            }
+                    ) {
+                        Text(nombre, style = MaterialTheme.typography.labelLarge)
+                    }
+                }
+            }
+        }
+
+        // Las etiquetas filtran la lista que se esté viendo. Solo sale la
+        // fila si hay alguna que enseñar; si no, un poco de aire y la lista.
+        if (etiquetasConGente.isEmpty()) {
+            Spacer(Modifier.height(Espacio.md))
+        } else Row(
             horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = Espacio.md, vertical = Espacio.md)
         ) {
-            temasConGente.forEach { (clave, nombre) ->
-                val activo = clave == tema
+            // "Todos" primero, y después las etiquetas en el orden del panel.
+            (listOf<Pair<String?, String>>(null to "Todos") +
+                etiquetasConGente.map { it.id to it.nombre }).forEach { (clave, nombre) ->
+                val activo = clave == etiqueta?.id
                 OutlinedButton(
-                    onClick = { tema = clave },
+                    onClick = { etiquetaElegida = clave },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = if (activo) esquema.primary else Color.Transparent,
@@ -93,24 +187,67 @@ fun DirectorioPantalla(
                     ),
                     modifier = Modifier
                         .heightIn(min = Tactil.minimo)
-                        .semantics { role = Role.Tab }
+                        .semantics {
+                            role = Role.Tab
+                            selected = activo
+                        }
                 ) {
                     Text(nombre, style = MaterialTheme.typography.bodySmall)
                 }
             }
         }
 
-        if (visibles.isEmpty()) {
+        if (seccion == PRODUCTORAS) {
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = Espacio.md),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                items(productorasVisibles, key = { it.id }) { productora ->
+                    FilaProductora(
+                        productora = productora,
+                        siguiendo = productora.id in productorasSeguidas,
+                        onAbrir = { onAbrirProductora(productora.id) },
+                        onSeguir = { onSeguirProductora(productora.id) }
+                    )
+                }
+            }
+        } else if (seccion == CANALES) {
+            // No puede quedar vacía: solo se ofrecen etiquetas que lleva algún canal.
+            LazyColumn(
+                contentPadding = PaddingValues(horizontal = Espacio.md),
+                modifier = Modifier.fillMaxSize()
+            ) {
+                if (verLeyendaYouTube) {
+                    item(key = "leyenda-youtube") {
+                        LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+                    }
+                }
+                items(canalesVisibles, key = { it.canal.id }) { listado ->
+                    FilaCanal(
+                        listado = listado,
+                        onAbrir = { onAbrirCanal(listado.canal.id) },
+                        suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
+                        siguiendo = perfil.recibe(listado.canal),
+                        onSeguir = { onSeguirCanal(listado.canal) }
+                    )
+                }
+            }
+        } else if (creadoresVisibles.isEmpty()) {
             Vacio(
-                titulo = "Nada en este tema todavía",
-                mensaje = "Estamos sumando creadores poco a poco. Prueba con otro tema."
+                titulo = "Todavía no hay creadores",
+                mensaje = "Estamos sumando creadores poco a poco. Vuelve pronto."
             )
         } else {
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(visibles, key = { it.id }) { creador ->
+                if (verLeyendaYouTube) {
+                    item(key = "leyenda-youtube") {
+                        LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+                    }
+                }
+                items(creadoresVisibles, key = { it.id }) { creador ->
                     FilaCreador(
                         creador = creador,
                         siguiendo = creador.id in favoritos,
@@ -130,6 +267,10 @@ fun DirectorioPantalla(
  * Aquí se materializa la idea del "Creador" como entidad, no del canal. Una
  * persona publica en varios lugares; la app los junta bajo un solo perfil y
  * cada botón dice en palabras qué va a pasar al tocarlo.
+ *
+ * Tiene las mismas partes que su ficha del panel: sus canales de YouTube, sus
+ * redes sociales y sus productoras. Puede faltar cualquiera: hay quien solo
+ * tiene una cuenta de X o de Instagram.
  */
 @Composable
 fun CreadorPantalla(
@@ -139,10 +280,22 @@ fun CreadorPantalla(
     onVolver: () -> Unit,
     youtube: EstadoYouTube = EstadoYouTube(),
     esAnonimo: Boolean = true,
-    onConectarYouTube: () -> Unit = {}
+    onConectarYouTube: () -> Unit = {},
+    productoras: List<Productora> = emptyList(),
+    onAbrirProductora: (String) -> Unit = {},
+    // El directorio: para decir de quién es un canal ajeno en el que aparece.
+    creadores: List<Creador> = emptyList(),
+    onAbrirCanal: (String) -> Unit = {},
+    /** Sus últimos videos: el mini feed de arriba. */
+    videos: VideosDeCanal = VideosDeCanal(),
+    /** Los videos que ya abrió desde la app: su fila se ve distinta. */
+    abiertos: Set<String> = emptySet(),
+    /** A quién sigue: para saber qué canales sigue sueltos. */
+    perfil: Perfil = Perfil(),
+    onSeguirCanal: (Canal) -> Unit = {}
 ) {
-    val contexto = LocalContext.current
     val esquema = MaterialTheme.colorScheme
+    val contexto = LocalContext.current
 
     if (creador == null) {
         Vacio(
@@ -183,57 +336,168 @@ fun CreadorPantalla(
             }
         }
 
+        // Seguir al creador es seguir todos sus canales. Con uno solo no hay
+        // diferencia y el botón lo dice como siempre; con varios, dice que
+        // son todos, porque más abajo cada canal se puede seguir por separado.
+        val variosCanales = creador.canalesDeYouTube.count { it.sePuedeSeguir } >= 2
         BotonGrande(
-            titulo = if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique",
-            subtitulo = if (siguiendo)
-                "Toca para dejar de recibirlos"
-            else
-                "Te llegará una notificación a este teléfono",
+            titulo = when {
+                !variosCanales -> if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique"
+                siguiendo -> "Sigues todos sus canales"
+                else -> "Seguir todos sus canales"
+            },
+            subtitulo = when {
+                siguiendo -> "Toca para dejar de recibir sus avisos"
+                variosCanales -> "Te avisamos de lo que publique en cualquiera de ellos"
+                else -> "Te llegará una notificación a este teléfono"
+            },
             variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
             onClick = onSeguir
         )
 
-        Text(
-            "Dónde publica",
-            style = MaterialTheme.typography.headlineMedium,
-            color = esquema.onBackground,
-            modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
-        )
+        // Lo último que publicó, lo primero que se ve: unos pocos videos en
+        // filas pequeñas. Si no hay ninguno (no tiene YouTube, o todavía no
+        // ha publicado desde que entró al directorio) el apartado no sale.
+        if (videos.lista.isNotEmpty()) {
+            Text(
+                "Sus últimos videos",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            videos.lista.forEach { publicacion ->
+                FilaVideo(
+                    publicacion = publicacion,
+                    abierto = publicacion.videoId in abiertos,
+                    sinFirmarPor = creador.name,
+                    onAbrir = {
+                        val destino = publicacion.destino
+                        Enrutador.abrirVideo(
+                            contexto,
+                            destino.plataforma,
+                            destino.videoId,
+                            destino.url,
+                            campana = "perfil_creador"
+                        )
+                        Abiertos.marcar(contexto, publicacion.videoId)
+                    }
+                )
+            }
+        }
 
-        val conexiones = creador.conexionesOrdenadas
-        if (conexiones.isEmpty()) {
+        // La misma división que en su ficha del panel: de un lado sus
+        // canales de YouTube, que es de donde salen los videos y los avisos;
+        // del otro sus redes, que son enlaces.
+        val canales = creador.canalesVisibles
+        val deYouTube = creador.canalesDeYouTube
+        val redes = creador.redes
+
+        if (canales.isEmpty()) {
             Text(
                 "Todavía no hemos agregado sus enlaces.",
                 style = MaterialTheme.typography.bodyLarge,
-                color = esquema.onSurfaceVariant
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(top = Espacio.lg)
             )
         }
 
-        val suscrito = youtube.suscritoA(creador.id)
+        if (deYouTube.isNotEmpty()) {
+            Text(
+                if (deYouTube.size == 1) "Canal de YouTube" else "Canales de YouTube",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+        } else if (redes.isNotEmpty()) {
+            // Sin canal de YouTube no hay de dónde avisar: mejor decirlo que
+            // dejar a alguien esperando una notificación que no va a llegar.
+            Text(
+                "No tiene canal de YouTube, así que no hay avisos de videos suyos. " +
+                    "Puedes verlo en sus redes.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(top = Espacio.md)
+            )
+        }
 
-        conexiones.forEach { (plataforma, conexion) ->
-            if (BuildConfig.SUSCRIPCIONES_YOUTUBE &&
-                plataforma == "youtube" && !conexion.channelId.isNullOrBlank()
-            ) {
+        // Con varios canales de YouTube, el botón para dar el permiso y las
+        // frases de "todavía no se sabe" salen una sola vez, en el primero.
+        val primeroDeYouTube = deYouTube.firstOrNull { it.esDeYouTube }
+
+        deYouTube.forEach { canal ->
+            val suscrito = youtube.suscritoAlCanal(canal)
+            val productora = productoras.firstOrNull { it.id == canal.productoraId }
+
+            if (BuildConfig.SUSCRIPCIONES_YOUTUBE && canal.esDeYouTube) {
                 SuscripcionEnYouTube(
                     suscrito = suscrito,
                     youtube = youtube,
                     esAnonimo = esAnonimo,
-                    onConectar = onConectarYouTube
+                    onConectar = onConectarYouTube,
+                    etiqueta = canal.nombre,
+                    soloSiSeSabe = canal !== primeroDeYouTube
                 )
             }
 
-            BotonGrande(
-                titulo = Enrutador.accionDe(plataforma),
-                subtitulo = if (plataforma == "youtube" && suscrito == false)
-                    "Se abre YouTube; ahí puedes suscribirte"
-                else
-                    "Se abre la app de ${Enrutador.nombreDe(plataforma)}",
-                variante = VarianteBoton.SECUNDARIO,
-                onClick = {
-                    Enrutador.abrirCanal(contexto, plataforma, conexion.url, campana = "perfil_creador")
-                }
+            // En su propio perfil no hace falta decir de quién es un canal
+            // suyo, pero sí si es de una productora o de otro creador con el
+            // que aparece.
+            val deOtro = creadores.firstOrNull {
+                it.id == canal.creadorId && it.id != creador.id
+            }
+
+            BotonCanal(
+                canal = canal,
+                dueno = deOtro?.let { "Canal de ${it.name}" } ?: productora?.let { "De ${it.nombre}" },
+                suscrito = suscrito,
+                campana = "perfil_creador",
+                onVerFicha = canal.id.takeIf { it.isNotBlank() && canal.esDeYouTube }
+                    ?.let { id -> { onAbrirCanal(id) } }
             )
+
+            // Con varios canales, cada uno se puede seguir por separado. Con
+            // uno solo sobra: es lo mismo que el botón de arriba.
+            if (variosCanales && canal.sePuedeSeguir) {
+                SeguirCanal(
+                    siguiendo = perfil.sigueCanal(canal),
+                    incluido = perfil.loRecibePorOtros(canal),
+                    onSeguir = { onSeguirCanal(canal) }
+                )
+            }
+        }
+
+        if (redes.isNotEmpty()) {
+            Text(
+                "Redes sociales",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            redes.forEach { red ->
+                BotonCanal(canal = red, dueno = null, suscrito = null, campana = "perfil_creador")
+            }
+        }
+
+        // Las casas con las que trabaja: donde figura y las dueñas de alguno
+        // de sus canales. Las que el servidor no manda (ocultas) no salen.
+        val susProductoras = productoras.filter { p ->
+            p.id in creador.productoras || canales.any { it.productoraId == p.id }
+        }
+        if (susProductoras.isNotEmpty()) {
+            Text(
+                if (susProductoras.size == 1) "Su medio" else "Sus medios",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            susProductoras.forEach { p ->
+                BotonGrande(
+                    titulo = p.nombre,
+                    subtitulo = "Ver sus canales y creadores",
+                    variante = VarianteBoton.SECUNDARIO,
+                    onClick = { onAbrirProductora(p.id) }
+                )
+            }
         }
 
         Text(
@@ -254,28 +518,41 @@ fun CreadorPantalla(
  * cuando tocarlo sirve de algo.
  */
 @Composable
-private fun SuscripcionEnYouTube(
+internal fun SuscripcionEnYouTube(
     suscrito: Boolean?,
     youtube: EstadoYouTube,
     esAnonimo: Boolean,
-    onConectar: () -> Unit
+    onConectar: () -> Unit,
+    // "Clips", "Directos"… para decir de cuál canal se habla cuando hay varios.
+    etiqueta: String? = null,
+    // En el segundo canal y siguientes: solo la frase cuando ya se sabe la
+    // respuesta, sin repetir el botón ni las explicaciones.
+    soloSiSeSabe: Boolean = false
 ) {
     val esquema = MaterialTheme.colorScheme
+    if (soloSiSeSabe && suscrito == null) return
+
+    val canal = if (etiqueta.isNullOrBlank()) "su canal de YouTube" else "su canal $etiqueta de YouTube"
 
     val frase = when {
-        suscrito == true -> "Estás suscrito a su canal de YouTube."
-        suscrito == false -> "No estás suscrito a su canal de YouTube."
-        esAnonimo -> "Para ver aquí si estás suscrito a su canal de YouTube, " +
+        suscrito == true -> "Estás suscrito a $canal."
+        suscrito == false -> "No estás suscrito a $canal."
+        esAnonimo -> "Para ver aquí si estás suscrito a $canal, " +
             "guarda tu cuenta con Google en Ajustes."
-        youtube.verificando -> "Comprobando si estás suscrito a su canal de YouTube…"
+        youtube.verificando -> "Comprobando si estás suscrito a $canal…"
         else -> null
     }
 
     if (frase != null) {
+        // Suscrito: en el mismo verde que la etiqueta del Directorio, y con
+        // su palomita, para que sea la misma señal en todas las pantallas.
         Text(
-            frase,
-            style = MaterialTheme.typography.bodyLarge,
-            color = if (suscrito == true) esquema.onBackground else esquema.onSurfaceVariant,
+            if (suscrito == true) "✓ $frase" else frase,
+            style = if (suscrito == true)
+                MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold)
+            else
+                MaterialTheme.typography.bodyLarge,
+            color = if (suscrito == true) esquema.tertiary else esquema.onSurfaceVariant,
             modifier = Modifier.padding(bottom = Espacio.md)
         )
     } else if (youtube.permiso == PermisoYouTube.SIN_PERMISO) {
@@ -285,5 +562,100 @@ private fun SuscripcionEnYouTube(
             variante = VarianteBoton.SECUNDARIO,
             onClick = onConectar
         )
+    }
+}
+
+/**
+ * Seguir un canal de YouTube por sí solo, sin seguir a su creador ni a su
+ * medio. Lo comparten el perfil del creador, la ficha del medio y la del canal.
+ *
+ * @param siguiendo sigue este canal suelto.
+ * @param incluido  sus avisos ya le llegan por seguir a su creador o a su
+ *                  medio. Entonces no hay nada que tocar: se dice y ya. Quien
+ *                  quiera quedarse solo con este canal deja de seguir al
+ *                  creador o al medio y lo sigue aquí.
+ * @param destacado en la ficha del canal es el botón principal de la pantalla.
+ */
+@Composable
+internal fun SeguirCanal(
+    siguiendo: Boolean,
+    incluido: Boolean,
+    onSeguir: () -> Unit,
+    destacado: Boolean = false
+) {
+    val esquema = MaterialTheme.colorScheme
+
+    if (incluido && !siguiendo) {
+        Text(
+            "✓ Ya recibes los avisos de este canal: sigues a su creador o a su medio.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = esquema.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = Espacio.md)
+        )
+        return
+    }
+
+    BotonGrande(
+        titulo = if (siguiendo) "Sigues este canal" else "Seguir solo este canal",
+        subtitulo = if (siguiendo)
+            "Toca para dejar de recibir sus avisos"
+        else
+            "Te avisamos solo de lo que salga en este canal",
+        variante = if (destacado && !siguiendo) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+        onClick = onSeguir
+    )
+}
+
+/**
+ * El botón que lleva a un canal. Lo comparten el perfil del creador y la
+ * ficha de la productora.
+ *
+ * @param dueno una frase corta sobre de quién es el canal ("De Estudio X",
+ *              "Canal de Juan Pérez"), o null si no hace falta decirlo.
+ * @param onVerFicha abre la ficha del canal, con sus últimos videos. El botón
+ *              grande sigue llevando directo a YouTube, de un toque; la ficha
+ *              es un enlace aparte, debajo, para quien quiera ver más.
+ */
+@Composable
+internal fun BotonCanal(
+    canal: Canal,
+    dueno: String?,
+    suscrito: Boolean?,
+    campana: String,
+    onVerFicha: (() -> Unit)? = null
+) {
+    val contexto = LocalContext.current
+
+    val destino = if (canal.plataforma == "youtube" && suscrito == false)
+        "Se abre YouTube; ahí puedes suscribirte"
+    else
+        "Se abre la app de ${Enrutador.nombreDe(canal.plataforma)}"
+
+    BotonGrande(
+        // Con dos canales en la misma plataforma, la etiqueta es lo único que
+        // los distingue: "Ver videos largos · Clips".
+        titulo = Enrutador.accionDe(canal.plataforma) +
+            (canal.nombre?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+        subtitulo = if (dueno != null) "$dueno. $destino" else destino,
+        variante = VarianteBoton.SECUNDARIO,
+        onClick = {
+            Enrutador.abrirCanal(contexto, canal.plataforma, canal.url, campana = campana)
+        }
+    )
+
+    if (onVerFicha != null) {
+        TextButton(
+            onClick = onVerFicha,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = Tactil.minimo)
+                .padding(bottom = Tactil.separacion)
+        ) {
+            Text(
+                "Ver los últimos videos de este canal",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }

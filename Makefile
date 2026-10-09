@@ -4,7 +4,8 @@ ENV_FILE ?= relay-server/.env.local
 PROJECT ?= vocesleft-local
 COMPOSE := docker compose --env-file $(ENV_FILE) -p $(PROJECT) -f relay-server/docker-compose.yml
 
-.PHONY: help test build ci local-up local-down local-restart local-logs local-status local-config
+.PHONY: help test build ci local-up local-down local-restart local-logs local-status local-config \
+	datos-guardar datos-restaurar datos-test panel-test
 
 help:
 	@echo "make test          Ejecuta las pruebas Java"
@@ -15,6 +16,10 @@ help:
 	@echo "make local-restart Reconstruye y reinicia el servidor local"
 	@echo "make local-logs    Sigue los logs del servidor"
 	@echo "make local-status  Muestra contenedores y healthchecks"
+	@echo "make datos-guardar   Escribe los creadores de la base local en datos/development/"
+	@echo "make datos-restaurar Devuelve a la base local lo que falte de datos/development/"
+	@echo "make datos-test      Pruebas de la herramienta de datos"
+	@echo "make panel-test      Pruebas de las versiones y la migracion del panel (necesita node)"
 
 test:
 	cd relay-server && ./gradlew test --no-daemon
@@ -43,3 +48,18 @@ local-logs: local-config
 
 local-status: local-config
 	$(COMPOSE) ps
+
+# El directorio en archivos. Ver datos/README.md. Testing y produccion se
+# guardan solos desde el VPS (scripts/vps/respaldo-datos.sh).
+datos-guardar:
+	python3 scripts/datos/datos.py guardar development
+
+datos-restaurar:
+	python3 scripts/datos/datos.py restaurar development
+
+datos-test:
+	python3 -m unittest discover -s scripts/datos
+
+# Comparar versiones y migrar de pruebas a produccion: la logica del panel.
+panel-test:
+	node admin/versiones.test.js

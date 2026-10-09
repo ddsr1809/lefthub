@@ -20,13 +20,22 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
+import com.vocesdeizquierda.lefthub.anuncios.Anuncios
+import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
+import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
+import com.vocesdeizquierda.lefthub.data.ApiRelay
+import com.vocesdeizquierda.lefthub.data.AyudaTele
+import com.vocesdeizquierda.lefthub.data.EstadoServidor
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import com.vocesdeizquierda.lefthub.ui.*
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -41,6 +50,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (Aceptacion.vigente(this)) solicitarPermisoDeAvisos()
+        Abiertos.cargar(this)
+        AyudaTele.cargar(this)
 
         setContent {
             var aceptado by remember { mutableStateOf(Aceptacion.vigente(this@MainActivity)) }
@@ -62,15 +73,54 @@ class MainActivity : ComponentActivity() {
                 val modelo: AppViewModel = viewModel()
                 val estado by modelo.estado.collectAsState()
 
+                // El equipo dio de baja esta versión de la app: el servidor ya
+                // no la atiende. No tiene sentido enseñar pantallas vacías.
+                val bloqueo by ApiRelay.bloqueo.collectAsState()
+
+                // El servidor está en mantenimiento o no responde. Se le
+                // pregunta cada vez que la app pasa a primer plano.
+                val servidor by ApiRelay.servidor.collectAsState()
+
                 TemaRelay(
                     preferencia = estado.perfil.tema,
                     escala = EscalaTexto.desde(estado.perfil.escalaTexto)
                 ) {
-                    if (!estado.listo) {
-                        PantallaDeCarga()
-                    } else {
-                        Navegacion(modelo, estado)
+                    val aviso = bloqueo
+                    val estadoDelServidor = servidor
+                    when {
+                        aviso != null -> ActualizarPantalla(mensaje = aviso)
+
+                        estadoDelServidor is EstadoServidor.Mantenimiento -> ServidorPantalla(
+                            titulo = "Estamos en mantenimiento",
+                            mensaje = estadoDelServidor.mensaje,
+                            onReintentar = { comprobarServidor() }
+                        )
+
+                        estadoDelServidor is EstadoServidor.Caido -> ServidorPantalla(
+                            titulo = "No podemos conectar con el servidor",
+                            mensaje = "El servidor no está respondiendo en este momento. " +
+                                "Suele durar poco.",
+                            onReintentar = { comprobarServidor() }
+                        )
+
+                        !estado.listo -> PantallaDeCarga()
+
+                        else -> Navegacion(modelo, estado)
                     }
+                }
+
+                // Anuncios. Todo cuelga de lo que diga el perfil, que es lo
+                // que decide el servidor: mientras la persona no vea anuncios
+                // (el equipo los tiene apagados, o ella los quitó) no se
+                // arranca la biblioteca de Google ni se le pregunta nada.
+                val veAnuncios = estado.perfil.veAnuncios
+                LaunchedEffect(veAnuncios) {
+                    if (veAnuncios) Anuncios.preparar(this@MainActivity)
+                }
+                // Y a Google Play se le pregunta el precio, y si esta persona
+                // ya lo había comprado, solo cuando hay algo que vender.
+                LaunchedEffect(veAnuncios, estado.perfil.compraDisponible) {
+                    modelo.prepararTienda(applicationContext)
                 }
 
                 // La notificación que abrió la app trae el destino en los extras.
@@ -95,7 +145,37 @@ class MainActivity : ComponentActivity() {
         // Pedir el ViewModel lo crea, y al crearse abre la cuenta anónima:
         // antes de la aceptación no se toca.
         if (!Aceptacion.vigente(this)) return
-        ViewModelProvider(this)[AppViewModel::class.java].verificarYouTube(applicationContext)
+        // Cada vez que se entra: ¿está vivo el servidor? ¿en mantenimiento?
+        comprobarServidor()
+        val modelo = ViewModelProvider(this)[AppViewModel::class.java]
+        modelo.verificarYouTube(applicationContext)
+        // Si al abrir no se pudo hablar con Google Play (sin conexión, por
+        // ejemplo), se reintenta al volver. Si ya se pudo, esto no hace nada.
+        modelo.prepararTienda(applicationContext, soloSiFalta = true)
+    }
+
+    /**
+     * Pregunta al servidor si atiende a la app. El resultado queda en
+     * ApiRelay.servidor, que es lo que pinta la interfaz.
+     *
+     * Si no atendía y ahora sí (terminó el mantenimiento, o volvió), la app
+     * arranca de nuevo: lo que se pidió mientras tanto falló, y empezar de
+     * cero es la forma segura de que nada se quede a medias o vacío.
+     */
+    private fun comprobarServidor() {
+        lifecycleScope.launch {
+            val antes = ApiRelay.servidor.value
+            val ahora = ApiRelay.comprobarServidor()
+            if (antes !is EstadoServidor.Vivo && ahora is EstadoServidor.Vivo) reiniciar()
+        }
+    }
+
+    private fun reiniciar() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        )
+        finish()
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -124,6 +204,8 @@ class MainActivity : ComponentActivity() {
             url = url,
             campana = if (tipo == "movido") "contenido_movido" else "aviso_publicacion"
         )
+        // Tocar el aviso también cuenta: al volver, su tarjeta ya no es nueva.
+        Abiertos.marcar(this, videoId)
 
         // Consumido: que no se repita al recrear la Activity.
         intent.replaceExtras(Bundle())
@@ -166,6 +248,9 @@ private fun PantallaDeCarga() {
  * cuesta a quien tiene menos destreza. Todo lo que se toca vive en el tercio
  * inferior de la pantalla.
  */
+/** Las pantallas a las que se entra desde el directorio. */
+private val FICHAS = listOf("creador/", "productora/", "canal/")
+
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
@@ -199,6 +284,23 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         }
     }
 
+    // Los anuncios de Novedades viven aquí, por encima de las pestañas, para
+    // que cambiar de pestaña y volver no pida anuncios nuevos. Se sueltan al
+    // cerrarse la pantalla, y en el momento en que la persona deja de verlos:
+    // acaba de comprar o de canjear un folio y no debe quedar ni uno a la vista.
+    val conAnuncios = estado.perfil.veAnuncios && Anuncios.listos
+    val banners = remember { BannersDelFeed() }
+    DisposableEffect(Unit) { onDispose { banners.destruir() } }
+    LaunchedEffect(conAnuncios) { if (!conAnuncios) banners.destruir() }
+
+    // Ajustes, entrando siempre por su principio, como al tocar su pestaña.
+    val irAAjustes = {
+        nav.navigate("ajustes") {
+            popUpTo(nav.graph.startDestinationId)
+            launchSingleTop = true
+        }
+    }
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -212,12 +314,20 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             ) {
                 destinos.forEach { (destino, etiqueta) ->
                     NavigationBarItem(
-                        selected = ruta == destino,
+                        // La ficha de un creador, de una productora o de un
+                        // canal es parte del directorio: su pestaña sigue marcada.
+                        selected = ruta == destino ||
+                            (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }),
                         onClick = {
+                            // Cada pestaña abre siempre su pantalla principal.
+                            // Antes se guardaba dónde se había quedado cada
+                            // una, y al volver al Directorio aparecía la ficha
+                            // del último creador en vez de la lista: quien no
+                            // recordaba haberla abierto se quedaba sin saber
+                            // cómo volver.
                             nav.navigate(destino) {
-                                popUpTo(nav.graph.startDestinationId) { saveState = true }
+                                popUpTo(nav.graph.startDestinationId)
                                 launchSingleTop = true
-                                restoreState = true
                             }
                         },
                         // Sin icono a propósito: una etiqueta escrita no hay
@@ -239,10 +349,20 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             composable("novedades") {
                 NovedadesPantalla(
                     publicaciones = estado.publicaciones,
-                    hayFavoritos = estado.perfil.favoritos.isNotEmpty(),
+                    hayFavoritos = estado.perfil.sigueAAlguien,
                     cuantosFavoritos = estado.perfil.favoritos.size,
+                    cuantasProductoras = estado.perfil.productoras.size,
+                    cuantosCanales = estado.perfil.canales.size,
+                    cortos = estado.cortos,
+                    verCortos = estado.perfil.veCortos,
+                    abiertos = Abiertos.videos,
+                    anuncios = banners.takeIf { conAnuncios },
+                    onQuitarAnuncios = irAAjustes,
+                    ayudaTele = AyudaTele.pendiente,
+                    onAyudaTeleEntendida = { AyudaTele.entendida(contexto) },
                     onIrAlDirectorio = { nav.navigate("directorio") },
-                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId) }
+                    // El canal propio de una productora no tiene creador.
+                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
                 )
             }
 
@@ -252,7 +372,15 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     favoritos = estado.perfil.favoritos,
                     youtube = estado.youtube,
                     onSeguir = { modelo.alternarFavorito(it) },
-                    onAbrirCreador = { nav.navigate("creador/$it") }
+                    onAbrirCreador = { nav.navigate("creador/$it") },
+                    productoras = estado.productoras,
+                    productorasSeguidas = estado.perfil.productoras,
+                    onSeguirProductora = { modelo.alternarProductora(it) },
+                    onAbrirProductora = { nav.navigate("productora/$it") },
+                    onAbrirCanal = { nav.navigate("canal/$it") },
+                    etiquetas = estado.etiquetas,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) }
                 )
             }
 
@@ -261,6 +389,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 arguments = listOf(navArgument("creatorId") { type = NavType.StringType })
             ) { entrada ->
                 val id = entrada.arguments?.getString("creatorId").orEmpty()
+
+                // Sus últimos videos se piden al abrir su ficha.
+                LaunchedEffect(id) { modelo.cargarVideosDeCreador(id) }
+
                 CreadorPantalla(
                     creador = modelo.creador(id),
                     siguiendo = id in estado.perfil.favoritos,
@@ -268,6 +400,72 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     esAnonimo = estado.esAnonimo,
                     onSeguir = { modelo.alternarFavorito(id) },
                     onConectarYouTube = { modelo.conectarYouTube(contexto) },
+                    onVolver = { nav.popBackStack() },
+                    productoras = estado.productoras,
+                    onAbrirProductora = { nav.navigate("productora/$it") },
+                    creadores = estado.creadores,
+                    onAbrirCanal = { nav.navigate("canal/$it") },
+                    // Mientras llegan los de este creador, no se pintan los del anterior.
+                    videos = estado.videosDeCreador.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    abiertos = Abiertos.videos,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) }
+                )
+            }
+
+            composable(
+                "canal/{canalId}",
+                arguments = listOf(navArgument("canalId") { type = NavType.StringType })
+            ) { entrada ->
+                val id = entrada.arguments?.getString("canalId").orEmpty()
+
+                // Los videos del canal se piden al abrir su ficha.
+                LaunchedEffect(id) { modelo.cargarVideosDeCanal(id) }
+
+                CanalPantalla(
+                    canal = estado.canal(id),
+                    creadores = estado.creadores,
+                    productoras = estado.productoras,
+                    // Mientras llegan los de este canal, no se pintan los del anterior.
+                    videos = estado.videos.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    youtube = estado.youtube,
+                    onAbrirCreador = { nav.navigate("creador/$it") },
+                    onAbrirProductora = { nav.navigate("productora/$it") },
+                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) },
+                    onReintentar = { modelo.cargarVideosDeCanal(id) },
+                    abiertos = Abiertos.videos,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) },
+                    onVolver = { nav.popBackStack() }
+                )
+            }
+
+            composable(
+                "productora/{productoraId}",
+                arguments = listOf(navArgument("productoraId") { type = NavType.StringType })
+            ) { entrada ->
+                val id = entrada.arguments?.getString("productoraId").orEmpty()
+
+                // Sus últimos videos se piden al abrir su ficha.
+                LaunchedEffect(id) { modelo.cargarVideosDeProductora(id) }
+
+                ProductoraPantalla(
+                    // De la lista del estado y no del modelo: así la ficha se
+                    // repinta cuando llegan las productoras del servidor.
+                    productora = estado.productoras.firstOrNull { it.id == id },
+                    siguiendo = id in estado.perfil.productoras,
+                    creadores = estado.creadores,
+                    favoritos = estado.perfil.favoritos,
+                    youtube = estado.youtube,
+                    onSeguir = { modelo.alternarProductora(id) },
+                    onSeguirCreador = { modelo.alternarFavorito(it) },
+                    onAbrirCreador = { nav.navigate("creador/$it") },
+                    onAbrirCanal = { nav.navigate("canal/$it") },
+                    // Mientras llegan los de este medio, no se pintan los del anterior.
+                    videos = estado.videosDeProductora.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    abiertos = Abiertos.videos,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) },
                     onVolver = { nav.popBackStack() }
                 )
             }
@@ -280,10 +478,49 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onCerrarSesion = { modelo.cerrarSesion(contexto) },
                     onBorrarCuenta = { modelo.borrarCuenta(contexto) },
                     onConectarYouTube = { modelo.conectarYouTube(contexto) },
-                    onDesconectarYouTube = { modelo.desconectarYouTube(contexto) }
+                    onDesconectarYouTube = { modelo.desconectarYouTube(contexto) },
+                    // La pantalla de pago y el formulario de privacidad son de
+                    // Google y se abren encima de esta pantalla: necesitan la
+                    // Activity, que aquí es el propio contexto.
+                    onComprarSinAnuncios = {
+                        (contexto as? Activity)?.let { modelo.comprarSinAnuncios(it) }
+                    },
+                    onCanjearFolio = { modelo.canjearFolio(it) },
+                    onFolioCerrado = { modelo.folioCerrado() },
+                    onPrivacidadDeAnuncios = {
+                        (contexto as? Activity)?.let { Anuncios.abrirOpcionesDePrivacidad(it) }
+                    }
                 )
             }
         }
+    }
+
+    // Dejó de estar suscrito en YouTube a alguien del directorio. Es una
+    // ventana y no el aviso de abajo, que se va solo a los pocos segundos:
+    // esto hay que poder leerlo con calma, y a lo mejor fue sin querer.
+    estado.bajasDeYouTube?.let { bajas ->
+        AlertDialog(
+            onDismissRequest = { modelo.bajasDeYouTubeVistas() },
+            title = { Text("Ya no estás suscrito en YouTube") },
+            text = { Text(bajas.texto) },
+            confirmButton = {
+                TextButton(
+                    onClick = { modelo.bajasDeYouTubeVistas() },
+                    modifier = Modifier.heightIn(min = Tactil.minimo)
+                ) { Text("Entendido") }
+            },
+            dismissButton = {
+                // Con un solo canal, a su ficha, que tiene el botón para
+                // abrirlo en YouTube; con varios, al Directorio.
+                TextButton(
+                    onClick = {
+                        modelo.bajasDeYouTubeVistas()
+                        nav.navigate(bajas.canalId?.let { "canal/$it" } ?: "directorio")
+                    },
+                    modifier = Modifier.heightIn(min = Tactil.minimo)
+                ) { Text(if (bajas.canalId != null) "Ver el canal" else "Ir al Directorio") }
+            }
+        )
     }
 
     // Colisión de cuentas: en vez de un código de error, explicamos qué botón

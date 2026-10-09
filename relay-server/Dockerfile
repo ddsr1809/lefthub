@@ -26,6 +26,12 @@ USER relay
 
 COPY --from=construccion /obra/build/libs/relay-server.jar app.jar
 
+# El commit del que sale la imagen. Lo pasa el pipeline con --build-arg y el
+# servidor lo ensena en GET /api/servidor. Va al final para que cambiarlo no
+# invalide ninguna de las capas de arriba.
+ARG COMMIT=""
+ENV SERVIDOR_COMMIT=$COMMIT
+
 EXPOSE 8080
 
 # MaxRAMPercentage en vez de -Xmx fijo: la JVM respeta el limite de memoria
