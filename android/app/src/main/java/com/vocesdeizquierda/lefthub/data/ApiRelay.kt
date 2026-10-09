@@ -5,6 +5,9 @@ import android.content.SharedPreferences
 import android.util.Log
 import com.vocesdeizquierda.lefthub.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -87,6 +90,20 @@ object ApiRelay {
      * un caso de otro, como YouTubeRepo con el 412.
      */
     class ErrorHttp(val codigo: Int, mensaje: String) : IOException(mensaje)
+
+    /**
+     * El aviso del servidor cuando esta versión de la app ya no se atiende:
+     * el equipo la dio de baja y hay que actualizar. Null mientras la app
+     * funciona.
+     *
+     * El servidor contesta 426 a cualquier petición de una versión dada de
+     * baja. MainActivity mira este valor y, si lo hay, enseña solo la
+     * pantalla de actualizar.
+     */
+    private val _bloqueo = MutableStateFlow<String?>(null)
+    val bloqueo: StateFlow<String?> = _bloqueo.asStateFlow()
+
+    private const val ACTUALIZACION_OBLIGATORIA = 426
 
     /** Datos de la sesión actual, sin tocar la red. */
     var sesion: Sesion? = null
@@ -347,9 +364,18 @@ object ApiRelay {
                         JSONObject(cuerpo).optString("message").takeIf { it.isNotBlank() }
                     }.getOrNull()
 
+                    if (respuesta.code == ACTUALIZACION_OBLIGATORIA) {
+                        _bloqueo.value = motivo
+                            ?: "Esta versión de la app ya no funciona. Actualízala para seguir usándola."
+                    }
+
                     Log.w(TAG, "Respuesta ${respuesta.code} de ${respuesta.request.url}")
                     throw ErrorHttp(respuesta.code, motivo ?: "No se pudo completar la operación.")
                 }
+
+                // Si el servidor vuelve a responder es que la versión se
+                // atiende otra vez: el equipo la reactivó desde el panel.
+                if (_bloqueo.value != null) _bloqueo.value = null
 
                 cuerpo
             }

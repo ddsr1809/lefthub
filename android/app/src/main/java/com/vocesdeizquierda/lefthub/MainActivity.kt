@@ -28,6 +28,7 @@ import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
+import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.AyudaTele
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -69,11 +70,18 @@ class MainActivity : ComponentActivity() {
                 val modelo: AppViewModel = viewModel()
                 val estado by modelo.estado.collectAsState()
 
+                // El equipo dio de baja esta versión de la app: el servidor ya
+                // no la atiende. No tiene sentido enseñar pantallas vacías.
+                val bloqueo by ApiRelay.bloqueo.collectAsState()
+
                 TemaRelay(
                     preferencia = estado.perfil.tema,
                     escala = EscalaTexto.desde(estado.perfil.escalaTexto)
                 ) {
-                    if (!estado.listo) {
+                    val aviso = bloqueo
+                    if (aviso != null) {
+                        ActualizarPantalla(mensaje = aviso)
+                    } else if (!estado.listo) {
                         PantallaDeCarga()
                     } else {
                         Navegacion(modelo, estado)
