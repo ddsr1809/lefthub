@@ -17,10 +17,11 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
- * Corta el paso a las apps anteriores a la versión mínima.
+ * Corta el paso a las apps que ya no se atienden: las anteriores a la versión
+ * mínima y las versiones dadas de baja desde el panel.
  *
- * Mientras APP_VERSION_MINIMA_ANDROID y APP_VERSION_MINIMA_IOS estén vacías
- * no hace nada. Con una mínima puesta, la app que no llegue recibe un 426
+ * Mientras APP_VERSION_MINIMA_ANDROID y APP_VERSION_MINIMA_IOS estén vacías y
+ * no haya ninguna versión dada de baja, no hace nada. Si no, la app recibe un 426
  * con un mensaje pensado para leerse en el teléfono: todas las versiones de
  * la app leen el campo {@code message} de un error.
  *
@@ -33,10 +34,12 @@ public class FiltroVersionMinima extends OncePerRequestFilter {
             "Esta versión de la app ya no funciona. Actualízala desde la tienda para seguir usándola.";
 
     private final RelayProperties.Apps apps;
+    private final AppsService bajas;
     private final ObjectMapper json = new ObjectMapper();
 
-    public FiltroVersionMinima(RelayProperties.Apps apps) {
+    public FiltroVersionMinima(RelayProperties.Apps apps, AppsService bajas) {
         this.apps = apps;
+        this.bajas = bajas;
     }
 
     @Override
@@ -47,7 +50,7 @@ public class FiltroVersionMinima extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         boolean rechazada = VersionDeApp.rechazada(
-                apps.minimaAndroid(), apps.minimaIos(),
+                apps.minimaAndroid(), apps.minimaIos(), bajas.bajas(),
                 peticion.getMethod(), peticion.getServletPath(),
                 peticion.getHeader(VersionDeApp.CABECERA_PLATAFORMA),
                 peticion.getHeader(VersionDeApp.CABECERA_VERSION));
@@ -73,9 +76,9 @@ public class FiltroVersionMinima extends OncePerRequestFilter {
         json.writeValue(respuesta.getWriter(), cuerpo);
     }
 
-    /** Sin ninguna mínima puesta no hay nada que mirar. */
+    /** Sin mínima ni versiones dadas de baja no hay nada que mirar. */
     @Override
     protected boolean shouldNotFilter(@NonNull HttpServletRequest peticion) {
-        return !apps.hayMinima();
+        return !apps.hayMinima() && bajas.bajas().isEmpty();
     }
 }

@@ -3,6 +3,9 @@ package com.voces.backend.version;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+import java.util.Set;
+
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -97,5 +100,94 @@ class VersionDeAppTest {
     void preflight() {
         assertFalse(VersionDeApp.rechazada("9.0.0", "", "OPTIONS", "/api/creadores", null, null));
         assertTrue(VersionDeApp.rechazada("9.0.0", "", "POST", "/api/reportes", null, null));
+    }
+
+    @Test
+    @DisplayName("La versión se guarda solo con sus números")
+    void limpia() {
+        assertEquals("1.0.2", VersionDeApp.limpia("1.0.2-pruebas"));
+        assertEquals("1.0.2", VersionDeApp.limpia(" v1.0.2 "));
+        assertEquals("2", VersionDeApp.limpia("2"));
+        assertNull(VersionDeApp.limpia("nueva"));
+        assertNull(VersionDeApp.limpia(null));
+    }
+
+    @Test
+    @DisplayName("Lo que no dice plataforma es Android")
+    void plataforma() {
+        assertEquals("android", VersionDeApp.plataforma(null));
+        assertEquals("android", VersionDeApp.plataforma("otra"));
+        assertEquals("ios", VersionDeApp.plataforma(" iOS "));
+        assertEquals("panel", VersionDeApp.plataforma("Panel"));
+    }
+
+    @Test
+    @DisplayName("Una versión dada de baja se escribe como plataforma:versión")
+    void comoSeEscribeUnaBaja() {
+        assertEquals("android:1.0.0", VersionDeApp.baja("android", "1.0.0"));
+        assertEquals("ios:0.1.0", VersionDeApp.baja("ios", "v0.1.0"));
+        // La app que no dice su versión.
+        assertEquals("android:0", VersionDeApp.baja(null, null));
+        assertEquals("android:0", VersionDeApp.baja("android", ""));
+    }
+
+    @Test
+    @DisplayName("Dar de baja una versión la deja fuera a ella y a ninguna otra")
+    void bajas() {
+        List<String> bajas = List.of("android:1.0.0", "ios:0.1.0");
+
+        assertTrue(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "android", "1.0.0"));
+        assertTrue(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "android", "1.0.0-pruebas"));
+        assertTrue(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "android", "1.0"));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "android", "1.0.1"));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "android", "0.9.0"));
+        // Cada plataforma por su lado.
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "ios", "1.0.0"));
+        assertTrue(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "ios", "0.1.0"));
+        // La app que no dice su versión no está dada de baja.
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", null, null));
+    }
+
+    @Test
+    @DisplayName("Dar de baja a las apps sin identificar deja fuera solo a las que no dicen su versión")
+    void bajaDeLasSinIdentificar() {
+        List<String> bajas = List.of("android:0");
+
+        assertTrue(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", null, null));
+        assertTrue(VersionDeApp.rechazada("", "", bajas, "POST", "/api/auth/anonimo", null, null));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "android", "1.0.2"));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/creadores", "ios", null));
+    }
+
+    @Test
+    @DisplayName("Una baja no alcanza al panel, a las fotos ni a lo interno")
+    void bajasYLoQueNoEsDeLaApp() {
+        List<String> bajas = List.of("android:0", "android:1.0.0");
+
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/admin/apps", null, null));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "GET", "/api/fotos/abc", null, null));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "POST", "/websub", null, null));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "POST", "/api/auth/google", "panel", null));
+        assertFalse(VersionDeApp.rechazada("", "", bajas, "OPTIONS", "/api/creadores", null, null));
+    }
+
+    @Test
+    @DisplayName("La mínima y las bajas se suman")
+    void minimaYBajas() {
+        List<String> bajas = List.of("android:1.0.3");
+
+        assertTrue(VersionDeApp.rechazada("1.0.2", "", bajas, "GET", "/api/creadores", "android", "1.0.1"));
+        assertFalse(VersionDeApp.rechazada("1.0.2", "", bajas, "GET", "/api/creadores", "android", "1.0.2"));
+        assertTrue(VersionDeApp.rechazada("1.0.2", "", bajas, "GET", "/api/creadores", "android", "1.0.3"));
+        assertFalse(VersionDeApp.rechazada("1.0.2", "", bajas, "GET", "/api/creadores", "android", "1.0.4"));
+    }
+
+    @Test
+    @DisplayName("La fila de ajustes con las bajas se lee aunque venga vacía o con espacios de más")
+    void filaDeAjustes() {
+        assertEquals(Set.of(), AppsService.partir(null));
+        assertEquals(Set.of(), AppsService.partir("  "));
+        assertEquals(Set.of("android:1.0.0", "ios:0.1.0"), AppsService.partir(" android:1.0.0   ios:0.1.0 "));
+        assertEquals(Set.of("android:0"), AppsService.partir("android:0 basura"));
     }
 }

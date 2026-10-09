@@ -238,6 +238,21 @@ public final class Repositorios {
 
         long countByPosibleBotTrue();
 
+        /** Cuentas por versión de la app, con la última vez que entró alguna. */
+        @Query("""
+                select u.appPlataforma, u.appVersion, count(u), max(u.vistoEn) from Usuario u
+                group by u.appPlataforma, u.appVersion
+                """)
+        List<Object[]> porVersionDeApp();
+
+        /** Lo mismo, contando solo a quienes abrieron la app desde esa fecha. */
+        @Query("""
+                select u.appPlataforma, u.appVersion, count(u) from Usuario u
+                where u.vistoEn >= :desde
+                group by u.appPlataforma, u.appVersion
+                """)
+        List<Object[]> activosPorVersionDeApp(@Param("desde") Instant desde);
+
         /** Cuántas cuentas ya no ven anuncios, por motivo: compra, folio o panel. */
         @Query("""
                 select u.sinAnunciosOrigen, count(u) from Usuario u

@@ -126,6 +126,14 @@ public class Usuario {
     /** Cabecera User-Agent: qué aplicación hizo la petición. */
     private String agente;
 
+    /** La versión de la app con la que entró la última vez. Ver V13. */
+    @Column(name = "app_version")
+    private String appVersion;
+
+    /** android | ios. Null si la app no lo dijo. */
+    @Column(name = "app_plataforma")
+    private String appPlataforma;
+
     @Column(name = "posible_bot", nullable = false)
     private boolean posibleBot = false;
 
@@ -221,6 +229,12 @@ public class Usuario {
 
     public String getAgente() { return agente; }
     public void setAgente(String agente) { this.agente = agente; }
+
+    public String getAppVersion() { return appVersion; }
+    public void setAppVersion(String appVersion) { this.appVersion = appVersion; }
+
+    public String getAppPlataforma() { return appPlataforma; }
+    public void setAppPlataforma(String appPlataforma) { this.appPlataforma = appPlataforma; }
 
     public boolean isPosibleBot() { return posibleBot; }
     public void setPosibleBot(boolean posibleBot) { this.posibleBot = posibleBot; }

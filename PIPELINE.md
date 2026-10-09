@@ -84,11 +84,28 @@ migracion que ya llego a algun servidor no se reutiliza ni se borra**; lo que
 haya que deshacer va en una migracion nueva. Reutilizar el numero deja al
 servidor sin arrancar con `Migration checksum mismatch`.
 
+### Dar de baja versiones de la app
+
+Las apps mandan en cada peticion `X-App-Version` y `X-App-Plataforma`, y el
+servidor anota con que version entra cada cuenta cada vez que abre la app. La
+seccion **Apps** del panel ensena cuantas cuentas tiene cada version y deja
+dar de baja las que se quieran, una a una, y volver a atenderlas.
+
+- Una version dada de baja recibe un 426 en todas sus peticiones. La app de
+  Android ensena entonces una pantalla que pide actualizar desde Google Play;
+  las versiones anteriores a esa pantalla solo muestran el mensaje como error.
+- **Sin identificar** son las apps que no mandan su version (las primeras que
+  se publicaron) y las cuentas que no han vuelto a abrir la app. Darlas de
+  baja deja fuera a toda app que no diga su version.
+- **Antes de dar de baja una version, la nueva tiene que estar publicada**:
+  quien se quede fuera solo puede arreglarlo actualizando.
+- El cambio vale en medio minuto como mucho y no reinicia nada. La lista se
+  guarda en la tabla `ajustes`, por ambiente.
+
 ### Version minima de las apps
 
-Las apps mandan en cada peticion `X-App-Version` y `X-App-Plataforma`
-(Android desde la 1.0.1). Para dejar de atender a las versiones viejas, en el
-`.env` del ambiente:
+Ademas del panel, el `.env` del ambiente admite una version minima por
+plataforma: todo lo anterior queda fuera, sin ir version por version:
 
 ```bash
 APP_VERSION_MINIMA_ANDROID=1.0.1
