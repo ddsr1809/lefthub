@@ -137,7 +137,9 @@
   }
 
   async function api(ruta, { metodo = 'GET', cuerpo } = {}) {
-    const cabeceras = {};
+    // El panel se identifica para que la versión mínima de las apps no le
+    // corte el paso: entra con Google y lee su perfil por rutas de la app.
+    const cabeceras = { 'X-App-Plataforma': 'panel' };
     if (sesion && sesion.token) cabeceras.Authorization = 'Bearer ' + sesion.token;
     if (cuerpo !== undefined) cabeceras['Content-Type'] = 'application/json';
 
@@ -270,6 +272,7 @@
     foliosNuevos: [],       // los folios recién creados, para copiarlos
     usuarios: null,         // la página que está en pantalla
     migracion: null,        // la revisión de una migración que está en pantalla
+    servidor: null,         // versión y commit del servidor; null si no los dice
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
   };
 
@@ -438,8 +441,32 @@
   // ---------------------------------------------------------------------------
   // Resumen
   // ---------------------------------------------------------------------------
+
+  // Qué servidor responde: su versión y el commit del que salió. La ruta no
+  // pide sesión. Si el servidor es anterior a ella, no se muestra nada.
+  async function leerServidor() {
+    if (estado.servidor) return estado.servidor;
+    try {
+      const r = await fetch(BASE + '/api/servidor');
+      estado.servidor = r.ok ? await r.json() : null;
+    } catch (e) {
+      estado.servidor = null;
+    }
+    return estado.servidor;
+  }
+
+  function textoServidor(s) {
+    if (!s || !s.version) return '';
+    const minimas = [];
+    if (s.appMinimaAndroid) minimas.push('Android ' + s.appMinimaAndroid);
+    if (s.appMinimaIos) minimas.push('iOS ' + s.appMinimaIos);
+    return ' Servidor <b>' + esc(s.version) + '</b>'
+      + (s.commit ? ' <span class="mono">(' + esc(String(s.commit).slice(0, 7)) + ')</span>' : '')
+      + (minimas.length ? ' · app mínima: ' + esc(minimas.join(', ')) : '') + '.';
+  }
+
   async function vistaResumen() {
-    const [base, pubs] = await Promise.all([refrescarContadores(), api('/api/admin/publicaciones?limite=200')]);
+    const [base, pubs, servidor] = await Promise.all([refrescarContadores(), api('/api/admin/publicaciones?limite=200'), leerServidor()]);
     if (!base) throw new ErrorApi('No se pudo leer el directorio.', 0);
     const { creadores, productoras, reportes } = base;
     estado.publicaciones = pubs;
@@ -461,7 +488,7 @@
     if (reportes.length) alertas.push(['b-info', plural(reportes.length, 'reporte pendiente', 'reportes pendientes') + ' de enlaces rotos.', 'reportes']);
 
     main.innerHTML = `
-      <div class="head"><div><h1>Resumen</h1><p class="sub">Estado del directorio, de las suscripciones a YouTube y de los reportes.</p></div>
+      <div class="head"><div><h1>Resumen</h1><p class="sub">Estado del directorio, de las suscripciones a YouTube y de los reportes.${textoServidor(servidor)}</p></div>
         <div class="toolbar"><button class="btn primary" data-accion="nuevo-creador">Nuevo creador</button></div></div>
       <div class="stack">
         <div class="stats tres">
