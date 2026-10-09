@@ -50,6 +50,12 @@ enum ApiRelay {
         peticion.timeoutInterval = 30
         peticion.setValue("Bearer \(try await token())", forHTTPHeaderField: "Authorization")
 
+        // Qué app es esta. El servidor lo usa para dejar de atender a las
+        // versiones anteriores a la mínima de iOS.
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        peticion.setValue(version ?? "0", forHTTPHeaderField: "X-App-Version")
+        peticion.setValue("ios", forHTTPHeaderField: "X-App-Plataforma")
+
         if let cuerpo {
             peticion.setValue("application/json", forHTTPHeaderField: "Content-Type")
             peticion.httpBody = try JSONSerialization.data(withJSONObject: cuerpo)
