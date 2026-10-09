@@ -190,4 +190,34 @@ class VersionDeAppTest {
         assertEquals(Set.of("android:1.0.0", "ios:0.1.0"), AppsService.partir(" android:1.0.0   ios:0.1.0 "));
         assertEquals(Set.of("android:0"), AppsService.partir("android:0 basura"));
     }
+
+    @Test
+    @DisplayName("El mantenimiento alcanza a las apps y a nada más")
+    void aQuienDejaFueraElMantenimiento() {
+        assertTrue(VersionDeApp.deUnaApp("GET", "/api/creadores", "android"));
+        assertTrue(VersionDeApp.deUnaApp("POST", "/api/auth/anonimo", null));
+        assertTrue(VersionDeApp.deUnaApp("GET", "/api/perfil", "ios"));
+        // El panel sigue, para poder apagarlo.
+        assertFalse(VersionDeApp.deUnaApp("GET", "/api/admin/apps", null));
+        assertFalse(VersionDeApp.deUnaApp("POST", "/api/auth/google", "panel"));
+        assertFalse(VersionDeApp.deUnaApp("GET", "/api/perfil", "Panel"));
+        // La app pregunta aquí si hay mantenimiento.
+        assertFalse(VersionDeApp.deUnaApp("GET", "/api/servidor", "android"));
+        // Y el servidor sigue recibiendo publicaciones y sirviendo fotos.
+        assertFalse(VersionDeApp.deUnaApp("POST", "/websub", null));
+        assertFalse(VersionDeApp.deUnaApp("GET", "/api/fotos/abc", null));
+        assertFalse(VersionDeApp.deUnaApp("POST", "/internal/replica/creadores", null));
+        assertFalse(VersionDeApp.deUnaApp("GET", "/actuator/health", null));
+        assertFalse(VersionDeApp.deUnaApp("OPTIONS", "/api/creadores", null));
+    }
+
+    @Test
+    @DisplayName("El mensaje del mantenimiento nunca queda vacío ni desmedido")
+    void mensajeDeMantenimiento() {
+        assertEquals(MantenimientoService.MENSAJE_NORMAL, MantenimientoService.limpiar(null));
+        assertEquals(MantenimientoService.MENSAJE_NORMAL, MantenimientoService.limpiar("   "));
+        assertEquals("Volvemos a las 6.", MantenimientoService.limpiar("  Volvemos   a las\n6. "));
+        assertEquals(MantenimientoService.LARGO_MENSAJE,
+                MantenimientoService.limpiar("a".repeat(1000)).length());
+    }
 }

@@ -3,6 +3,7 @@ package com.voces.backend.config;
 import com.voces.backend.auth.ServicioJwt;
 import com.voces.backend.version.AppsService;
 import com.voces.backend.version.FiltroVersionMinima;
+import com.voces.backend.version.MantenimientoService;
 import com.voces.backend.version.VersionDeApp;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -35,7 +36,8 @@ public class SeguridadConfig {
 
     @Bean
     public SecurityFilterChain cadenaDeFiltros(HttpSecurity http, ServicioJwt jwt,
-                                               AppsService apps) throws Exception {
+                                               AppsService apps,
+                                               MantenimientoService mantenimiento) throws Exception {
         http
                 // Sin sesiones ni formularios: cada peticion trae su token.
                 // Sin estado de sesion que proteger, CSRF no aplica.
@@ -70,8 +72,9 @@ public class SeguridadConfig {
                         .anyRequest().denyAll()
                 )
                 .addFilterBefore(new FiltroJwt(jwt), UsernamePasswordAuthenticationFilter.class)
-                // Las apps que ya no se atienden no pasan de aquí.
-                .addFilterBefore(new FiltroVersionMinima(config.apps(), apps),
+                // Las apps que ya no se atienden no pasan de aquí, ni ninguna
+                // mientras el servidor está en mantenimiento.
+                .addFilterBefore(new FiltroVersionMinima(config.apps(), apps, mantenimiento),
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
