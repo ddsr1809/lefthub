@@ -34,6 +34,12 @@ data class Canal(
     val tambien: List<String> = emptyList()
 ) {
     val esDeYouTube: Boolean get() = plataforma == "youtube" && !channelId.isNullOrBlank()
+
+    /**
+     * Se puede seguir por sí solo: es un canal de YouTube y el servidor lo
+     * manda con su id. Los de un servidor anterior no lo traen.
+     */
+    val sePuedeSeguir: Boolean get() = esDeYouTube && id.isNotBlank()
 }
 
 data class Creador(
@@ -264,6 +270,11 @@ data class Perfil(
     val avisos: Boolean = true,
     /** Productoras que sigue. Los creadores van en `favoritos`. */
     val productoras: List<String> = emptyList(),
+    /**
+     * Canales de YouTube que sigue por sí solos. Seguir a un creador o a un
+     * medio es seguir todos sus canales, y esos no vienen aquí.
+     */
+    val canales: List<String> = emptyList(),
     /** Quiere ver los videos cortos. Solo cuenta si están disponibles. */
     val cortos: Boolean = true,
     /**
@@ -286,8 +297,25 @@ data class Perfil(
      */
     val compraDisponible: Boolean = false
 ) {
-    /** Sigue a alguien, sea creador o productora. */
-    val sigueAAlguien: Boolean get() = favoritos.isNotEmpty() || productoras.isNotEmpty()
+    /** Sigue a alguien: un creador, un medio o un canal suelto. */
+    val sigueAAlguien: Boolean
+        get() = favoritos.isNotEmpty() || productoras.isNotEmpty() || canales.isNotEmpty()
+
+    /** Sigue ese canal por sí solo. */
+    fun sigueCanal(canal: Canal): Boolean = canal.id.isNotBlank() && canal.id in canales
+
+    /**
+     * Ya le llegan los videos de ese canal sin seguirlo suelto: porque sigue
+     * a su creador, a su medio o a alguno de los creadores con los que
+     * aparece. Es la misma cuenta que hace el servidor para Novedades.
+     */
+    fun loRecibePorOtros(canal: Canal): Boolean =
+        (canal.creadorId != null && canal.creadorId in favoritos) ||
+            (canal.productoraId != null && canal.productoraId in productoras) ||
+            canal.tambien.any { it in favoritos }
+
+    /** Le llegan los videos de ese canal, por la vía que sea. */
+    fun recibe(canal: Canal): Boolean = sigueCanal(canal) || loRecibePorOtros(canal)
 
     /** Ve anuncios: el equipo los tiene encendidos y la persona no los quitó. */
     val veAnuncios: Boolean get() = anuncios && !sinAnuncios

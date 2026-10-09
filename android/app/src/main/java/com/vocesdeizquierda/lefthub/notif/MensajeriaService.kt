@@ -99,10 +99,10 @@ class MensajeriaService : FirebaseMessagingService() {
                 // Y, si la persona ve los videos cortos, los de esos también.
                 DirectorioRepo.olvidarCortos()
                 DirectorioRepo().sincronizarTopics(
-                    perfil.favoritos, perfil.productoras, perfil.veCortos
+                    perfil.favoritos, perfil.productoras, perfil.veCortos, perfil.canales
                 )
 
-                Log.d(TAG, "Suscripciones rehechas: ${perfil.favoritos.size + perfil.productoras.size}")
+                Log.d(TAG, "Suscripciones rehechas: ${perfil.favoritos.size + perfil.productoras.size + perfil.canales.size}")
             }.onFailure { error ->
                 Log.w(
                     TAG,

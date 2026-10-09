@@ -57,8 +57,12 @@ class DirectorioRepo(
      * sigue el usuario por el token. Se mantienen en la firma porque
      * AppViewModel los usa como disparador para reemitir cuando cambian.
      */
-    fun publicaciones(favoritos: List<String>, productoras: List<String> = emptyList()): Flow<List<Publicacion>> =
-        if (favoritos.isEmpty() && productoras.isEmpty()) flow { emit(emptyList()) }
+    fun publicaciones(
+        favoritos: List<String>,
+        productoras: List<String> = emptyList(),
+        canales: List<String> = emptyList()
+    ): Flow<List<Publicacion>> =
+        if (favoritos.isEmpty() && productoras.isEmpty() && canales.isEmpty()) flow { emit(emptyList()) }
         else sondear(intervaloMs = 2 * 60_000L) { ApiRelay.publicaciones() }
 
     /**
@@ -69,9 +73,10 @@ class DirectorioRepo(
     fun cortos(
         favoritos: List<String>,
         productoras: List<String>,
-        losVe: Boolean
+        losVe: Boolean,
+        canales: List<String> = emptyList()
     ): Flow<List<Publicacion>> =
-        if (!losVe || (favoritos.isEmpty() && productoras.isEmpty())) flow { emit(emptyList()) }
+        if (!losVe || (favoritos.isEmpty() && productoras.isEmpty() && canales.isEmpty())) flow { emit(emptyList()) }
         else sondear(intervaloMs = 2 * 60_000L) { ApiRelay.publicaciones(cortos = true) }
 
     /** Los últimos videos de un canal, una sola lectura al abrir su ficha. */
@@ -133,6 +138,28 @@ class DirectorioRepo(
     }
 
     /**
+     * Seguir o dejar de seguir un canal de YouTube por sí solo. Igual que con
+     * un creador o un medio: el servidor guarda que se sigue y el topic
+     * (canal_<id>) hace llegar sus avisos a este aparato.
+     */
+    suspend fun alternarCanal(
+        canalId: String,
+        siguiendoAhora: Boolean,
+        conCortos: Boolean = false
+    ) {
+        val topic = topicDeCanal(canalId)
+        if (siguiendoAhora) {
+            ApiRelay.dejarDeSeguirCanal(canalId)
+            runCatching { mensajeria.unsubscribeFromTopic(topic).await() }
+            dejarCortos(topic + SUFIJO_CORTOS)
+        } else {
+            ApiRelay.seguirCanal(canalId)
+            runCatching { mensajeria.subscribeToTopic(topic).await() }
+            if (conCortos) recibirCortos(topic + SUFIJO_CORTOS)
+        }
+    }
+
+    /**
      * Vuelve a alinear los topics tras iniciar sesión en otro teléfono.
      * Los favoritos viven en la cuenta, pero los topics son por dispositivo:
      * un teléfono nuevo no está suscrito a nada aunque la cuenta sí lo esté.
@@ -140,9 +167,11 @@ class DirectorioRepo(
     suspend fun sincronizarTopics(
         favoritos: List<String>,
         productoras: List<String> = emptyList(),
-        conCortos: Boolean = false
+        conCortos: Boolean = false,
+        canales: List<String> = emptyList()
     ) {
-        val topics = favoritos.map { topicDe(it) } + productoras.map { topicDeProductora(it) }
+        val topics = favoritos.map { topicDe(it) } + productoras.map { topicDeProductora(it) } +
+            canales.map { topicDeCanal(it) }
 
         topics.forEach { topic ->
             runCatching { mensajeria.subscribeToTopic(topic).await() }
@@ -225,6 +254,9 @@ class DirectorioRepo(
 
         /** El mismo nombre que arma el servidor en PushService. */
         fun topicDeProductora(productoraId: String) = "productora_$productoraId"
+
+        /** El de quien sigue un canal por sí solo. Lo mismo que PushService.topicDeCanal. */
+        fun topicDeCanal(canalId: String) = "canal_$canalId"
 
         /** Lo mismo que PushService.SUFIJO_CORTOS en el servidor. */
         const val SUFIJO_CORTOS = "_cortos"

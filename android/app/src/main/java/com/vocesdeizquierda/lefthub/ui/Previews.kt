@@ -369,7 +369,9 @@ private fun PreviaFichaDeCanal() {
             creadores = creadores,
             productoras = listOf(estudio),
             videos = VideosDeCanal(canalId = "c9", lista = publicaciones),
-            onVolver = {}
+            onVolver = {},
+            // Sigue este canal suelto, sin seguir a su medio.
+            perfil = Perfil(canales = listOf(estudio.canales.first().id))
         )
     }
 }
@@ -384,7 +386,9 @@ private fun PreviaFichaDeProductora() {
             onSeguir = {},
             onVolver = {},
             creadores = creadores,
-            favoritos = listOf("juan")
+            favoritos = listOf("juan"),
+            // Sigue al medio entero: cada canal dice que ya está incluido.
+            perfil = Perfil(productoras = listOf(estudio.id))
         )
     }
 }

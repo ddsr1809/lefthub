@@ -11,8 +11,10 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.data.Abiertos
+import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -41,7 +43,10 @@ fun ProductoraPantalla(
     /** Sus últimos videos: el mini feed de arriba. */
     videos: VideosDeCanal = VideosDeCanal(),
     /** Los videos que ya abrió desde la app: su fila se ve distinta. */
-    abiertos: Set<String> = emptySet()
+    abiertos: Set<String> = emptySet(),
+    /** A quién sigue: para saber qué canales sigue sueltos. */
+    perfil: Perfil = Perfil(),
+    onSeguirCanal: (Canal) -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -85,10 +90,17 @@ fun ProductoraPantalla(
             }
         }
 
+        // Seguir al medio es seguir todos sus canales. Con varios, el botón
+        // lo dice así, porque más abajo cada canal se puede seguir por separado.
+        val variosCanales = productora.canales.count { it.sePuedeSeguir } >= 2
         BotonGrande(
-            titulo = if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique",
+            titulo = when {
+                !variosCanales -> if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique"
+                siguiendo -> "Sigues todos sus canales"
+                else -> "Seguir todos sus canales"
+            },
             subtitulo = if (siguiendo)
-                "Toca para dejar de recibirlos"
+                "Toca para dejar de recibir sus avisos"
             else
                 "Te avisamos de lo que salga en los canales de este medio",
             variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
@@ -194,6 +206,14 @@ fun ProductoraPantalla(
                 onVerFicha = canal.id.takeIf { it.isNotBlank() && canal.esDeYouTube }
                     ?.let { id -> { onAbrirCanal(id) } }
             )
+
+            if (variosCanales && canal.sePuedeSeguir) {
+                SeguirCanal(
+                    siguiendo = perfil.sigueCanal(canal),
+                    incluido = perfil.loRecibePorOtros(canal),
+                    onSeguir = { onSeguirCanal(canal) }
+                )
+            }
         }
 
         Text(

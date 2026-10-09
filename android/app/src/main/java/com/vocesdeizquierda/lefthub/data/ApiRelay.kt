@@ -338,6 +338,19 @@ object ApiRelay {
             .delete())
     }
 
+    /** Seguir un canal de YouTube por sí solo, sin seguir a su creador ni a su medio. */
+    suspend fun seguirCanal(canalId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/canales/$canalId")
+            .put(vacio()))
+    }
+
+    suspend fun dejarDeSeguirCanal(canalId: String) {
+        ejecutar(Request.Builder()
+            .url(BuildConfig.API_BASE + "/api/favoritos/canales/$canalId")
+            .delete())
+    }
+
     suspend fun guardarPreferencia(clave: String, valor: Any) {
         ejecutar(Request.Builder()
             .url(BuildConfig.API_BASE + "/api/preferencias")

@@ -107,6 +107,8 @@ internal fun perfilDe(json: JSONObject): Perfil {
         tema = json.optString("tema", "sistema"),
         avisos = json.optBoolean("avisos", true),
         productoras = productoras,
+        // Un servidor anterior no la manda: entonces no sigue ningún canal suelto.
+        canales = json.optJSONArray("canales").mapJsonStrings(),
         cortos = json.optBoolean("cortos", true),
         cortosDisponibles = json.optBoolean("cortosDisponibles", false),
         anuncios = json.optBoolean("anuncios", false),

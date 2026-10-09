@@ -25,6 +25,7 @@ import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
 import com.vocesdeizquierda.lefthub.data.Etiqueta
+import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
@@ -62,7 +63,10 @@ fun DirectorioPantalla(
     onAbrirProductora: (String) -> Unit = {},
     onAbrirCanal: (String) -> Unit = {},
     /** Las etiquetas encendidas, con lo que lleva cada una. */
-    etiquetas: List<Etiqueta> = emptyList()
+    etiquetas: List<Etiqueta> = emptyList(),
+    /** A quién sigue: de aquí sale si un canal ya le manda sus avisos. */
+    perfil: Perfil = Perfil(),
+    onSeguirCanal: (Canal) -> Unit = {}
 ) {
     var seccionElegida by remember { mutableStateOf(CREADORES) }
     // El id de la etiqueta elegida; null es "Todos".
@@ -222,7 +226,9 @@ fun DirectorioPantalla(
                     FilaCanal(
                         listado = listado,
                         onAbrir = { onAbrirCanal(listado.canal.id) },
-                        suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal)
+                        suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
+                        siguiendo = perfil.recibe(listado.canal),
+                        onSeguir = { onSeguirCanal(listado.canal) }
                     )
                 }
             }
@@ -283,7 +289,10 @@ fun CreadorPantalla(
     /** Sus últimos videos: el mini feed de arriba. */
     videos: VideosDeCanal = VideosDeCanal(),
     /** Los videos que ya abrió desde la app: su fila se ve distinta. */
-    abiertos: Set<String> = emptySet()
+    abiertos: Set<String> = emptySet(),
+    /** A quién sigue: para saber qué canales sigue sueltos. */
+    perfil: Perfil = Perfil(),
+    onSeguirCanal: (Canal) -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -327,12 +336,21 @@ fun CreadorPantalla(
             }
         }
 
+        // Seguir al creador es seguir todos sus canales. Con uno solo no hay
+        // diferencia y el botón lo dice como siempre; con varios, dice que
+        // son todos, porque más abajo cada canal se puede seguir por separado.
+        val variosCanales = creador.canalesDeYouTube.count { it.sePuedeSeguir } >= 2
         BotonGrande(
-            titulo = if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique",
-            subtitulo = if (siguiendo)
-                "Toca para dejar de recibirlos"
-            else
-                "Te llegará una notificación a este teléfono",
+            titulo = when {
+                !variosCanales -> if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique"
+                siguiendo -> "Sigues todos sus canales"
+                else -> "Seguir todos sus canales"
+            },
+            subtitulo = when {
+                siguiendo -> "Toca para dejar de recibir sus avisos"
+                variosCanales -> "Te avisamos de lo que publique en cualquiera de ellos"
+                else -> "Te llegará una notificación a este teléfono"
+            },
             variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
             onClick = onSeguir
         )
@@ -436,6 +454,16 @@ fun CreadorPantalla(
                 onVerFicha = canal.id.takeIf { it.isNotBlank() && canal.esDeYouTube }
                     ?.let { id -> { onAbrirCanal(id) } }
             )
+
+            // Con varios canales, cada uno se puede seguir por separado. Con
+            // uno solo sobra: es lo mismo que el botón de arriba.
+            if (variosCanales && canal.sePuedeSeguir) {
+                SeguirCanal(
+                    siguiendo = perfil.sigueCanal(canal),
+                    incluido = perfil.loRecibePorOtros(canal),
+                    onSeguir = { onSeguirCanal(canal) }
+                )
+            }
         }
 
         if (redes.isNotEmpty()) {
@@ -535,6 +563,47 @@ internal fun SuscripcionEnYouTube(
             onClick = onConectar
         )
     }
+}
+
+/**
+ * Seguir un canal de YouTube por sí solo, sin seguir a su creador ni a su
+ * medio. Lo comparten el perfil del creador, la ficha del medio y la del canal.
+ *
+ * @param siguiendo sigue este canal suelto.
+ * @param incluido  sus avisos ya le llegan por seguir a su creador o a su
+ *                  medio. Entonces no hay nada que tocar: se dice y ya. Quien
+ *                  quiera quedarse solo con este canal deja de seguir al
+ *                  creador o al medio y lo sigue aquí.
+ * @param destacado en la ficha del canal es el botón principal de la pantalla.
+ */
+@Composable
+internal fun SeguirCanal(
+    siguiendo: Boolean,
+    incluido: Boolean,
+    onSeguir: () -> Unit,
+    destacado: Boolean = false
+) {
+    val esquema = MaterialTheme.colorScheme
+
+    if (incluido && !siguiendo) {
+        Text(
+            "✓ Ya recibes los avisos de este canal: sigues a su creador o a su medio.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = esquema.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = Espacio.md)
+        )
+        return
+    }
+
+    BotonGrande(
+        titulo = if (siguiendo) "Sigues este canal" else "Seguir solo este canal",
+        subtitulo = if (siguiendo)
+            "Toca para dejar de recibir sus avisos"
+        else
+            "Te avisamos solo de lo que salga en este canal",
+        variante = if (destacado && !siguiendo) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+        onClick = onSeguir
+    )
 }
 
 /**

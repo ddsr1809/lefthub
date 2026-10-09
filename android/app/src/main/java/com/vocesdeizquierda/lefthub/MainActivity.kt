@@ -352,6 +352,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     hayFavoritos = estado.perfil.sigueAAlguien,
                     cuantosFavoritos = estado.perfil.favoritos.size,
                     cuantasProductoras = estado.perfil.productoras.size,
+                    cuantosCanales = estado.perfil.canales.size,
                     cortos = estado.cortos,
                     verCortos = estado.perfil.veCortos,
                     abiertos = Abiertos.videos,
@@ -377,7 +378,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onSeguirProductora = { modelo.alternarProductora(it) },
                     onAbrirProductora = { nav.navigate("productora/$it") },
                     onAbrirCanal = { nav.navigate("canal/$it") },
-                    etiquetas = estado.etiquetas
+                    etiquetas = estado.etiquetas,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) }
                 )
             }
 
@@ -404,7 +407,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onAbrirCanal = { nav.navigate("canal/$it") },
                     // Mientras llegan los de este creador, no se pintan los del anterior.
                     videos = estado.videosDeCreador.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
-                    abiertos = Abiertos.videos
+                    abiertos = Abiertos.videos,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) }
                 )
             }
 
@@ -429,6 +434,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) },
                     onReintentar = { modelo.cargarVideosDeCanal(id) },
                     abiertos = Abiertos.videos,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) },
                     onVolver = { nav.popBackStack() }
                 )
             }
@@ -457,6 +464,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     // Mientras llegan los de este medio, no se pintan los del anterior.
                     videos = estado.videosDeProductora.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
                     abiertos = Abiertos.videos,
+                    perfil = estado.perfil,
+                    onSeguirCanal = { modelo.alternarCanal(it) },
                     onVolver = { nav.popBackStack() }
                 )
             }
