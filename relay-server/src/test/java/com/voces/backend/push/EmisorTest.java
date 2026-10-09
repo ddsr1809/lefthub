@@ -159,6 +159,43 @@ class EmisorTest {
     }
 
     @Test
+    @DisplayName("Con el canal, el aviso llega también a quien sigue ese canal por sí solo, en el mismo mensaje")
+    void conCanal() {
+        Creador juan = creador("Juan Pérez");
+        UUID canal = UUID.randomUUID();
+        Emisor emisor = Emisor.de(juan).conCanal(canal);
+
+        assertEquals("Juan Pérez", emisor.nombre(), "sigue firmando el creador");
+        assertEquals("creator_" + juan.getId(), emisor.topic(), "y agrupando con su topic de siempre");
+        // Una sola condición: quien sigue al creador y además al canal recibe un aviso, no dos.
+        assertEquals(List.of(new Destino(null, o("creator_" + juan.getId(), "canal_" + canal))),
+                emisor.destinos());
+        assertEquals(List.of(new Destino(null, o("creator_" + juan.getId() + "_cortos", "canal_" + canal + "_cortos"))),
+                emisor.destinos(true));
+    }
+
+    @Test
+    @DisplayName("El canal de una productora que aparece con creadores: todos caben en un mensaje")
+    void conCanalCompartido() {
+        Productora gobierno = productora("Gobierno de México");
+        UUID claudia = UUID.randomUUID();
+        UUID canal = UUID.randomUUID();
+
+        List<Destino> destinos = Emisor.de(null, gobierno, List.of(claudia)).conCanal(canal).destinos();
+
+        assertEquals(List.of(new Destino(null, o("canal_" + canal, "productora_" + gobierno.getId(),
+                "creator_" + gobierno.getId(), "creator_" + claudia))), destinos);
+    }
+
+    @Test
+    @DisplayName("Sin canal (un aviso antiguo, o un canal que ya no está) todo queda como antes")
+    void sinCanal() {
+        Creador juan = creador("Juan Pérez");
+        assertNull(Emisor.de(juan).canalId());
+        assertEquals(List.of(new Destino("creator_" + juan.getId(), null)), Emisor.de(juan).destinos());
+    }
+
+    @Test
     @DisplayName("Sin creador ni productora no hay aviso que mandar")
     void nadie() {
         assertThrows(IllegalArgumentException.class, () -> Emisor.de(null, null));

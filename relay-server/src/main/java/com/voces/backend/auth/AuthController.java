@@ -161,6 +161,12 @@ public class AuthController {
                     usuario.getFavoritos().addAll(entrantes);
                     fusionados = true;
                 }
+                // Y con los canales que seguía por sí solos.
+                Set<UUID> canales = new HashSet<>(anonimo.get().getCanalesSeguidos());
+                if (!canales.isEmpty()) {
+                    usuario.getCanalesSeguidos().addAll(canales);
+                    fusionados = true;
+                }
                 // Lo mismo con las productoras que seguía.
                 Set<UUID> productoras = new HashSet<>(anonimo.get().getProductorasSeguidas());
                 if (!productoras.isEmpty()) {

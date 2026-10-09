@@ -99,6 +99,12 @@ public class Usuario {
     @Column(name = "productora_id")
     private Set<UUID> productorasSeguidas = new LinkedHashSet<>();
 
+    /** Canales de YouTube que sigue por sí solos, sin seguir a su dueño. Ver V14. */
+    @ElementCollection(fetch = FetchType.EAGER)
+    @CollectionTable(name = "favoritos_canales", joinColumns = @JoinColumn(name = "usuario_id"))
+    @Column(name = "canal_id")
+    private Set<UUID> canalesSeguidos = new LinkedHashSet<>();
+
     @Column(name = "creado_en", nullable = false)
     private Instant creadoEn = Instant.now();
 
@@ -203,6 +209,8 @@ public class Usuario {
     public void setFavoritos(Set<UUID> favoritos) {
         this.favoritos = favoritos != null ? favoritos : new LinkedHashSet<>();
     }
+
+    public Set<UUID> getCanalesSeguidos() { return canalesSeguidos; }
 
     public Set<UUID> getProductorasSeguidas() { return productorasSeguidas; }
     public void setProductorasSeguidas(Set<UUID> productorasSeguidas) {
