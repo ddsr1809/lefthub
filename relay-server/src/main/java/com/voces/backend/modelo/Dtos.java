@@ -671,6 +671,45 @@ public final class Dtos {
      */
     public record FotoDto(String url, String origen) {}
 
+    // --- Etiquetas ---------------------------------------------------------------
+
+    /** Una etiqueta encendida, tal como la lee la app, con lo visible que la lleva. */
+    public record EtiquetaDto(
+            UUID id,
+            String nombre,
+            List<UUID> creadores,
+            List<UUID> productoras,
+            List<UUID> canales
+    ) {}
+
+    /** Una etiqueta tal como la ve el panel: encendida o no, y con todo lo que la lleva. */
+    public record EtiquetaAdminDto(
+            UUID id,
+            String nombre,
+            boolean activa,
+            int orden,
+            List<UUID> creadores,
+            List<UUID> productoras,
+            List<UUID> canales
+    ) {}
+
+    /**
+     * Crear una etiqueta (sin {@code id}) o cambiar una. Lo que no viene no se
+     * toca. Una nueva nace apagada.
+     */
+    public record GuardarEtiqueta(
+            UUID id,
+            String nombre,
+            Boolean activa,
+            Integer orden,
+            List<UUID> creadores,
+            List<UUID> productoras,
+            List<UUID> canales
+    ) {}
+
+    /** Las etiquetas que lleva un creador, una productora o un canal. */
+    public record EtiquetasAsignadas(List<UUID> etiquetas) {}
+
     // --- Borrado masivo --------------------------------------------------------
 
     /** Qué partes del directorio se quieren borrar de golpe. */

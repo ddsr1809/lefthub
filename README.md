@@ -325,6 +325,39 @@ En Novedades, un video de un canal de productora se firma "Creador · Productora
 
 ---
 
+## Etiquetas
+
+Las etiquetas son la forma de agrupar el directorio, y las decide el equipo:
+**sustituyen a los temas fijos** de antes (comida, cine, política…), que la app
+ya no enseña.
+
+- Se crean en la sección **Etiquetas** del panel. De fábrica no hay ninguna.
+- Una etiqueta nueva nace **apagada**. La app solo recibe las **encendidas**
+  y, de esas, solo enseña las que lleva alguien de la lista que se está
+  viendo. Sin ninguna, el Directorio no tiene fila de filtros.
+- Se le ponen a **creadores, medios y canales**, y cada uno puede llevar
+  varias. Hay dos sitios para hacerlo: la ficha de la etiqueta (tres listas de
+  casillas) o la ficha de cada creador, medio o canal.
+- En la app salen como botones encima de la lista, con «Todos» delante, en el
+  orden del panel (botón ↑). Filtran la lista que esté elegida: Creadores,
+  Canales de YouTube o Medios.
+- Borrar una etiqueta no borra a nadie; borrar a un creador lo quita de sus
+  etiquetas.
+
+Lo que conviene saber:
+
+- **Los temas no se borran**: la columna `categoria` sigue ahí y el panel la
+  deja editar («Tema · solo para apps anteriores»), porque las versiones de la
+  app ya instaladas siguen filtrando por ella.
+- **Las etiquetas son de cada ambiente.** No viajan en las versiones ni en la
+  migración de pruebas a producción, ni en la copia de producción a pruebas:
+  se crean en cada panel.
+
+En la API: `GET /api/etiquetas` (las encendidas, cada una con los ids visibles
+de `creadores`, `productoras` y `canales`); en el panel, `GET`/`POST
+/api/admin/etiquetas`, `DELETE /api/admin/etiquetas/{id}` y `PUT
+/api/admin/etiquetas/de/{creador|productora|canal}/{id}`. Tablas en V12.
+
 ## Borrar datos de golpe
 
 Al final de **Resumen**, en el panel, está **Borrar datos**: sirve para vaciar
