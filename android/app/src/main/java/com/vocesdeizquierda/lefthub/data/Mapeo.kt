@@ -62,6 +62,14 @@ internal fun productoraDe(json: JSONObject) = Productora(
     enDirectorio = json.optBoolean("enDirectorio", false)
 )
 
+internal fun etiquetaDe(json: JSONObject) = Etiqueta(
+    id = json.getString("id"),
+    nombre = json.optString("nombre", ""),
+    creadores = json.optJSONArray("creadores").mapJsonStrings().toSet(),
+    productoras = json.optJSONArray("productoras").mapJsonStrings().toSet(),
+    canales = json.optJSONArray("canales").mapJsonStrings().toSet()
+)
+
 internal fun publicacionDe(json: JSONObject): Publicacion {
     val videoId = json.optString("videoId", "")
     return Publicacion(

@@ -157,6 +157,17 @@ object ApiRelay {
     }
 
     /**
+     * Las etiquetas encendidas, con lo que lleva cada una. Sin ninguna, o con
+     * un servidor anterior a las etiquetas (404), lista vacía: entonces el
+     * directorio no enseña ningún filtro.
+     */
+    suspend fun etiquetas(): List<Etiqueta> = try {
+        getArray("/api/etiquetas").mapJson { etiquetaDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
      * Las novedades de la persona: los videos normales o, con `cortos`, los
      * videos cortos. Son dos listas distintas y nunca se mezclan.
      *

@@ -22,6 +22,7 @@ import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Conexion
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.Etiqueta
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.SuscripcionesYouTube
 import com.vocesdeizquierda.lefthub.data.Perfil
@@ -319,7 +320,12 @@ private fun PreviaDirectorio() {
                 SuscripcionesYouTube(suscritos = setOf("juan"), noSuscritos = setOf("ana"))
             ),
             productoras = listOf(estudio),
-            productorasSeguidas = listOf("estudio")
+            productorasSeguidas = listOf("estudio"),
+            // Dos etiquetas encendidas: salen como filtro encima de la lista.
+            etiquetas = listOf(
+                Etiqueta("e1", "Cocina", creadores = setOf("juan")),
+                Etiqueta("e2", "Cine", creadores = setOf("ana"), productoras = setOf("estudio"))
+            )
         )
     }
 }

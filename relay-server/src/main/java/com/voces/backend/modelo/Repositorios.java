@@ -285,6 +285,16 @@ public final class Repositorios {
     public interface Ajustes extends JpaRepository<Ajuste, String> {
     }
 
+    public interface Etiquetas extends JpaRepository<Etiqueta, UUID> {
+
+        List<Etiqueta> findAllByOrderByOrdenAscNombreAsc();
+
+        /** Las que llegan a la app. */
+        List<Etiqueta> findByActivaTrueOrderByOrdenAscNombreAsc();
+
+        List<Etiqueta> findByNombreIgnoreCase(String nombre);
+    }
+
     public interface Folios extends JpaRepository<Folio, String> {
 
         List<Folio> findAllByOrderByCreadoEnDesc(Pageable pagina);

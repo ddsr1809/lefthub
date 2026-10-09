@@ -261,6 +261,7 @@
     vista: (location.hash || '#resumen').slice(1),
     creadores: null,        // caché compartida: formularios, nombres en reportes, avisos
     productoras: null,      // igual: las usan el formulario de creador y los canales
+    etiquetas: null,        // las del directorio, con quién lleva cada una
     filtroCreadores: { q: '', categoria: '' },
     publicaciones: null,
     filtroPubs: 'todos',    // todos | videos | cortos
@@ -277,6 +278,7 @@
     creadores: vistaCreadores,
     productoras: vistaProductoras,
     canales: vistaCanales,
+    etiquetas: vistaEtiquetas,
     versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
@@ -327,6 +329,22 @@
       }
     }
     return estado.productoras;
+  }
+
+  // Un servidor anterior a las etiquetas no tiene la ruta: entonces el panel
+  // no enseña nada de ellas.
+  async function cargarEtiquetas(forzar) {
+    if (!estado.etiquetas || forzar) {
+      try {
+        estado.etiquetas = await api('/api/admin/etiquetas');
+        estado.sinEtiquetas = false;
+      } catch (e) {
+        if (e.estado !== 404) throw e;
+        estado.etiquetas = [];
+        estado.sinEtiquetas = true;
+      }
+    }
+    return estado.etiquetas;
   }
 
   // Los contadores del menú salen de las mismas rutas que usan las vistas.
@@ -1053,7 +1071,7 @@
         ${filaDeLlenado()}
         <div class="form" style="margin-top:12px">
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
-          <label class="f">Categoría<select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          <label class="f">Tema <span class="opcional">solo para apps anteriores</span><select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(c.bio)}</textarea></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
@@ -1063,6 +1081,7 @@
           <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
           <p class="hint" style="margin:10px 0 0">Los videos de estos canales también les llegan a quienes lo siguen. Se cambia en la ficha de cada canal, en la sección Canales.</p>
         </fieldset>` : ''}
+        ${seccionEtiquetas('creador', c.id)}
         ${estado.sinProductoras ? '' : `<fieldset><legend>Medios en los que figura</legend>
           ${casillas('productoras', estado.productoras || [], c.productoras || [], 'Todavía no hay medios. Se dan de alta en la sección Medios.')}
         </fieldset>`}
@@ -1070,7 +1089,7 @@
   }
 
   async function abrirCreador(id) {
-    await cargarProductoras(false);
+    await Promise.all([cargarProductoras(false), cargarEtiquetas(false)]);
     const c = id ? (estado.creadores || []).find((x) => x.id === id) : null;
     if (id && !c) return;
     let editor;
@@ -1089,6 +1108,7 @@
         };
         if (!estado.sinProductoras) cuerpo.productoras = marcadas('productoras');
         const r = await api('/api/admin/creadores', { metodo: 'POST', cuerpo });
+        await guardarEtiquetasDe('creador', r.id, c ? etiquetasDe('creador', c.id) : []);
         if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica, true);
         else toast(c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
@@ -1110,6 +1130,120 @@
       prepararFoto(editor);
       prepararLlenado(editor, !c);
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Etiquetas
+  // ---------------------------------------------------------------------------
+  // En qué lista de la etiqueta va cada cosa.
+  const LISTA_DE_ETIQUETA = { creador: 'creadores', productora: 'productoras', canal: 'canales' };
+
+  /** Los ids de las etiquetas que lleva un creador, un medio o un canal. */
+  const etiquetasDe = (tipo, id) => (estado.etiquetas || [])
+    .filter((e) => (e[LISTA_DE_ETIQUETA[tipo]] || []).includes(id)).map((e) => e.id);
+
+  /** Las casillas de etiquetas de una ficha. Con un servidor anterior, nada. */
+  function seccionEtiquetas(tipo, id) {
+    if (estado.sinEtiquetas) return '';
+    const opciones = (estado.etiquetas || []).map((e) => ({ id: e.id, nombre: e.nombre + (e.activa ? '' : ' (apagada)') }));
+    return `<fieldset><legend>Etiquetas</legend>
+      ${casillas('etiquetas', opciones, id ? etiquetasDe(tipo, id) : [], 'Todavía no hay etiquetas. Se crean en la sección Etiquetas.')}
+      ${opciones.length ? '<p class="hint" style="margin:10px 0 0">Puede llevar varias. En la app solo se ven las encendidas; las demás se quedan guardadas para cuando las enciendas.</p>' : ''}
+    </fieldset>`;
+  }
+
+  /**
+   * Guarda las etiquetas marcadas en la ficha, si cambiaron. Va después de
+   * guardar la ficha y no falla con ella: si esto no sale, la ficha ya quedó
+   * guardada y solo se avisa.
+   */
+  async function guardarEtiquetasDe(tipo, id, antes) {
+    if (estado.sinEtiquetas || !id || !(estado.etiquetas || []).length) return;
+    const ahora = marcadas('etiquetas');
+    if (ahora.length === antes.length && ahora.every((x) => antes.includes(x))) return;
+    try {
+      await api('/api/admin/etiquetas/de/' + tipo + '/' + encodeURIComponent(id), { metodo: 'PUT', cuerpo: { etiquetas: ahora } });
+      estado.etiquetas = null;
+    } catch (e) {
+      toast('Se guardó, pero no se pudieron poner sus etiquetas: ' + e.message, true);
+    }
+  }
+
+  // Los canales de YouTube que pueden llevar etiqueta, con un nombre que los distinga.
+  const canalesEtiquetables = () => vigilados().filter((v) => v.canal.id).map((v) => ({
+    id: v.canal.id,
+    nombre: v.dueno.nombre + (v.canal.nombre ? ' · ' + v.canal.nombre : (v.canal.handle ? ' · @' + v.canal.handle.replace(/^@/, '') : ''))
+  }));
+
+  async function vistaEtiquetas() {
+    await Promise.all([cargarEtiquetas(true), cargarCreadores(false), cargarProductoras(false)]);
+    if (estado.sinEtiquetas) {
+      main.innerHTML = '<div class="head"><div><h1>Etiquetas</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene la versión con etiquetas. Aparecerán aquí cuando se despliegue.</div></div>';
+      return;
+    }
+    const lista = estado.etiquetas;
+    const encendidas = lista.filter((e) => e.activa).length;
+    const cuantos = (e) => e.creadores.length + e.productoras.length + e.canales.length;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Etiquetas</h1><p class="sub">Las etiquetas agrupan el directorio de la app: sustituyen a los temas fijos de antes. Las creas aquí y se las pones a creadores, medios y canales; cada uno puede llevar varias. Una etiqueta nueva nace <b>apagada</b>: no sale en la app hasta que la enciendas, y aun encendida solo aparece si alguien la lleva. Sin ninguna encendida, la app no enseña ningún filtro.</p></div>
+        <button class="btn primary" data-accion="nueva-etiqueta">Nueva etiqueta</button></div>
+      <div class="stack">
+      <section class="panel"><div class="panel-head"><h2>En la app</h2><span class="badge ${encendidas ? 'b-ok' : 'b-mute'}" id="etqResumen">${lista.length ? plural(encendidas, 'encendida', 'encendidas') + ' de ' + num(lista.length) : 'Ninguna todavía'}</span></div>
+      <div class="tablewrap"><table><thead><tr><th>Etiqueta</th><th>En la app</th><th>Creadores</th><th>Medios</th><th>Canales</th><th></th></tr></thead><tbody>
+      ${lista.length ? lista.map((e, i) => `<tr>
+          <td><b>${esc(e.nombre)}</b></td>
+          <td>${e.activa ? '<span class="badge b-ok">Encendida</span>' : '<span class="badge b-mute">Apagada</span>'}${e.activa && !cuantos(e) ? '<div class="muted" style="font-size:12.5px">Nadie la lleva: no sale</div>' : ''}</td>
+          <td class="num">${num(e.creadores.length)}</td>
+          <td class="num">${num(e.productoras.length)}</td>
+          <td class="num">${num(e.canales.length)}</td>
+          <td class="acciones">
+            <button class="btn sm" data-accion="alternar-etiqueta" data-id="${esc(e.id)}">${e.activa ? 'Apagar' : 'Encender'}</button>
+            <button class="btn sm" data-accion="editar-etiqueta" data-id="${esc(e.id)}">Editar</button>
+            <button class="btn sm" data-accion="subir-etiqueta" data-id="${esc(e.id)}" ${i === 0 ? 'disabled' : ''} title="Subir en la lista" aria-label="Subir">↑</button>
+            <button class="btn sm danger" data-accion="borrar-etiqueta" data-id="${esc(e.id)}">Eliminar</button>
+          </td></tr>`).join('') : '<tr><td colspan="6"><div class="empty">Todavía no hay etiquetas. Mientras no haya ninguna encendida, la app no enseña filtros en el Directorio.</div></td></tr>'}
+      </tbody></table></div></section>
+      </div>`;
+  }
+
+  async function abrirEtiqueta(id) {
+    await Promise.all([cargarEtiquetas(false), cargarCreadores(false), cargarProductoras(false)]);
+    const e = id ? (estado.etiquetas || []).find((x) => x.id === id) : null;
+    if (id && !e) return;
+    const de = e || { nombre: '', activa: false, creadores: [], productoras: [], canales: [] };
+
+    abrirModal(e ? 'Editar etiqueta' : 'Nueva etiqueta', `
+      <div class="stack" style="gap:14px">
+        <div class="form">
+          <label class="f full">Nombre<input class="input" id="fEtqNombre" maxlength="30" value="${esc(de.nombre)}" placeholder="Por ejemplo: Noticias"></label>
+          <label class="check full"><input type="checkbox" id="fEtqActiva" ${de.activa ? 'checked' : ''}> Encendida: se muestra en la app</label>
+        </div>
+        <fieldset><legend>Creadores que la llevan</legend>
+          ${casillas('etqCreadores', estado.creadores || [], de.creadores, 'Todavía no hay creadores.')}
+        </fieldset>
+        <fieldset><legend>Medios que la llevan</legend>
+          ${casillas('etqProductoras', estado.productoras || [], de.productoras, 'Todavía no hay medios.')}
+        </fieldset>
+        <fieldset><legend>Canales de YouTube que la llevan</legend>
+          ${casillas('etqCanales', canalesEtiquetables(), de.canales, 'Todavía no hay canales de YouTube.')}
+        </fieldset>
+        <p class="hint" style="margin:0">También se pueden poner desde la ficha de cada creador, medio o canal.</p>
+      </div>`, [
+      { texto: 'Cancelar' },
+      { texto: e ? 'Guardar cambios' : 'Crear etiqueta', tipo: 'primary', alPulsar: async () => {
+        const nombre = $('#fEtqNombre').value.trim();
+        if (nombre.length < 2) { toast('La etiqueta necesita un nombre de al menos 2 letras.', true); return false; }
+        const activa = $('#fEtqActiva').checked;
+        await api('/api/admin/etiquetas', { metodo: 'POST', cuerpo: {
+          id: e ? e.id : null, nombre, activa,
+          creadores: marcadas('etqCreadores'), productoras: marcadas('etqProductoras'), canales: marcadas('etqCanales')
+        } });
+        toast(e ? 'Cambios guardados.' : (activa ? 'Etiqueta creada y encendida.' : 'Etiqueta creada. Está apagada: enciéndela cuando quieras que salga en la app.'));
+        estado.etiquetas = null;
+        if (estado.vista === 'etiquetas') vistaEtiquetas();
+      } }
+    ]);
   }
 
   // ---------------------------------------------------------------------------
@@ -1160,6 +1294,7 @@
         ${seccionesDeCanales(false)}
         <fieldset><legend>Llenar automáticamente</legend>${filaDeLlenado()}</fieldset>
         ${seccionFoto('Logo', p.logoUrl)}
+        ${seccionEtiquetas('productora', p.id)}
         ${deCreadores.length ? `<fieldset><legend>Canales de creadores que son de este medio</legend><div class="chips">${deCreadores.map((k) => chipCanal(k, true)).join('')}</div></fieldset>` : ''}
         <fieldset><legend>Creadores que figuran en él</legend>
           ${casillas('creadores', estado.creadores || [], p.creadores || [], 'Todavía no hay creadores.')}
@@ -1169,7 +1304,7 @@
   }
 
   async function abrirProductora(id) {
-    await Promise.all([cargarProductoras(false), cargarCreadores(false)]);
+    await Promise.all([cargarProductoras(false), cargarCreadores(false), cargarEtiquetas(false)]);
     const p = id ? (estado.productoras || []).find((x) => x.id === id) : null;
     if (id && !p) return;
     let editor;
@@ -1190,6 +1325,7 @@
           cuerpo.categoria = $('#fCategoria').value;
         }
         const r = await api('/api/admin/productoras', { metodo: 'POST', cuerpo });
+        await guardarEtiquetasDe('productora', r.id, p ? etiquetasDe('productora', p.id) : []);
         if (r.avisoSuscripcion) toast('Medio guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Medio guardado, pero no se copió a testing: ' + r.avisoReplica, true);
         else toast(p ? 'Cambios guardados.' : 'Medio creado.');
@@ -1264,11 +1400,12 @@
           ${casillas('con', estado.creadores || [], k.creadores || [], 'Todavía no hay creadores.')}
           <p class="hint" style="margin:10px 0 0">Lo que publique este canal les llega también a quienes siguen a los creadores marcados, y sale en sus novedades. Los avisos van a nombre del dueño; si no tiene, a nombre del medio.</p>
         </fieldset>
+        ${seccionEtiquetas('canal', k && k.id)}
       </div>`;
   }
 
   async function abrirCanal(id) {
-    await Promise.all([cargarCreadores(false), cargarProductoras(false)]);
+    await Promise.all([cargarCreadores(false), cargarProductoras(false), cargarEtiquetas(false)]);
     const v = id ? vigilados().find((x) => x.canal.id === id) : null;
     if (id && !v) return;
     const k = v ? v.canal : null;
@@ -1302,6 +1439,7 @@
           if (e.estado === 404 && !k) throw new ErrorApi('Este servidor todavía no tiene la versión con fichas de canal.', 404);
           throw e;
         }
+        await guardarEtiquetasDe('canal', r.id, k ? etiquetasDe('canal', k.id) : []);
         if (r.avisoSuscripcion) toast('Canal guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
         else if (r.avisoReplica) toast('Canal guardado, pero no se copió a testing: ' + r.avisoReplica, true);
         else toast(k ? 'Cambios guardados.' : 'Canal agregado. La suscripción queda pendiente hasta que el hub la verifique.');
@@ -2282,6 +2420,49 @@
         case 'mover': abrirMover(b.dataset.video); break;
 
         case 'borrar-datos': await abrirBorrado(b); break;
+
+        case 'nueva-etiqueta': await abrirEtiqueta(null); break;
+        case 'editar-etiqueta': await abrirEtiqueta(id); break;
+
+        case 'alternar-etiqueta': {
+          const e = (estado.etiquetas || []).find((x) => x.id === id);
+          if (!e) break;
+          await api('/api/admin/etiquetas', { metodo: 'POST', cuerpo: { id, activa: !e.activa } });
+          const nadie = !(e.creadores.length + e.productoras.length + e.canales.length);
+          toast(e.activa ? 'Etiqueta apagada: ya no sale en la app.'
+            : (nadie ? 'Etiqueta encendida. Todavía no la lleva nadie, así que la app no la enseña.' : 'Etiqueta encendida: ya sale en la app.'));
+          await vistaEtiquetas();
+          break;
+        }
+
+        case 'subir-etiqueta': {
+          // Se renumeran todas: así el orden queda limpio aunque dos tuvieran el mismo.
+          const lista = (estado.etiquetas || []).slice();
+          const i = lista.findIndex((x) => x.id === id);
+          if (i <= 0) break;
+          lista.splice(i - 1, 0, lista.splice(i, 1)[0]);
+          for (let n = 0; n < lista.length; n++) {
+            if (lista[n].orden !== n) await api('/api/admin/etiquetas', { metodo: 'POST', cuerpo: { id: lista[n].id, orden: n } });
+          }
+          await vistaEtiquetas();
+          break;
+        }
+
+        case 'borrar-etiqueta': {
+          const e = (estado.etiquetas || []).find((x) => x.id === id);
+          if (!e) break;
+          const llevan = e.creadores.length + e.productoras.length + e.canales.length;
+          const ok = await confirmar('¿Eliminar la etiqueta ' + e.nombre + '?',
+            'Desaparece de la app y se le quita a ' + (llevan ? plural(llevan, 'ficha que la lleva', 'fichas que la llevan') : 'quien la llevara')
+              + '. No se borra ningún creador, medio ni canal. Si solo quieres que no se vea, apágala.',
+            'Eliminar', true);
+          if (!ok) break;
+          const r = await api('/api/admin/etiquetas/' + id, { metodo: 'DELETE' });
+          toast(r.mensaje || 'Etiqueta eliminada.');
+          estado.etiquetas = null;
+          await vistaEtiquetas();
+          break;
+        }
 
         case 'filtro-pubs': {
           estado.filtroPubs = b.dataset.valor;

@@ -38,6 +38,11 @@ class DirectorioRepo(
         ApiRelay.productoras()
     }
 
+    /** Las etiquetas encendidas. Mismo ritmo: también las maneja una persona a mano. */
+    fun etiquetas(): Flow<List<Etiqueta>> = sondear(intervaloMs = 5 * 60_000L) {
+        ApiRelay.etiquetas()
+    }
+
     /**
      * El perfil tal como está en el servidor, una sola lectura.
      *

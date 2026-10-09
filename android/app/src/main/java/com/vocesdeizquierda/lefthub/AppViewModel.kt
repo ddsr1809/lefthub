@@ -19,6 +19,8 @@ data class EstadoApp(
     val listo: Boolean = false,
     val creadores: List<Creador> = emptyList(),
     val productoras: List<Productora> = emptyList(),
+    /** Las etiquetas encendidas. Vacía mientras el equipo no encienda ninguna. */
+    val etiquetas: List<Etiqueta> = emptyList(),
     val publicaciones: List<Publicacion> = emptyList(),
     /** Los videos cortos, que van en su propio apartado de Novedades. */
     val cortos: List<Publicacion> = emptyList(),
@@ -119,6 +121,12 @@ class AppViewModel(
         viewModelScope.launch {
             directorio.productoras().collect { lista ->
                 _estado.update { it.copy(productoras = lista) }
+            }
+        }
+
+        viewModelScope.launch {
+            directorio.etiquetas().collect { lista ->
+                _estado.update { it.copy(etiquetas = lista) }
             }
         }
 

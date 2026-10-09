@@ -108,12 +108,13 @@ fun FilaCreador(
     FilaDeDirectorio(
         nombre = creador.name,
         fotoUrl = creador.photoUrl,
-        detalle = "${creador.category.replaceFirstChar { it.uppercase() }} · " +
-            "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
+        // Sin el tema fijo de antes: ahora el directorio se agrupa con las
+        // etiquetas que el equipo enciende, y van arriba, como filtro.
+        detalle = "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
         siguiendo = siguiendo,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
-        descripcionAlAbrir = "${creador.name}, ${creador.category}. " +
+        descripcionAlAbrir = "${creador.name}. " +
             (textoYouTube?.let { "$it. " } ?: "") + "Ver su perfil.",
         lineaExtra = textoYouTube,
         lineaExtraDestacada = suscritoEnYouTube == true
