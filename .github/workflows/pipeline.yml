@@ -83,6 +83,11 @@ jobs:
       imagen: ${{ steps.imagen.outputs.valor }}
       version: ${{ steps.imagen.outputs.version }}
       lanzamiento: ${{ steps.imagen.outputs.lanzamiento }}
+    env:
+      # Cuenta gratuita de Docker Hub, solo para descargar las imágenes base.
+      # Sin sesión, Docker Hub limita por IP y los runners de GitHub, que
+      # comparten IP con muchos proyectos, chocan con "429 Too Many Requests".
+      DOCKERHUB_USUARIO: ${{ secrets.DOCKERHUB_USUARIO }}
     steps:
       - name: Descargar codigo
         uses: actions/checkout@v7
@@ -91,6 +96,15 @@ jobs:
 
       - name: Preparar Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      - name: Iniciar sesion en Docker Hub
+        # Si no están los secretos DOCKERHUB_USUARIO y DOCKERHUB_TOKEN, se salta
+        # y el pipeline sigue igual que antes.
+        if: env.DOCKERHUB_USUARIO != ''
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USUARIO }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Iniciar sesion en GHCR
         if: github.event_name != 'pull_request'

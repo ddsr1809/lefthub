@@ -1,5 +1,6 @@
 package com.vocesdeizquierda.lefthub.data
 
+import com.vocesdeizquierda.lefthub.BuildConfig
 import java.time.Instant
 
 // Los nombres de los campos se mantienen deliberadamente como estaban cuando
@@ -295,8 +296,22 @@ data class Perfil(
      * ofrece comprar: cobrar algo que luego no se puede entregar es peor que
      * no ofrecerlo. El folio de regalo no depende de esto.
      */
-    val compraDisponible: Boolean = false
+    val compraDisponible: Boolean = false,
+    /**
+     * El equipo encendió desde el panel la comprobación de suscripciones de
+     * YouTube. Un servidor anterior no lo manda, y entonces es que no.
+     */
+    val youtube: Boolean = false
 ) {
+    /**
+     * La app ofrece y hace la comprobación de YouTube: esta compilación la
+     * trae y el panel la tiene encendida. Se apaga y se enciende sin publicar
+     * otra versión, que es lo que hace falta mientras Google no aprueba la
+     * verificación del permiso.
+     */
+    val youtubeActivo: Boolean
+        get() = BuildConfig.SUSCRIPCIONES_YOUTUBE && youtube
+
     /** Sigue a alguien: un creador, un medio o un canal suelto. */
     val sigueAAlguien: Boolean
         get() = favoritos.isNotEmpty() || productoras.isNotEmpty() || canales.isNotEmpty()

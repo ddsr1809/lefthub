@@ -10,8 +10,8 @@ import java.time.Instant;
 /**
  * Los ajustes generales que el equipo cambia desde el panel.
  *
- * Son dos: si la app muestra los videos cortos (Shorts) y si muestra
- * anuncios. Se leen de la base cada vez, sin caché: es una consulta por clave
+ * Son tres: si la app muestra los videos cortos (Shorts), si muestra
+ * anuncios y si ofrece comprobar las suscripciones de YouTube. Se leen de la base cada vez, sin caché: es una consulta por clave
  * primaria, y así un cambio en el panel vale desde la siguiente petición, sin
  * reiniciar nada.
  */
@@ -23,6 +23,9 @@ public class AjustesService {
 
     /** Si la app muestra anuncios en Novedades. Sin fila en la tabla, no. */
     static final String ANUNCIOS = "anuncios";
+
+    /** Si la app ofrece comprobar las suscripciones de YouTube. Sin fila en la tabla, no. */
+    static final String YOUTUBE = "youtube";
 
     private final Repositorios.Ajustes ajustes;
 
@@ -61,6 +64,25 @@ public class AjustesService {
     @Transactional
     public void ponerAnuncios(boolean encendidos) {
         poner(ANUNCIOS, encendidos);
+    }
+
+    /**
+     * ¿Ofrece la app comprobar las suscripciones de YouTube?
+     *
+     * Pide el permiso youtube.readonly, que Google trata como sensible.
+     * Mientras el proyecto no tenga aprobada la verificación de OAuth, solo
+     * 100 cuentas en toda su vida pueden darlo y Google les enseña un aviso de
+     * "app no verificada". Por eso va apagado hasta que la aprueben: así se
+     * enciende sin publicar otra versión de la app.
+     */
+    @Transactional(readOnly = true)
+    public boolean youtube() {
+        return encendido(YOUTUBE);
+    }
+
+    @Transactional
+    public void ponerYoutube(boolean encendido) {
+        poner(YOUTUBE, encendido);
     }
 
     private boolean encendido(String clave) {

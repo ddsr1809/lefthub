@@ -467,7 +467,8 @@ public class DirectorioController {
      * con la misma lectura, la que ya hace al abrirse.
      */
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
-        return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista());
+        return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
+                ajustes.youtube());
     }
 
     private Usuario usuarioActual() {

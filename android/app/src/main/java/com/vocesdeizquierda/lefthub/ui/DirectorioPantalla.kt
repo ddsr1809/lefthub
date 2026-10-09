@@ -19,7 +19,6 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
@@ -117,7 +116,7 @@ fun DirectorioPantalla(
 
     // El anuncio que explica la etiqueta verde solo sale cuando hay etiquetas
     // que explicar: con YouTube conectado y ya comprobado.
-    val verLeyendaYouTube = BuildConfig.SUSCRIPCIONES_YOUTUBE && youtube.haySuscripciones
+    val verLeyendaYouTube = perfil.youtubeActivo && youtube.haySuscripciones
 
     Column(Modifier.fillMaxSize()) {
         Text(
@@ -428,7 +427,7 @@ fun CreadorPantalla(
             val suscrito = youtube.suscritoAlCanal(canal)
             val productora = productoras.firstOrNull { it.id == canal.productoraId }
 
-            if (BuildConfig.SUSCRIPCIONES_YOUTUBE && canal.esDeYouTube) {
+            if (perfil.youtubeActivo && canal.esDeYouTube) {
                 SuscripcionEnYouTube(
                     suscrito = suscrito,
                     youtube = youtube,
