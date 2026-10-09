@@ -349,7 +349,8 @@ private fun EtiquetaDeEstado(abierto: Boolean) {
 /**
  * Un video en una sola fila: miniatura pequeña, título y cuándo salió. Es la
  * versión corta de la tarjeta de Novedades, para el mini feed de la ficha de
- * un creador. Toda la fila se toca y abre el video.
+ * un creador o de un medio. Lleva su misma leyenda de "Nuevo" o "Ya lo
+ * abriste". Toda la fila se toca y abre el video.
  *
  * @param sinFirmarPor el nombre de quien es la ficha: de sus propios videos
  *                     no hace falta repetirlo; de los que salieron en el
@@ -366,8 +367,7 @@ internal fun FilaVideo(
     val detalle = listOf(
         if (publicacion.esEnVivo) "En vivo" else "",
         publicacion.firma.takeIf { it != sinFirmarPor }.orEmpty(),
-        tiempoRelativo(publicacion.publishedAt),
-        if (abierto) "Ya lo abriste" else ""
+        tiempoRelativo(publicacion.publishedAt)
     ).filter { it.isNotBlank() }.joinToString(" · ")
 
     Row(
@@ -383,7 +383,8 @@ internal fun FilaVideo(
             .heightIn(min = Tactil.principal)
             .semantics(mergeDescendants = true) {
                 role = Role.Button
-                contentDescription = "Abrir el video ${publicacion.title}. $detalle"
+                contentDescription = "Abrir el video ${publicacion.title}. $detalle. " +
+                    if (abierto) "Ya lo abriste." else "Nuevo."
             }
             .padding(Espacio.sm)
     ) {
@@ -401,6 +402,8 @@ internal fun FilaVideo(
             )
         }
         Column(Modifier.weight(1f)) {
+            // La misma leyenda que en Novedades: "Nuevo" o "✓ Ya lo abriste".
+            EtiquetaDeEstado(abierto)
             Text(
                 publicacion.title,
                 style = MaterialTheme.typography.bodyMedium,

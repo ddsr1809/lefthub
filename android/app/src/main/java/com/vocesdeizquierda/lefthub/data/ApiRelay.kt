@@ -189,6 +189,13 @@ object ApiRelay {
         if (e.codigo == 404) emptyList() else throw e
     }
 
+    /** Lo mismo para un medio: lo último que salió en los canales que le pertenecen. */
+    suspend fun publicacionesDeProductora(productoraId: String, limite: Int = 5): List<Publicacion> = try {
+        getArray("/api/productoras/$productoraId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
     suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
 
     suspend fun seguir(creadorId: String) {

@@ -77,6 +77,10 @@ class DirectorioRepo(
     suspend fun videosDeCreador(creadorId: String): List<Publicacion> =
         ApiRelay.publicacionesDeCreador(creadorId)
 
+    /** Los últimos videos de un medio, una sola lectura al abrir su ficha. */
+    suspend fun videosDeProductora(productoraId: String): List<Publicacion> =
+        ApiRelay.publicacionesDeProductora(productoraId)
+
     /**
      * Seguir o dejar de seguir.
      *

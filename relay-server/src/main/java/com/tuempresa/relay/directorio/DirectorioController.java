@@ -184,6 +184,38 @@ public class DirectorioController {
         return vista.ficha(productora);
     }
 
+    /**
+     * Los últimos videos de un medio, para el mini feed de su ficha en la
+     * app: lo que salió en los canales que le pertenecen, los propios y los
+     * de sus creadores. Es lo mismo que vería en Novedades quien solo lo
+     * siguiera a él. Sin los cortos.
+     */
+    @GetMapping("/productoras/{id}/publicaciones")
+    @Transactional(readOnly = true)
+    public List<Dtos.PublicacionDto> deLaProductora(@PathVariable UUID id,
+                                                    @RequestParam(defaultValue = "5") int limite) {
+        Catalogo.Vista vista = catalogo.vista();
+
+        if (vista.productoraVisible(id) == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Ese medio ya no está en el directorio.");
+        }
+
+        // Sus canales, menos los de un creador que esté oculto.
+        List<UUID> suyos = vista.canalesDeProductora(id).stream()
+                .filter(vista::vivo)
+                .map(Canal::getId)
+                .toList();
+        if (suyos.isEmpty()) return List.of();
+
+        List<Publicacion> lista = publicaciones.delFeed(
+                // La consulta no admite una colección vacía.
+                List.of(NINGUNO), suyos, false,
+                PageRequest.of(0, Math.max(1, Math.min(limite, 30))));
+
+        return aDtos(lista, vista);
+    }
+
     // -------------------------------------------------------------------------
     // Feed
     // -------------------------------------------------------------------------

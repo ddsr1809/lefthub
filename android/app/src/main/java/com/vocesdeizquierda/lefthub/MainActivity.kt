@@ -382,6 +382,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 arguments = listOf(navArgument("productoraId") { type = NavType.StringType })
             ) { entrada ->
                 val id = entrada.arguments?.getString("productoraId").orEmpty()
+
+                // Sus últimos videos se piden al abrir su ficha.
+                LaunchedEffect(id) { modelo.cargarVideosDeProductora(id) }
+
                 ProductoraPantalla(
                     // De la lista del estado y no del modelo: así la ficha se
                     // repinta cuando llegan las productoras del servidor.
@@ -394,6 +398,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onSeguirCreador = { modelo.alternarFavorito(it) },
                     onAbrirCreador = { nav.navigate("creador/$it") },
                     onAbrirCanal = { nav.navigate("canal/$it") },
+                    // Mientras llegan los de este medio, no se pintan los del anterior.
+                    videos = estado.videosDeProductora.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    abiertos = Abiertos.videos,
                     onVolver = { nav.popBackStack() }
                 )
             }

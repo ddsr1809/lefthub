@@ -7,11 +7,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.vocesdeizquierda.lefthub.BuildConfig
+import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
+import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 /**
  * Ficha de una productora: la casa detrás de varios creadores.
@@ -33,9 +37,14 @@ fun ProductoraPantalla(
     youtube: EstadoYouTube = EstadoYouTube(),
     onSeguirCreador: (String) -> Unit = {},
     onAbrirCreador: (String) -> Unit = {},
-    onAbrirCanal: (String) -> Unit = {}
+    onAbrirCanal: (String) -> Unit = {},
+    /** Sus últimos videos: el mini feed de arriba. */
+    videos: VideosDeCanal = VideosDeCanal(),
+    /** Los videos que ya abrió desde la app: su fila se ve distinta. */
+    abiertos: Set<String> = emptySet()
 ) {
     val esquema = MaterialTheme.colorScheme
+    val contexto = LocalContext.current
 
     if (productora == null) {
         Vacio(
@@ -86,7 +95,36 @@ fun ProductoraPantalla(
             onClick = onSeguir
         )
 
-        // Lo primero, por dónde seguir: sus creadores y sus canales. Sus
+        // Lo último que salió en sus canales: unos pocos videos en filas
+        // pequeñas. Si no hay ninguno, el apartado no sale.
+        if (videos.lista.isNotEmpty()) {
+            Text(
+                "Sus últimos videos",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            videos.lista.forEach { publicacion ->
+                FilaVideo(
+                    publicacion = publicacion,
+                    abierto = publicacion.videoId in abiertos,
+                    sinFirmarPor = productora.nombre,
+                    onAbrir = {
+                        val destino = publicacion.destino
+                        Enrutador.abrirVideo(
+                            contexto,
+                            destino.plataforma,
+                            destino.videoId,
+                            destino.url,
+                            campana = "ficha_productora"
+                        )
+                        Abiertos.marcar(contexto, publicacion.videoId)
+                    }
+                )
+            }
+        }
+
+        // Después, por dónde seguir: sus creadores y sus canales. Sus
         // creadores son los que figuran en el medio y, además, los dueños de
         // sus canales y quienes aparecen en ellos, aunque nadie los haya
         // marcado como parte de la casa.

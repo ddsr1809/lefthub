@@ -34,6 +34,8 @@ data class EstadoApp(
     val videos: VideosDeCanal = VideosDeCanal(),
     /** Los últimos videos del creador cuya ficha está abierta. `canalId` es aquí el id del creador. */
     val videosDeCreador: VideosDeCanal = VideosDeCanal(),
+    /** Lo mismo para el medio cuya ficha está abierta. `canalId` es aquí el id del medio. */
+    val videosDeProductora: VideosDeCanal = VideosDeCanal(),
     /**
      * Lo que cuesta quitar los anuncios, ya escrito con su moneda. Null
      * mientras no se sepa o si en este teléfono no se puede comprar: entonces
@@ -208,6 +210,29 @@ class AppViewModel(
             else e.copy(videosDeCreador = VideosDeCanal(
                 canalId = creadorId,
                 lista = resultado.getOrDefault(e.videosDeCreador.lista),
+                fallo = resultado.isFailure
+            ))
+        }
+    }
+
+    /** Trae los últimos videos de un medio para el mini feed de su ficha. */
+    fun cargarVideosDeProductora(productoraId: String) = viewModelScope.launch {
+        if (productoraId.isBlank()) return@launch
+
+        _estado.update { e ->
+            val previos = if (e.videosDeProductora.canalId == productoraId) e.videosDeProductora.lista else emptyList()
+            e.copy(videosDeProductora = VideosDeCanal(productoraId, cargando = true, lista = previos))
+        }
+
+        val resultado = runCatching { directorio.videosDeProductora(productoraId) }
+
+        _estado.update { e ->
+            // Si mientras tanto se abrió la ficha de otro medio, esta
+            // respuesta ya no es la que hay que pintar.
+            if (e.videosDeProductora.canalId != productoraId) e
+            else e.copy(videosDeProductora = VideosDeCanal(
+                canalId = productoraId,
+                lista = resultado.getOrDefault(e.videosDeProductora.lista),
                 fallo = resultado.isFailure
             ))
         }
