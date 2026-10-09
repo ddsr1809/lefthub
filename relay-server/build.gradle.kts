@@ -4,7 +4,7 @@ plugins {
     id("io.spring.dependency-management") version "1.1.7"
 }
 
-group = "com.tuempresa"
+group = "com.voces"
 version = "0.1.0"
 description = "Servidor de seguimiento de creadores"
 

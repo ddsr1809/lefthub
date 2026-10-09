@@ -44,7 +44,7 @@ spring:
 logging:
   level:
     root: INFO
-    com.tuempresa.relay: DEBUG
+    com.voces.backend: DEBUG
 
 management:
   endpoints:
