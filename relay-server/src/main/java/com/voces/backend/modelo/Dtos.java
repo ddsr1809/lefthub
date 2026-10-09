@@ -219,7 +219,12 @@ public final class Dtos {
              * en false la app no enseña el botón de comprar; el folio de
              * regalo sigue valiendo.
              */
-            boolean compraDisponible
+            boolean compraDisponible,
+            /**
+             * El equipo encendió la comprobación de suscripciones de YouTube.
+             * Con esto en false la app no la ofrece ni la hace por su cuenta.
+             */
+            boolean youtube
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -229,7 +234,8 @@ public final class Dtos {
          * conoce las tiene aparte en {@code productoras} y las descuenta.
          */
         public static PerfilDto de(Usuario u, boolean cortosDisponibles,
-                                   boolean anuncios, boolean compraDisponible) {
+                                   boolean anuncios, boolean compraDisponible,
+                                   boolean youtube) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
@@ -238,7 +244,7 @@ public final class Dtos {
                     List.copyOf(u.getProductorasSeguidas()),
                     List.copyOf(u.getCanalesSeguidos()),
                     u.isCortos(), cortosDisponibles,
-                    anuncios, u.isSinAnuncios(), compraDisponible);
+                    anuncios, u.isSinAnuncios(), compraDisponible, youtube);
         }
     }
 
@@ -370,11 +376,14 @@ public final class Dtos {
 
     public record CanalGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
 
-    /** Los ajustes generales del panel: si la app muestra los videos cortos, y si muestra anuncios. */
-    public record AjustesDto(boolean cortos, boolean anuncios) {}
+    /**
+     * Los ajustes generales del panel: si la app muestra los videos cortos, si
+     * muestra anuncios y si ofrece comprobar las suscripciones de YouTube.
+     */
+    public record AjustesDto(boolean cortos, boolean anuncios, boolean youtube) {}
 
     /** Lo que se cambia de los ajustes. Lo que no viene no se toca. */
-    public record CambiarAjustes(Boolean cortos, Boolean anuncios) {}
+    public record CambiarAjustes(Boolean cortos, Boolean anuncios, Boolean youtube) {}
 
     // -------------------------------------------------------------------------
     // Anuncios: quitarlos con una compra o con un folio de regalo

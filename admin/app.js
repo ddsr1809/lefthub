@@ -1910,8 +1910,27 @@
   // ---------------------------------------------------------------------------
   const nombrePlataforma = (p) => (p === 'ios' ? 'iOS' : 'Android');
 
+  // El interruptor de "¿Estoy suscrito en YouTube?". Con un servidor anterior
+  // a esto no viene en los ajustes, y el panel no enseña la tarjeta.
+  function tarjetaYouTube(ajustes) {
+    const on = !!ajustes.youtube;
+    return `<section class="panel"><div class="panel-head"><h2>Suscripciones de YouTube</h2>
+        <span class="badge ${on ? 'b-ok' : 'b-mute'}">${on ? 'Encendidas' : 'Apagadas'}</span></div>
+      <div class="panel-body">
+        <label class="check"><input type="checkbox" data-accion="ajuste-youtube" ${on ? 'checked' : ''}> Ofrecer en la app comprobar si la persona está suscrita en YouTube</label>
+        <p class="hint" style="margin:10px 0 0;font-size:13.5px">${on
+          ? 'Quien guardó su cuenta con Google ve el botón «Conectar con YouTube» en Ajustes y, si da permiso, la app le marca en qué canales del directorio está suscrito.'
+          : 'La app no ofrece conectar YouTube ni consulta nada. Las cuentas que ya lo habían conectado dejan de ver las marcas de suscripción hasta que lo enciendas.'}</p>
+        <p class="hint" style="margin:10px 0 0;font-size:13.5px"><span class="badge b-warn">Importante</span> Enciéndelo cuando Google haya aprobado la verificación de OAuth del permiso de YouTube. Antes de eso, Google enseña un aviso de «app no verificada» y solo 100 cuentas en toda la vida del proyecto pueden dar el permiso. Solo funciona en las apps 1.0.6 o posteriores.</p>
+      </div></section>`;
+  }
+
   async function vistaApps() {
-    const [a, mant] = await Promise.all([api('/api/admin/apps'), api('/api/admin/apps/mantenimiento')]);
+    const [a, mant, ajustes] = await Promise.all([
+      api('/api/admin/apps'),
+      api('/api/admin/apps/mantenimiento'),
+      api('/api/admin/ajustes').catch(() => null)
+    ]);
     const enMant = !!(mant && mant.activo);
     const versiones = a.versiones || [];
     const suma = (lista, campo) => lista.reduce((s, v) => s + (v[campo] || 0), 0);
@@ -1940,6 +1959,8 @@
             </div>
           </div>
         </section>
+
+        ${ajustes && 'youtube' in ajustes ? tarjetaYouTube(ajustes) : ''}
 
         <div class="stats">
           <div class="stat"><div class="k">Cuentas</div><div class="v">${num(suma(versiones, 'usuarios'))}</div><div class="n">${num(suma(versiones, 'activos'))} abrieron la app en 30 días</div></div>
@@ -2609,6 +2630,27 @@
             }
           } finally {
             if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          }
+          break;
+        }
+
+        case 'ajuste-youtube': {
+          // Igual que los cortos: si algo falla o se cancela, se vuelve a
+          // pintar la sección con lo que diga el servidor.
+          const encender = b.checked;
+          try {
+            const seguro = await confirmar(
+              encender ? 'Encender las suscripciones de YouTube' : 'Apagar las suscripciones de YouTube',
+              encender
+                ? 'La app ofrecerá «Conectar con YouTube» a quien guardó su cuenta con Google. Hazlo solo si Google ya aprobó la verificación de OAuth: antes de eso aparece el aviso de app no verificada y solo 100 cuentas en toda la vida del proyecto pueden dar el permiso.'
+                : 'La app deja de ofrecer conectar YouTube y de consultar las suscripciones. Lo que cada cuenta ya autorizó no se borra.',
+              encender ? 'Encender' : 'Apagar', !encender);
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { youtube: encender } });
+              toast(encender ? 'Suscripciones de YouTube encendidas.' : 'Suscripciones de YouTube apagadas.');
+            }
+          } finally {
+            if (estado.vista === 'apps') await vistaApps();
           }
           break;
         }
