@@ -446,7 +446,6 @@
   // Qué servidor responde: su versión y el commit del que salió. La ruta no
   // pide sesión. Si el servidor es anterior a ella, no se muestra nada.
   async function leerServidor() {
-    if (estado.servidor) return estado.servidor;
     try {
       const r = await fetch(BASE + '/api/servidor');
       estado.servidor = r.ok ? await r.json() : null;
@@ -463,7 +462,8 @@
     if (s.appMinimaIos) minimas.push('iOS ' + s.appMinimaIos);
     return ' Servidor <b>' + esc(s.version) + '</b>'
       + (s.commit ? ' <span class="mono">(' + esc(String(s.commit).slice(0, 7)) + ')</span>' : '')
-      + (minimas.length ? ' · app mínima: ' + esc(minimas.join(', ')) : '') + '.';
+      + (minimas.length ? ' · app mínima: ' + esc(minimas.join(', ')) : '') + '.'
+      + (s.mantenimiento ? ' <span class="badge b-warn">En mantenimiento</span> Las apps están fuera; se apaga en la sección Apps.' : '');
   }
 
   async function vistaResumen() {
@@ -1911,7 +1911,8 @@
   const nombrePlataforma = (p) => (p === 'ios' ? 'iOS' : 'Android');
 
   async function vistaApps() {
-    const a = await api('/api/admin/apps');
+    const [a, mant] = await Promise.all([api('/api/admin/apps'), api('/api/admin/apps/mantenimiento')]);
+    const enMant = !!(mant && mant.activo);
     const versiones = a.versiones || [];
     const suma = (lista, campo) => lista.reduce((s, v) => s + (v[campo] || 0), 0);
     const fuera = versiones.filter((v) => v.baja || v.bajoMinima);
@@ -1921,8 +1922,25 @@
     if (a.minimaIos) minimas.push('iOS ' + a.minimaIos);
 
     main.innerHTML = `
-      <div class="head"><div><h1>Versiones de la app</h1><p class="sub">Con qué versión de la app entra cada cuenta, y cuáles se dejan de atender para obligar a actualizar. La versión de una cuenta es la de la última vez que abrió la app.</p></div></div>
+      <div class="head"><div><h1>Apps</h1><p class="sub">El modo mantenimiento, que deja fuera a todas las apps mientras se trabaja en el servidor; con qué versión de la app entra cada cuenta, y cuáles se dejan de atender para obligar a actualizar.</p></div></div>
       <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Mantenimiento</h2>
+            <span class="badge ${enMant ? 'b-warn' : 'b-ok'}">${enMant ? 'En mantenimiento' : 'Apagado'}</span></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 12px;font-size:13.5px">${enMant
+              ? 'Las apps están fuera: en vez del contenido enseñan el mensaje de abajo a pantalla completa y vuelven a preguntar solas cada medio minuto. Al quitarlo, se recuperan sin que nadie tenga que hacer nada.'
+              : 'Deja fuera a todas las apps mientras trabajas en el servidor: en vez del contenido enseñan el mensaje de abajo a pantalla completa. Las versiones anteriores a esa pantalla solo muestran el mensaje como un error.'}
+              El panel sigue funcionando, y el servidor sigue recibiendo las publicaciones y mandando los avisos. El cambio tarda como mucho medio minuto.</p>
+            <label class="hint" for="mantMensaje">Mensaje para la gente</label>
+            <textarea class="input" id="mantMensaje" maxlength="300" rows="2" style="margin:6px 0 12px">${esc((mant && mant.mensaje) || '')}</textarea>
+            <div class="toolbar">
+              ${enMant
+                ? '<button class="btn primary" data-accion="mantenimiento" data-valor="false">Quitar el mantenimiento</button><button class="btn" data-accion="mantenimiento" data-valor="true" data-solo-mensaje="1">Guardar el mensaje</button>'
+                : '<button class="btn danger" data-accion="mantenimiento" data-valor="true">Poner en mantenimiento</button>'}
+            </div>
+          </div>
+        </section>
+
         <div class="stats">
           <div class="stat"><div class="k">Cuentas</div><div class="v">${num(suma(versiones, 'usuarios'))}</div><div class="n">${num(suma(versiones, 'activos'))} abrieron la app en 30 días</div></div>
           <div class="stat"><div class="k">Versiones distintas</div><div class="v">${num(versiones.filter((v) => v.version && v.usuarios).length)}</div><div class="n">entre las cuentas que dicen cuál tienen</div></div>
@@ -2661,6 +2679,23 @@
         case 'copiar-folios': {
           const todos = (estado.foliosNuevos || []).map((f) => f.codigo).join('\n');
           toast(await copiar(todos) ? 'Copiados.' : 'No se pudo copiar. Selecciónalos y cópialos a mano.', false);
+          break;
+        }
+
+        case 'mantenimiento': {
+          const activo = b.dataset.valor === 'true';
+          const mensaje = $('#mantMensaje') ? $('#mantMensaje').value.trim() : '';
+          if (!b.dataset.soloMensaje) {
+            const ok = await confirmar(
+              activo ? '¿Poner el servidor en mantenimiento?' : '¿Quitar el mantenimiento?',
+              activo ? 'Todas las apps dejan de funcionar y enseñan el mensaje hasta que lo quites. El panel sigue funcionando.'
+                : 'Las apps vuelven a funcionar; las que están abiertas se recuperan solas en medio minuto.',
+              activo ? 'Poner en mantenimiento' : 'Quitar el mantenimiento', activo);
+            if (!ok) break;
+          }
+          await api('/api/admin/apps/mantenimiento', { metodo: 'PUT', cuerpo: { activo, mensaje } });
+          toast(b.dataset.soloMensaje ? 'Mensaje guardado.' : activo ? 'El servidor está en mantenimiento.' : 'Mantenimiento quitado.');
+          if (estado.vista === 'apps') await vistaApps();
           break;
         }
 
