@@ -9,7 +9,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
@@ -183,7 +182,7 @@ fun ProductoraPantalla(
 
             // Aquí solo la frase cuando ya se sabe: el botón para dar el
             // permiso de YouTube vive en el perfil de cada creador y en Ajustes.
-            if (BuildConfig.SUSCRIPCIONES_YOUTUBE && canal.esDeYouTube) {
+            if (perfil.youtubeActivo && canal.esDeYouTube) {
                 SuscripcionEnYouTube(
                     suscrito = suscrito,
                     youtube = youtube,

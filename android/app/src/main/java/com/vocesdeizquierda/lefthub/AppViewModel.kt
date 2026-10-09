@@ -426,6 +426,8 @@ class AppViewModel(
         // onResume llega antes de que exista la sesión; esperamos a que esté.
         estado.first { it.listo }
         if (autenticacion.esAnonimo) return@launch
+        // Apagada desde el panel: ni se ofrece ni se consulta.
+        if (!_estado.value.perfil.youtubeActivo) return@launch
 
         val ahora = SystemClock.elapsedRealtime()
         if (ahora - ultimaComprobacionYouTube < PAUSA_YOUTUBE_MS) return@launch
@@ -435,7 +437,7 @@ class AppViewModel(
 
     /** El botón "Conectar con YouTube". Aquí sí se muestra la pantalla de Google. */
     fun conectarYouTube(contexto: Context) = viewModelScope.launch {
-        if (!BuildConfig.SUSCRIPCIONES_YOUTUBE) return@launch
+        if (!_estado.value.perfil.youtubeActivo) return@launch
         if (autenticacion.esAnonimo) {
             avisar("Primero guarda tu cuenta con Google, aquí en Ajustes.")
             return@launch

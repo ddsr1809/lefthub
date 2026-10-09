@@ -15,7 +15,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
-import com.vocesdeizquierda.lefthub.BuildConfig
 import com.vocesdeizquierda.lefthub.EstadoApp
 import com.vocesdeizquierda.lefthub.EstadoFolio
 import com.vocesdeizquierda.lefthub.anuncios.Anuncios
@@ -233,7 +232,7 @@ fun AjustesPantalla(
         // --- YouTube --------------------------------------------------------
         // Solo con la cuenta guardada: las suscripciones son de una cuenta de
         // Google, y un invitado no tiene ninguna que consultar.
-        if (BuildConfig.SUSCRIPCIONES_YOUTUBE && !estado.esAnonimo) {
+        if (estado.perfil.youtubeActivo && !estado.esAnonimo) {
             Seccion("Tus suscripciones de YouTube") {
                 if (estado.youtube.permiso == PermisoYouTube.CONCEDIDO) {
                     Text(

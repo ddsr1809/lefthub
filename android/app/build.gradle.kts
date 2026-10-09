@@ -40,8 +40,8 @@ android {
         applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
-        versionCode = 2
-        versionName = "1.0.5"
+        versionCode = 106
+        versionName = "1.0.6"
 
         // El client_id de tipo 3 ("web") dentro de google-services.json.
         // Credential Manager lo necesita para que el servidor pueda validar el
@@ -127,14 +127,14 @@ android {
             // Tiene que coincidir con RELAY_URL_PUBLICA de .env.prod en el VPS.
             buildConfigField("String", "API_BASE", "\"https://leftapp.vocesdeizquierda.com\"")
 
-            // "¿Estoy suscrito en YouTube?" pide el permiso youtube.readonly,
-            // que Google trata como sensible. Mientras la verificación de
-            // OAuth del proyecto no esté aprobada, solo 100 personas pueden
-            // darlo EN TODA LA VIDA del proyecto, y al agotarse Google
-            // desactiva también el inicio de sesión. Ese cupo no se recupera.
-            // Por eso en producción sale apagado: cámbialo a "true" el día que
-            // Google apruebe la verificación, no antes.
-            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "false")
+            // "¿Estoy suscrito en YouTube?" viene incluido, pero se enciende y se
+            // apaga desde el panel (Apps > Suscripciones de YouTube), sin
+            // publicar otra versión. Pide el permiso youtube.readonly, que
+            // Google trata como sensible: mientras la verificación de OAuth del
+            // proyecto no esté aprobada, solo 100 personas pueden darlo en toda
+            // la vida del proyecto. Por eso el panel lo deja apagado hasta que
+            // Google la apruebe. Esto en "false" lo quitaría del todo.
+            buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
 
             // Los identificadores de TU cuenta de AdMob (admob.google.com):
             //
