@@ -178,6 +178,24 @@ object ApiRelay {
         if (e.codigo == 404) emptyList() else throw e
     }
 
+    /**
+     * Los últimos videos de un creador, para el mini feed de su ficha: los
+     * de sus canales y los de canales de otros en los que aparece. Un
+     * servidor anterior no tiene la ruta: para la app eso es "nada que mostrar".
+     */
+    suspend fun publicacionesDeCreador(creadorId: String, limite: Int = 5): List<Publicacion> = try {
+        getArray("/api/creadores/$creadorId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /** Lo mismo para un medio: lo último que salió en los canales que le pertenecen. */
+    suspend fun publicacionesDeProductora(productoraId: String, limite: Int = 5): List<Publicacion> = try {
+        getArray("/api/productoras/$productoraId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
     suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
 
     suspend fun seguir(creadorId: String) {

@@ -97,6 +97,49 @@ fun CanalPantalla(
             )
         }
 
+        // Lo primero de la ficha: de quién es el canal. Su medio, si tiene,
+        // su creador y con quién más aparece. Es también de dónde llegan sus
+        // avisos: de seguir a cualquiera de estos. Cada uno lleva a su ficha,
+        // que es donde está el botón.
+        Text(
+            "De quién es este canal",
+            style = MaterialTheme.typography.headlineMedium,
+            color = esquema.onBackground,
+            modifier = Modifier.padding(top = Espacio.sm, bottom = Espacio.sm)
+        )
+        Text(
+            "Sus videos le llegan a quien sigue a cualquiera de estos. Toca uno para ver su ficha:",
+            style = MaterialTheme.typography.bodyLarge,
+            color = esquema.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = Espacio.md)
+        )
+
+        if (productora != null) {
+            BotonGrande(
+                titulo = productora.nombre,
+                subtitulo = if (dueno == null) "Es su canal. Ver el medio"
+                    else "El canal es de este medio. Ver su ficha",
+                variante = VarianteBoton.SECUNDARIO,
+                onClick = { onAbrirProductora(productora.id) }
+            )
+        }
+        if (dueno != null) {
+            BotonGrande(
+                titulo = dueno.name,
+                subtitulo = "Es su canal. Ver su perfil",
+                variante = VarianteBoton.SECUNDARIO,
+                onClick = { onAbrirCreador(dueno.id) }
+            )
+        }
+        con.forEach { creador ->
+            BotonGrande(
+                titulo = creador.name,
+                subtitulo = "También aparece en este canal. Ver su perfil",
+                variante = VarianteBoton.SECUNDARIO,
+                onClick = { onAbrirCreador(creador.id) }
+            )
+        }
+
         if (BuildConfig.SUSCRIPCIONES_YOUTUBE && canal.esDeYouTube) {
             SuscripcionEnYouTube(
                 suscrito = suscrito,
@@ -115,47 +158,6 @@ fun CanalPantalla(
                 Enrutador.abrirCanal(contexto, canal.plataforma, canal.url, campana = "ficha_canal")
             }
         )
-
-        // De dónde llegan los avisos de este canal: de seguir a cualquiera de
-        // estos. Cada uno lleva a su ficha, que es donde está el botón.
-        Text(
-            "Para recibir sus avisos",
-            style = MaterialTheme.typography.headlineMedium,
-            color = esquema.onBackground,
-            modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.sm)
-        )
-        Text(
-            "Los videos de este canal le llegan a quien sigue a cualquiera de estos:",
-            style = MaterialTheme.typography.bodyLarge,
-            color = esquema.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = Espacio.md)
-        )
-
-        if (dueno != null) {
-            BotonGrande(
-                titulo = dueno.name,
-                subtitulo = "Es su canal. Ver su perfil",
-                variante = VarianteBoton.SECUNDARIO,
-                onClick = { onAbrirCreador(dueno.id) }
-            )
-        }
-        if (productora != null) {
-            BotonGrande(
-                titulo = productora.nombre,
-                subtitulo = if (dueno == null) "Es su canal. Ver el medio"
-                    else "El canal es de este medio. Ver su ficha",
-                variante = VarianteBoton.SECUNDARIO,
-                onClick = { onAbrirProductora(productora.id) }
-            )
-        }
-        con.forEach { creador ->
-            BotonGrande(
-                titulo = creador.name,
-                subtitulo = "También aparece en este canal. Ver su perfil",
-                variante = VarianteBoton.SECUNDARIO,
-                onClick = { onAbrirCreador(creador.id) }
-            )
-        }
 
         Text(
             "Últimos videos",
