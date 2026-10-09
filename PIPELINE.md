@@ -19,7 +19,7 @@ El codigo sube en ese orden: se trabaja en `development`, se fusiona a
 | Pull request a `development`, `testing` o `master` | Pruebas Java y construccion de la imagen, sin desplegar |
 | Push a `development` | Pruebas y publicacion de la imagen, sin desplegar |
 | Push a `testing` | Publica la imagen y despliega `vocesleft-test` con `.env.test` |
-| Push a `master` | Publica la imagen y despliega `vocesleft-prod` con `.env.prod` |
+| Push a `master` | Publica la imagen y despliega `vocesleft-prod` con `.env.prod`. Si la version es nueva, crea el tag `vX.Y.Z` (ver "Versiones") |
 | Ejecucion manual desde cualquier rama | Permite validar (`none`) o desplegar `test` |
 | Ejecucion manual desde `master` | Tambien permite desplegar `prod` |
 
@@ -36,6 +36,75 @@ La imagen confirmada queda guardada de forma atomica en un archivo
 ese archivo. El rollback cubre la imagen de la aplicacion, no revierte
 migraciones de Flyway; las migraciones deben ser compatibles con la version
 anterior durante al menos un despliegue.
+
+## Versiones
+
+La version del servidor es la linea `version = "X.Y.Z"` de
+`relay-server/build.gradle.kts`. Cada servidor dice cual corre y de que commit
+salio, sin token:
+
+```bash
+curl https://testapp.vocesdeizquierda.com/api/servidor
+curl https://leftapp.vocesdeizquierda.com/api/servidor
+```
+
+El panel lo ensena en el Resumen. Un servidor compilado a mano (sin el
+pipeline) no trae commit, y ejecutado desde el IDE dice `desarrollo`.
+
+### Publicar una version
+
+La primera vez que una version llega a `master` es un lanzamiento: la imagen
+recibe tambien el numero (`ghcr.io/ddsr1809/vocesleft-relay:X.Y.Z`) y, cuando
+produccion queda sana, el pipeline crea el tag `vX.Y.Z` en el repositorio. Si
+el despliegue falla no hay tag y el siguiente intento vuelve a contar como
+lanzamiento.
+
+Los pushes siguientes a `master` con la misma version no mueven ese numero: su
+imagen solo se identifica por el commit y el pipeline lo avisa. Para publicar
+otra version hay que subir el numero en `build.gradle.kts`.
+
+### Volver a una version exacta
+
+En el VPS, con el numero de una version publicada:
+
+```bash
+cd /opt/vocesleft/runtime/prod
+printf 'SERVIDOR_IMAGEN=%s\n' ghcr.io/ddsr1809/vocesleft-relay:X.Y.Z > .env.imagen
+docker compose \
+  --env-file /opt/vocesleft/relay-server/.env.prod \
+  --env-file .env.imagen \
+  -p vocesleft-prod \
+  -f docker-compose.yml \
+  up -d --no-deps --force-recreate servidor
+```
+
+Las migraciones no se deshacen: la version anterior arranca sobre el esquema
+nuevo porque todas las migraciones son aditivas. Por eso **un numero de
+migracion que ya llego a algun servidor no se reutiliza ni se borra**; lo que
+haya que deshacer va en una migracion nueva. Reutilizar el numero deja al
+servidor sin arrancar con `Migration checksum mismatch`.
+
+### Version minima de las apps
+
+Las apps mandan en cada peticion `X-App-Version` y `X-App-Plataforma`
+(Android desde la 1.0.1). Para dejar de atender a las versiones viejas, en el
+`.env` del ambiente:
+
+```bash
+APP_VERSION_MINIMA_ANDROID=1.0.1
+APP_VERSION_MINIMA_IOS=
+```
+
+y se recrea el servidor (ver "Operacion manual de emergencia"). La app que no
+llegue a la minima recibe un 426 con el aviso de que hay que actualizarla.
+
+- **Vacio = se atiende a todas.** Es el valor por defecto.
+- **Las apps anteriores a la 1.0.1 no dicen que version son**: cuentan como
+  la mas vieja, asi que cualquier minima de Android las deja fuera.
+- **Actualiza el panel antes** (`git pull` en `/opt/vocesleft`): el panel
+  nuevo se identifica y nunca se queda fuera; el anterior no podria entrar.
+- No se aplica al webhook, a las tareas internas, a las fotos ni a
+  `/api/admin`.
 
 ## Uso local
 

@@ -81,6 +81,8 @@ jobs:
       packages: write
     outputs:
       imagen: ${{ steps.imagen.outputs.valor }}
+      version: ${{ steps.imagen.outputs.version }}
+      lanzamiento: ${{ steps.imagen.outputs.lanzamiento }}
     steps:
       - name: Descargar codigo
         uses: actions/checkout@v7
@@ -101,10 +103,46 @@ jobs:
       - name: Definir nombre inmutable de imagen
         id: imagen
         shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           etiqueta_ref="${GITHUB_REF_NAME//\//-}"
-          echo "valor=${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          echo "ref=${REGISTRY}/${IMAGE_NAME}:${etiqueta_ref}" >> "$GITHUB_OUTPUT"
+          valor="${REGISTRY}/${IMAGE_NAME}:${GITHUB_SHA}"
+
+          # La version del servidor es la de build.gradle.kts.
+          version="$(sed -n 's/^version = "\([^"]*\)".*/\1/p' relay-server/build.gradle.kts)"
+          if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "No se pudo leer la version de relay-server/build.gradle.kts (se esperaba X.Y.Z)." >&2
+            exit 1
+          fi
+
+          # Un lanzamiento es la primera vez que una version llega a master:
+          # todavia no existe su tag vX.Y.Z. Solo entonces la imagen recibe
+          # tambien el numero de version, para que :X.Y.Z no cambie despues.
+          lanzamiento=false
+          if [[ "$GITHUB_EVENT_NAME" == "push" && "$GITHUB_REF_NAME" == "master" ]]; then
+            tag_existente="$(git ls-remote --tags \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" \
+              "refs/tags/v${version}")"
+            if [[ -z "$tag_existente" ]]; then
+              lanzamiento=true
+            else
+              echo "::warning::La version ${version} ya se publico (existe el tag v${version}). Esta imagen solo se identifica por su commit; sube la version en relay-server/build.gradle.kts para publicar otra."
+            fi
+          fi
+
+          {
+            echo "valor=${valor}"
+            echo "version=${version}"
+            echo "lanzamiento=${lanzamiento}"
+            echo "etiquetas<<FIN_ETIQUETAS"
+            echo "${valor}"
+            echo "${REGISTRY}/${IMAGE_NAME}:${etiqueta_ref}"
+            if [[ "$lanzamiento" == "true" ]]; then
+              echo "${REGISTRY}/${IMAGE_NAME}:${version}"
+            fi
+            echo "FIN_ETIQUETAS"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Construir y publicar imagen
         uses: docker/build-push-action@v6
@@ -112,9 +150,10 @@ jobs:
           context: relay-server
           file: relay-server/Dockerfile
           push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ steps.imagen.outputs.valor }}
-            ${{ steps.imagen.outputs.ref }}
+          tags: ${{ steps.imagen.outputs.etiquetas }}
+          # El servidor ensena este commit en GET /api/servidor.
+          build-args: |
+            COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -177,3 +216,30 @@ jobs:
         run: |
           chmod +x scripts/deploy-vps.sh
           scripts/deploy-vps.sh "$DEPLOY_ENV" "${{ needs.construir-imagen.outputs.imagen }}"
+
+  etiquetar-version:
+    name: Etiquetar version
+    # Solo cuando una version nueva llego a master y produccion quedo sana:
+    # si el despliegue falla no hay tag, y el siguiente intento vuelve a
+    # contar como lanzamiento de la misma version.
+    needs: [construir-imagen, desplegar]
+    if: needs.construir-imagen.outputs.lanzamiento == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Crear el tag de la version
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.construir-imagen.outputs.version }}
+        run: |
+          gh api "repos/${GITHUB_REPOSITORY}/git/refs" \
+            -f "ref=refs/tags/v${VERSION}" \
+            -f "sha=${GITHUB_SHA}" >/dev/null
+          {
+            echo "Version ${VERSION} publicada."
+            echo ""
+            echo "- Tag: v${VERSION}"
+            echo "- Imagen: ${REGISTRY}/${IMAGE_NAME}:${VERSION}"
+          } >> "$GITHUB_STEP_SUMMARY"
