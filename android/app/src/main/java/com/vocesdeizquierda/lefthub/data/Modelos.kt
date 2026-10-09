@@ -113,6 +113,21 @@ data class Productora(
 }
 
 /**
+ * Una etiqueta del directorio, con lo que la lleva.
+ *
+ * Las crea y las enciende el equipo desde el panel; el servidor solo manda las
+ * encendidas. Sustituyen a los temas fijos de antes (comida, cine, política…).
+ * Una misma etiqueta puede estar en creadores, en medios y en canales.
+ */
+data class Etiqueta(
+    val id: String = "",
+    val nombre: String = "",
+    val creadores: Set<String> = emptySet(),
+    val productoras: Set<String> = emptySet(),
+    val canales: Set<String> = emptySet()
+)
+
+/**
  * Un canal de YouTube tal como sale en el listado de canales del directorio:
  * el canal y lo que hace falta para pintar su fila sin buscar nada más.
  */

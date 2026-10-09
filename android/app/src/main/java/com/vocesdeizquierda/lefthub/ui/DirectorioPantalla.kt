@@ -24,6 +24,7 @@ import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
+import com.vocesdeizquierda.lefthub.data.Etiqueta
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
@@ -35,20 +36,12 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 // en la categoría de "directorio genérico" que la Guideline 3.2.2 de Apple
 // rechaza y que Play Store también penaliza.
 
-private val TEMAS = listOf(
-    "todos" to "Todos",
-    "comida" to "Comida",
-    "cine" to "Cine",
-    "politica" to "Política",
-    "musica" to "Música",
-    "noticias" to "Noticias",
-    "salud" to "Salud",
-    "tecnologia" to "Tecnología",
-    "otros" to "Otros"
-)
+// Los temas fijos de antes (comida, cine, política…) ya no se enseñan. El
+// directorio se filtra con las etiquetas que el equipo crea y enciende en el
+// panel; mientras no haya ninguna encendida que alguien lleve, no hay filtro.
 
-// Las tres listas del directorio. Se elige arriba cuál se ve; los temas de
-// debajo filtran dentro de la que esté elegida.
+// Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
+// de debajo filtran dentro de la que esté elegida.
 private const val CREADORES = "creadores"
 private const val CANALES = "canales"
 private const val PRODUCTORAS = "productoras"
@@ -67,10 +60,13 @@ fun DirectorioPantalla(
     productorasSeguidas: List<String> = emptyList(),
     onSeguirProductora: (String) -> Unit = {},
     onAbrirProductora: (String) -> Unit = {},
-    onAbrirCanal: (String) -> Unit = {}
+    onAbrirCanal: (String) -> Unit = {},
+    /** Las etiquetas encendidas, con lo que lleva cada una. */
+    etiquetas: List<Etiqueta> = emptyList()
 ) {
     var seccionElegida by remember { mutableStateOf(CREADORES) }
-    var temaElegido by remember { mutableStateOf("todos") }
+    // El id de la etiqueta elegida; null es "Todos".
+    var etiquetaElegida by remember { mutableStateOf<String?>(null) }
     val esquema = MaterialTheme.colorScheme
 
     // Los creadores son las personas. Una productora que el servidor manda
@@ -90,22 +86,29 @@ fun DirectorioPantalla(
     // productora, por ejemplo), su pestaña desaparece y se vuelve a los creadores.
     val seccion = if (secciones.any { it.first == seccionElegida }) seccionElegida else CREADORES
 
-    // Los temas que de verdad tienen a alguien dentro de la lista elegida.
-    val temasConGente = remember(personas, canales, seccion) {
-        val usados = when (seccion) {
-            CANALES -> canales.map { it.categoria }
-            else -> personas.map { it.category }
-        }.toSet()
-        TEMAS.filter { it.first == "todos" || it.first in usados }
+    // Las etiquetas que de verdad llevan a alguien de la lista elegida. Una
+    // etiqueta sin nadie no se enseña; y sin ninguna, no hay fila de filtros.
+    val etiquetasConGente = remember(etiquetas, seccion, personas, canales, productoras) {
+        etiquetas.filter { e ->
+            when (seccion) {
+                CANALES -> canales.any { it.canal.id in e.canales }
+                PRODUCTORAS -> productoras.any { it.id in e.productoras }
+                else -> personas.any { it.id in e.creadores }
+            }
+        }
     }
-    // Al cambiar de lista, un tema que en la nueva no tiene a nadie no se queda puesto.
-    val tema = if (temasConGente.any { it.first == temaElegido }) temaElegido else "todos"
+    // Al cambiar de lista, o si el equipo apaga la etiqueta mientras estaba
+    // elegida, se vuelve a "Todos".
+    val etiqueta = etiquetasConGente.firstOrNull { it.id == etiquetaElegida }
 
-    val creadoresVisibles = remember(personas, tema) {
-        if (tema == "todos") personas else personas.filter { it.category == tema }
+    val creadoresVisibles = remember(personas, etiqueta) {
+        if (etiqueta == null) personas else personas.filter { it.id in etiqueta.creadores }
     }
-    val canalesVisibles = remember(canales, tema) {
-        if (tema == "todos") canales else canales.filter { it.categoria == tema }
+    val canalesVisibles = remember(canales, etiqueta) {
+        if (etiqueta == null) canales else canales.filter { it.canal.id in etiqueta.canales }
+    }
+    val productorasVisibles = remember(productoras, etiqueta) {
+        if (etiqueta == null) productoras else productoras.filter { it.id in etiqueta.productoras }
     }
 
     // El anuncio que explica la etiqueta verde solo sale cuando hay etiquetas
@@ -154,18 +157,22 @@ fun DirectorioPantalla(
             }
         }
 
-        // Los temas filtran a los creadores y a los canales. Las productoras
-        // no tienen tema: ahí la fila de temas no sale.
-        if (seccion != PRODUCTORAS) Row(
+        // Las etiquetas filtran la lista que se esté viendo. Solo sale la
+        // fila si hay alguna que enseñar; si no, un poco de aire y la lista.
+        if (etiquetasConGente.isEmpty()) {
+            Spacer(Modifier.height(Espacio.md))
+        } else Row(
             horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
             modifier = Modifier
                 .horizontalScroll(rememberScrollState())
                 .padding(horizontal = Espacio.md, vertical = Espacio.md)
         ) {
-            temasConGente.forEach { (clave, nombre) ->
-                val activo = clave == tema
+            // "Todos" primero, y después las etiquetas en el orden del panel.
+            (listOf<Pair<String?, String>>(null to "Todos") +
+                etiquetasConGente.map { it.id to it.nombre }).forEach { (clave, nombre) ->
+                val activo = clave == etiqueta?.id
                 OutlinedButton(
-                    onClick = { temaElegido = clave },
+                    onClick = { etiquetaElegida = clave },
                     shape = RoundedCornerShape(8.dp),
                     colors = ButtonDefaults.outlinedButtonColors(
                         containerColor = if (activo) esquema.primary else Color.Transparent,
@@ -176,7 +183,10 @@ fun DirectorioPantalla(
                     ),
                     modifier = Modifier
                         .heightIn(min = Tactil.minimo)
-                        .semantics { role = Role.Tab }
+                        .semantics {
+                            role = Role.Tab
+                            selected = activo
+                        }
                 ) {
                     Text(nombre, style = MaterialTheme.typography.bodySmall)
                 }
@@ -185,10 +195,10 @@ fun DirectorioPantalla(
 
         if (seccion == PRODUCTORAS) {
             LazyColumn(
-                contentPadding = PaddingValues(horizontal = Espacio.md, vertical = Espacio.md),
+                contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(productoras, key = { it.id }) { productora ->
+                items(productorasVisibles, key = { it.id }) { productora ->
                     FilaProductora(
                         productora = productora,
                         siguiendo = productora.id in productorasSeguidas,
@@ -198,7 +208,7 @@ fun DirectorioPantalla(
                 }
             }
         } else if (seccion == CANALES) {
-            // No puede quedar vacía: la lista de temas sale de estos mismos canales.
+            // No puede quedar vacía: solo se ofrecen etiquetas que lleva algún canal.
             LazyColumn(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
