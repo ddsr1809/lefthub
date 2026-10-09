@@ -569,7 +569,10 @@ public final class Dtos {
             /** Ya no ve anuncios, y por qué: compra | folio | panel. */
             boolean sinAnuncios,
             String sinAnunciosOrigen,
-            Instant sinAnunciosDesde
+            Instant sinAnunciosDesde,
+            /** Con qué app entró la última vez; null si la app no lo dijo. */
+            String appVersion,
+            String appPlataforma
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -577,7 +580,8 @@ public final class Dtos {
                     u.getCreadoEn(), u.getVistoEn(),
                     u.getIp(), u.getPais(), u.getAsn(), u.getRed(), u.getAgente(),
                     u.isPosibleBot(), u.getMotivoBot(),
-                    u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde());
+                    u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
+                    u.getAppVersion(), u.getAppPlataforma());
         }
     }
 

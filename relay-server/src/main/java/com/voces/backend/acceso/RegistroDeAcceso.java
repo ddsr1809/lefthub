@@ -1,6 +1,7 @@
 package com.voces.backend.acceso;
 
 import com.voces.backend.modelo.Usuario;
+import com.voces.backend.version.VersionDeApp;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -54,6 +55,16 @@ public class RegistroDeAcceso {
 
             usuario.setIp(ip);
             usuario.setAgente(agente);
+
+            // Con qué versión de la app entra. El panel entra por las mismas
+            // rutas y no es una app: no pisa lo que hubiera.
+            String cabecera = peticion.getHeader(VersionDeApp.CABECERA_PLATAFORMA);
+            if (!VersionDeApp.PANEL.equals(VersionDeApp.plataforma(cabecera))) {
+                String version = VersionDeApp.limpia(peticion.getHeader(VersionDeApp.CABECERA_VERSION));
+                usuario.setAppVersion(version);
+                usuario.setAppPlataforma(version == null && cabecera == null
+                        ? null : VersionDeApp.plataforma(cabecera));
+            }
 
             String motivo = DetectorDeBots.evaluar(agente, usuario.getRed());
             usuario.setPosibleBot(motivo != null);
