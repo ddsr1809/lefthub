@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
- * Sección "Versiones de la app" del panel: qué versiones hay instaladas y
- * cuáles se dejan de atender.
+ * Sección "Apps" del panel: qué versiones hay instaladas, cuáles se dejan de
+ * atender y el modo mantenimiento, que deja fuera a todas.
  *
  * Vive bajo /api/admin, así que la regla de SeguridadConfig ya exige el rol de
  * administrador en cada llamada.
@@ -26,10 +26,36 @@ public class AppsAdminController {
      */
     public record CambiarBaja(String plataforma, String version, Boolean baja) {}
 
-    private final AppsService apps;
+    /**
+     * @param activo  true para dejar a las apps fuera, false para volver a atenderlas
+     * @param mensaje lo que se le dice a la gente; null conserva el que hubiera
+     */
+    public record CambiarMantenimiento(Boolean activo, String mensaje) {}
 
-    public AppsAdminController(AppsService apps) {
+    private final AppsService apps;
+    private final MantenimientoService mantenimiento;
+
+    public AppsAdminController(AppsService apps, MantenimientoService mantenimiento) {
         this.apps = apps;
+        this.mantenimiento = mantenimiento;
+    }
+
+    @GetMapping("/mantenimiento")
+    public MantenimientoService.Estado mantenimiento() {
+        return mantenimiento.estado();
+    }
+
+    @PutMapping("/mantenimiento")
+    public MantenimientoService.Estado cambiarMantenimiento(@RequestBody CambiarMantenimiento peticion) {
+        if (peticion.activo() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Di si el mantenimiento se enciende o se apaga.");
+        }
+        if (peticion.mensaje() != null && peticion.mensaje().trim().length() > MantenimientoService.LARGO_MENSAJE) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "El mensaje no puede pasar de " + MantenimientoService.LARGO_MENSAJE + " letras.");
+        }
+        return mantenimiento.poner(peticion.activo(), peticion.mensaje());
     }
 
     @GetMapping

@@ -102,6 +102,26 @@ dar de baja las que se quieran, una a una, y volver a atenderlas.
 - El cambio vale en medio minuto como mucho y no reinicia nada. La lista se
   guarda en la tabla `ajustes`, por ambiente.
 
+### Mantenimiento y servidor caido
+
+La seccion **Apps** del panel tiene un interruptor de mantenimiento, con el
+mensaje que se le quiera dejar a la gente. Encendido, todas las peticiones de
+las apps reciben un 503 con `"mantenimiento": true` y ese mensaje.
+
+- El panel sigue funcionando, y el servidor sigue recibiendo las publicaciones
+  de YouTube y mandando los avisos: lo unico que se corta es la app.
+- La app de Android pregunta a `GET /api/servidor` cada vez que pasa a primer
+  plano. En mantenimiento ensena el mensaje a pantalla completa; si el
+  servidor no responde y el telefono si tiene internet, avisa de que no puede
+  conectar. En los dos casos vuelve a preguntar sola cada medio minuto y,
+  cuando el servidor contesta, arranca de nuevo.
+- "No responde" incluye el minuto en que el pipeline recrea el contenedor en
+  cada despliegue: Apache contesta 503 y quien abra la app justo entonces vera
+  el aviso hasta que el servidor vuelva.
+- Las versiones de la app anteriores a estas pantallas solo muestran el
+  mensaje como un error.
+- El cambio vale en medio minuto como mucho y se guarda por ambiente.
+
 ### Version minima de las apps
 
 Ademas del panel, el `.env` del ambiente admite una version minima por

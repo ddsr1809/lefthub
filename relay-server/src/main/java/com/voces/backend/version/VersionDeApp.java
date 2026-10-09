@@ -130,11 +130,8 @@ public final class VersionDeApp {
      */
     public static boolean rechazada(String minimaAndroid, String minimaIos, Collection<String> bajas,
                                     String metodo, String ruta, String plataforma, String version) {
-        // La consulta previa de CORS del navegador no lleva cabeceras propias.
-        if ("OPTIONS".equalsIgnoreCase(metodo)) return false;
-        if (!esDeLaApp(ruta)) return false;
+        if (!deUnaApp(metodo, ruta, plataforma)) return false;
         String de = plataforma(plataforma);
-        if (PANEL.equals(de)) return false;
 
         if (dadaDeBaja(bajas, de, version)) return true;
 
@@ -142,6 +139,17 @@ public final class VersionDeApp {
         if (minima == null || minima.isBlank()) return false;
 
         return comparar(version, minima) < 0;
+    }
+
+    /**
+     * Si la petición la hace una app. Es a las que se les puede cortar el
+     * paso, por versión o por mantenimiento; el panel y todo lo demás siguen.
+     */
+    public static boolean deUnaApp(String metodo, String ruta, String plataforma) {
+        // La consulta previa de CORS del navegador no lleva cabeceras propias.
+        if ("OPTIONS".equalsIgnoreCase(metodo)) return false;
+        if (!esDeLaApp(ruta)) return false;
+        return !PANEL.equals(plataforma(plataforma));
     }
 
     /**
