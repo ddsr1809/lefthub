@@ -119,6 +119,39 @@ public class DirectorioController {
                 "Ese creador ya no está en el directorio.");
     }
 
+    /**
+     * Los últimos videos de un creador, para el mini feed de su ficha en la
+     * app: lo que salió en sus canales y en los canales de otros en los que
+     * aparece. Es lo mismo que vería en Novedades quien solo lo siguiera a
+     * él. Sin los cortos, y sin depender de a quién siga la persona.
+     */
+    @GetMapping("/creadores/{id}/publicaciones")
+    @Transactional(readOnly = true)
+    public List<Dtos.PublicacionDto> delCreador(@PathVariable UUID id,
+                                                @RequestParam(defaultValue = "5") int limite) {
+        Catalogo.Vista vista = catalogo.vista();
+
+        if (vista.creadorVisible(id) == null) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Ese creador ya no está en el directorio.");
+        }
+
+        // Los canales de otros en los que aparece, si su dueño sigue visible.
+        List<UUID> compartidos = vista.compartidosCon(id).stream()
+                .filter(vista::vivo)
+                .map(Canal::getId)
+                .toList();
+
+        List<Publicacion> lista = publicaciones.delFeed(
+                List.of(id),
+                // La consulta no admite una colección vacía.
+                compartidos.isEmpty() ? List.of(NINGUNO) : compartidos,
+                false,
+                PageRequest.of(0, Math.max(1, Math.min(limite, 30))));
+
+        return aDtos(lista, vista);
+    }
+
     // -------------------------------------------------------------------------
     // Productoras
     // -------------------------------------------------------------------------
