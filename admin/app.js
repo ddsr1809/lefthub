@@ -286,6 +286,7 @@
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
     anuncios: vistaAnuncios,
+    apps: vistaApps,
     usuarios: vistaUsuarios,
     administradores: vistaAdministradores
   };
@@ -1859,6 +1860,7 @@
           <dt>País</dt><dd>${u.pais ? esc(nombrePais(u.pais)) : '<span class="muted">—</span>'}</dd>
           <dt>Compañía de internet</dt><dd>${u.red ? esc(u.red) + (u.asn ? ' <span class="muted mono">AS' + esc(u.asn) + '</span>' : '') : '<span class="muted">—</span>'}</dd>
           <dt>Aplicación</dt><dd class="mono">${u.agente ? esc(u.agente) : '<span class="muted">—</span>'}</dd>
+          <dt>Versión de la app</dt><dd>${u.appVersion ? esc(nombrePlataforma(u.appPlataforma) + ' ' + u.appVersion) : '<span class="muted">Sin identificar</span>'}</dd>
           <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
           <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
           <dt>Enlaces reportados</dt><dd>${num(d.reportes)}</dd>
@@ -1901,6 +1903,81 @@
       caja.remove();
       return hecho;
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Versiones de la app
+  // ---------------------------------------------------------------------------
+  const nombrePlataforma = (p) => (p === 'ios' ? 'iOS' : 'Android');
+
+  async function vistaApps() {
+    const a = await api('/api/admin/apps');
+    const versiones = a.versiones || [];
+    const suma = (lista, campo) => lista.reduce((s, v) => s + (v[campo] || 0), 0);
+    const fuera = versiones.filter((v) => v.baja || v.bajoMinima);
+    const sinDecir = versiones.filter((v) => !v.version);
+    const minimas = [];
+    if (a.minimaAndroid) minimas.push('Android ' + a.minimaAndroid);
+    if (a.minimaIos) minimas.push('iOS ' + a.minimaIos);
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Versiones de la app</h1><p class="sub">Con qué versión de la app entra cada cuenta, y cuáles se dejan de atender para obligar a actualizar. La versión de una cuenta es la de la última vez que abrió la app.</p></div></div>
+      <div class="stack">
+        <div class="stats">
+          <div class="stat"><div class="k">Cuentas</div><div class="v">${num(suma(versiones, 'usuarios'))}</div><div class="n">${num(suma(versiones, 'activos'))} abrieron la app en 30 días</div></div>
+          <div class="stat"><div class="k">Versiones distintas</div><div class="v">${num(versiones.filter((v) => v.version && v.usuarios).length)}</div><div class="n">entre las cuentas que dicen cuál tienen</div></div>
+          <div class="stat"><div class="k">Sin identificar</div><div class="v">${num(suma(sinDecir, 'usuarios'))}</div><div class="n">apps que no dicen su versión</div></div>
+          <div class="stat"><div class="k">Fuera de servicio</div><div class="v">${num(suma(fuera, 'usuarios'))}</div><div class="n">${fuera.length ? 'cuentas en ' + plural(fuera.length, 'versión que ya no se atiende', 'versiones que ya no se atienden') : 'se atiende a todas las versiones'}</div></div>
+        </div>
+
+        <section class="panel"><div class="panel-head"><h2>Versiones instaladas</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0;font-size:13.5px">Dar de baja una versión hace que el servidor deje de responderle: la app enseña una pantalla que pide actualizar desde Google Play y no deja hacer nada más. Las versiones anteriores a esa pantalla solo muestran un error. El cambio tarda como mucho medio minuto y se puede deshacer aquí mismo; la cuenta y lo que sigue cada persona no se pierden.</p>
+            ${minimas.length ? `<p class="hint" style="margin:10px 0 0;font-size:13.5px"><span class="badge b-info">Versión mínima</span> El servidor además tiene puesta una versión mínima (${esc(minimas.join(', '))}) en su configuración: todo lo anterior queda fuera y no se cambia desde el panel.</p>` : ''}
+          </div>
+          <div class="tablewrap"><table><thead><tr><th>Versión</th><th>Cuentas</th><th>Activas en 30 días</th><th>Última entrada</th><th>Estado</th><th></th></tr></thead><tbody>
+          ${versiones.length ? versiones.map((v) => `<tr>
+              <td><b>${esc(nombrePlataforma(v.plataforma))}</b> ${v.version ? `<span class="mono">${esc(v.version)}</span>` : 'sin identificar'}</td>
+              <td class="num">${num(v.usuarios)}</td>
+              <td class="num">${num(v.activos)}</td>
+              <td class="num">${v.ultimaVez ? esc(fmtFecha(v.ultimaVez)) : '<span class="muted">—</span>'}</td>
+              <td>${v.baja ? '<span class="badge b-warn">Dada de baja</span>' : v.bajoMinima ? '<span class="badge b-warn">Bajo la mínima</span>' : '<span class="badge b-ok">Se atiende</span>'}</td>
+              <td class="acciones"><button class="btn sm ${v.baja ? '' : 'danger'}" data-accion="baja-app" data-plataforma="${esc(v.plataforma)}" data-version="${esc(v.version || '')}" data-cuentas="${esc(v.usuarios || 0)}" data-valor="${v.baja ? 'false' : 'true'}">${v.baja ? 'Volver a atender' : 'Dar de baja'}</button></td>
+            </tr>`).join('') : '<tr><td colspan="6"><div class="empty">Todavía no ha entrado ninguna cuenta.</div></td></tr>'}
+          </tbody></table></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0;font-size:13.5px"><b>Sin identificar</b> son las cuentas que entran con una app que todavía no dice su versión (las primeras que se publicaron) y las que no han vuelto a abrir la app desde que esto se empezó a guardar. Darlas de baja deja fuera a toda app que no diga su versión.</p>
+          </div>
+        </section>
+
+        <section class="panel"><div class="panel-head"><h2>Dar de baja otra versión</h2></div>
+          <div class="panel-body">
+            <p class="hint" style="margin:0 0 12px;font-size:13.5px">Para una versión que no sale en la lista porque todavía no ha entrado nadie con ella.</p>
+            <div class="toolbar">
+              <select class="input" id="appPlataforma" aria-label="Plataforma" style="width:130px"><option value="android">Android</option><option value="ios">iOS</option></select>
+              <input class="input" id="appVersion" maxlength="20" placeholder="1.0.0" aria-label="Versión" style="width:140px">
+              <button class="btn danger" data-accion="baja-app-nueva">Dar de baja</button>
+            </div>
+          </div>
+        </section>
+      </div>`;
+
+    $('#appVersion').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('[data-accion="baja-app-nueva"]').click(); });
+  }
+
+  async function ponerBajaDeApp(plataforma, version, baja, cuentas) {
+    const nombre = nombrePlataforma(plataforma) + ' ' + (version || 'sin identificar');
+    const ok = await confirmar(
+      baja ? '¿Dar de baja ' + nombre + '?' : '¿Volver a atender ' + nombre + '?',
+      baja
+        ? (cuentas ? plural(cuentas, 'cuenta entró', 'cuentas entraron') + ' por última vez con esta versión. ' : '')
+          + 'La app dejará de funcionarles hasta que la actualicen. Antes de hacerlo, comprueba que la versión nueva ya está publicada en la tienda.'
+        : 'El servidor vuelve a responderle y la app funciona otra vez al abrirla.',
+      baja ? 'Dar de baja' : 'Volver a atender', baja);
+    if (!ok) return;
+    await api('/api/admin/apps/baja', { metodo: 'PUT', cuerpo: { plataforma, version: version || null, baja } });
+    toast(baja ? nombre + ' ya no se atiende.' : nombre + ' se atiende otra vez.');
+    if (estado.vista === 'apps') await vistaApps();
   }
 
   async function vistaAnuncios() {
@@ -2584,6 +2661,17 @@
         case 'copiar-folios': {
           const todos = (estado.foliosNuevos || []).map((f) => f.codigo).join('\n');
           toast(await copiar(todos) ? 'Copiados.' : 'No se pudo copiar. Selecciónalos y cópialos a mano.', false);
+          break;
+        }
+
+        case 'baja-app':
+          await ponerBajaDeApp(b.dataset.plataforma, b.dataset.version, b.dataset.valor === 'true', Number(b.dataset.cuentas) || 0);
+          break;
+
+        case 'baja-app-nueva': {
+          const version = $('#appVersion').value.trim();
+          if (!/^v?\d+(\.\d+){0,3}$/.test(version)) { toast('Escribe la versión como 1.0.0.', true); break; }
+          await ponerBajaDeApp($('#appPlataforma').value, version.replace(/^v/, ''), true, 0);
           break;
         }
 
