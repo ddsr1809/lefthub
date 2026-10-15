@@ -32,9 +32,25 @@ data class Canal(
     val channelId: String? = null,
     val creadorId: String? = null,
     val productoraId: String? = null,
-    val tambien: List<String> = emptyList()
+    val tambien: List<String> = emptyList(),
+    /**
+     * Su nombre en YouTube ("Claudia Sheinbaum Clips"). Lo pone el servidor
+     * solo; puede no estar todavía, y un servidor anterior no lo manda.
+     */
+    val titulo: String? = null
 ) {
     val esDeYouTube: Boolean get() = plataforma == "youtube" && !channelId.isNullOrBlank()
+
+    /** @usuario, si lo tiene. */
+    val arroba: String? get() = handle?.takeIf { it.isNotBlank() }?.let { "@" + it.removePrefix("@") }
+
+    /**
+     * Cómo se llama: su nombre en YouTube, que es el que la persona va a ver
+     * al abrirlo; si todavía no se sabe, la etiqueta que le puso el equipo en
+     * el panel ("Clips") o su @usuario. null si no hay ninguno.
+     */
+    val nombreVisible: String?
+        get() = titulo?.takeIf { it.isNotBlank() } ?: nombre?.takeIf { it.isNotBlank() } ?: arroba
 
     /**
      * Se puede seguir por sí solo: es un canal de YouTube y el servidor lo
@@ -140,14 +156,22 @@ data class Etiqueta(
  */
 data class CanalListado(
     val canal: Canal,
-    /** El nombre de su dueño y, si el canal tiene etiqueta, también: "Juan Pérez · Clips". */
-    val titulo: String,
+    /** Cómo se llama el canal. Va primero en su fila. Ver Canal.nombreVisible. */
+    val nombreCanal: String,
+    /** De quién es: su creador o, si no tiene, su medio. Va debajo del nombre. */
+    val dueno: String,
     val fotoUrl: String? = null,
     /** El tema de su dueño, para filtrar igual que a los creadores. */
     val categoria: String = "otros",
-    /** "De Estudio X", "Con Ana y Luis"… lo que haya; vacío si es solo de su creador. */
-    val deQuien: String = ""
-)
+    /** "Del medio Estudio X", "Con Ana y Luis"… lo que haya; vacío si es solo de su creador. */
+    val deQuien: String = "",
+    /** Es el canal propio de un medio, sin creador. */
+    val duenoEsMedio: Boolean = false
+) {
+    /** En una frase, para un aviso: "Clips, de Juan Pérez", o solo el dueño si se llama igual. */
+    val titulo: String
+        get() = if (nombreCanal.equals(dueno, ignoreCase = true)) dueno else "$nombreCanal, de $dueno"
+}
 
 /**
  * Todos los canales de YouTube del directorio, uno por canal y por orden
@@ -180,16 +204,18 @@ fun canalesDelDirectorio(creadores: List<Creador>, productoras: List<Productora>
 
         CanalListado(
             canal = canal,
-            titulo = canal.nombre?.takeIf { it.isNotBlank() }?.let { "$quien · $it" } ?: quien,
+            nombreCanal = canal.nombreVisible ?: quien,
+            dueno = quien,
             fotoUrl = dueno?.photoUrl ?: casa?.logoUrl ?: casaFila?.photoUrl,
             categoria = dueno?.category ?: casaFila?.category ?: "otros",
             deQuien = listOfNotNull(
-                // Solo si no es ya el título: en su canal propio, la casa es quien firma.
-                nombreCasa?.takeIf { dueno != null }?.let { "De $it" },
+                // Solo si no es ya el dueño: en su canal propio, la casa es quien firma.
+                nombreCasa?.takeIf { dueno != null }?.let { "Del medio $it" },
                 con.takeIf { it.isNotEmpty() }?.let { "Con ${enumerar(it)}" }
-            ).joinToString(" · ")
+            ).joinToString(" · "),
+            duenoEsMedio = dueno == null && nombreCasa != null
         )
-    }.sortedBy { it.titulo.lowercase() }
+    }.sortedWith(compareBy({ it.nombreCanal.lowercase() }, { it.dueno.lowercase() }))
 }
 
 /** "Ana", "Ana y Luis", "Ana, Luis y Rosa". */
@@ -279,6 +305,12 @@ data class Perfil(
     /** Quiere ver los videos cortos. Solo cuenta si están disponibles. */
     val cortos: Boolean = true,
     /**
+     * Quiere una notificación por cada video corto. Apagado de entrada: verlos
+     * en su apartado no trae avisos si no se piden. Un servidor anterior no
+     * lo manda, y entonces es que no.
+     */
+    val avisosCortos: Boolean = false,
+    /**
      * El equipo permite los videos cortos. Si no, la app no enseña ni el
      * apartado ni la opción de Ajustes, diga lo que diga `cortos`. Un servidor
      * anterior no lo manda, y entonces es que no.
@@ -337,6 +369,9 @@ data class Perfil(
 
     /** Ve los videos cortos: el equipo los permite y la persona no los apagó. */
     val veCortos: Boolean get() = cortosDisponibles && cortos
+
+    /** Le llegan avisos de los videos cortos: los ve y además los pidió. */
+    val recibeAvisosCortos: Boolean get() = veCortos && avisosCortos
 }
 
 // --- Suscripciones de YouTube ------------------------------------------------

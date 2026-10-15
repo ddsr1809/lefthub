@@ -455,6 +455,7 @@ public class DirectorioController {
         if (peticion.tema() != null) usuario.setTema(peticion.tema());
         if (peticion.avisos() != null) usuario.setAvisos(peticion.avisos());
         if (peticion.cortos() != null) usuario.setCortos(peticion.cortos());
+        if (peticion.avisosCortos() != null) usuario.setAvisosCortos(peticion.avisosCortos());
 
         return perfilDe(usuario);
     }
