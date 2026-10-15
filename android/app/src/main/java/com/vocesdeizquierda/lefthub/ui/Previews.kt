@@ -29,6 +29,7 @@ import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.Publicacion
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
+import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 
 
 // Previews.
@@ -85,9 +86,11 @@ private val juan = Creador(
     // Tres canales de YouTube: el suyo, el de clips y uno que es de la productora.
     canales = listOf(
         Canal(id = "c1", plataforma = "youtube", url = "https://www.youtube.com/channel/UC123",
-            channelId = "UC123", creadorId = "juan"),
+            channelId = "UC123", creadorId = "juan", handle = "juanperez",
+            titulo = "Juan Pérez Cocina"),
         Canal(id = "c2", plataforma = "youtube", nombre = "Clips",
-            url = "https://www.youtube.com/channel/UC124", channelId = "UC124", creadorId = "juan"),
+            url = "https://www.youtube.com/channel/UC124", channelId = "UC124", creadorId = "juan",
+            titulo = "Juan Pérez Clips"),
         Canal(id = "c3", plataforma = "youtube", nombre = "Cocina con Juan",
             url = "https://www.youtube.com/channel/UC125", channelId = "UC125",
             creadorId = "juan", productoraId = "estudio"),
@@ -326,6 +329,40 @@ private fun PreviaDirectorio() {
                 Etiqueta("e1", "Cocina", creadores = setOf("juan")),
                 Etiqueta("e2", "Cine", creadores = setOf("ana"), productoras = setOf("estudio"))
             )
+        )
+    }
+}
+
+/** Antes de seguir a alguien con varios canales. */
+@VistaPreviaAccesible
+@Composable
+private fun PreviaSeguirTodos() {
+    Marco {
+        VentanaAlSeguir(
+            por = porSeguir(juan, canalesDelDirectorio(creadores, listOf(estudio)))!!,
+            perfil = Perfil(),
+            onSeguir = {},
+            onVerCanales = {},
+            onCancelar = {}
+        )
+    }
+}
+
+/** Elegir uno por uno: sigue uno de los canales de Juan, en filas alternas. */
+@VistaPreviaTemas
+@Composable
+private fun PreviaElegirCanales() {
+    val listados = canalesDelDirectorio(creadores, listOf(estudio))
+    Marco {
+        ElegirCanalesPantalla(
+            nombre = juan.name,
+            listados = canalesParaElegir(juan, null, listados),
+            sigueATodos = false,
+            perfil = Perfil(canales = listOf("c2")),
+            onSeguirCanal = {},
+            onSeguirTodos = {},
+            onAbrirCanal = {},
+            onListo = {}
         )
     }
 }

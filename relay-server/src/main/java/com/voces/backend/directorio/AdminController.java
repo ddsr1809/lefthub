@@ -53,6 +53,7 @@ public class AdminController {
     private final FotosService fotos;
     private final PerfilesService perfiles;
     private final BorradoService borrado;
+    private final TitulosDeCanales titulos;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -66,7 +67,8 @@ public class AdminController {
                            CanalesService canalesService, Catalogo catalogo,
                            ReplicaService replica, AjustesService ajustes,
                            FotosService fotos, PerfilesService perfiles,
-                           BorradoService borrado) {
+                           BorradoService borrado, TitulosDeCanales titulos) {
+        this.titulos = titulos;
         this.creadores = creadores;
         this.productoras = productoras;
         this.canales = canales;
@@ -247,6 +249,15 @@ public class AdminController {
     }
 
     /**
+     * Pregunta ya a YouTube el nombre de los canales que no lo tienen, sin
+     * esperar a la revisión de cada diez minutos.
+     */
+    @PostMapping("/canales/titulos")
+    public java.util.Map<String, Integer> completarTitulos() {
+        return java.util.Map.of("revisados", titulos.completar());
+    }
+
+    /**
      * Alta o edición de la ficha de un canal de YouTube: de quién es, de qué
      * productora y con qué otros creadores aparece. Lo que publique les llega
      * a quienes siguen a cualquiera de ellos.
@@ -325,7 +336,8 @@ public class AdminController {
                 k.getProductoraId(),
                 s != null ? s.getEstado() : null,
                 s != null ? s.getExpiraEn() : null,
-                List.copyOf(k.getVinculados()));
+                List.copyOf(k.getVinculados()),
+                k.getTitulo());
     }
 
     /**

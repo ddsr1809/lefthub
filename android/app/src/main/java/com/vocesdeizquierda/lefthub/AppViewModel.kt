@@ -25,6 +25,8 @@ data class EstadoApp(
     /** Los videos cortos, que van en su propio apartado de Novedades. */
     val cortos: List<Publicacion> = emptyList(),
     val perfil: Perfil = Perfil(),
+    /** Ya llegó el perfil del servidor al menos una vez: se sabe qué sigue. */
+    val perfilCargado: Boolean = false,
     val esAnonimo: Boolean = true,
     val correo: String? = null,
     val ocupado: Boolean = false,
@@ -269,10 +271,10 @@ class AppViewModel(
         val p = if (BuildConfig.ADMOB_BANNER.isBlank()) leido.copy(anuncios = false) else leido
 
         perfilFlow.value = p
-        _estado.update { it.copy(perfil = p) }
+        _estado.update { it.copy(perfil = p, perfilCargado = true) }
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
-        directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos, p.canales)
+        directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
     }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
@@ -295,7 +297,7 @@ class AppViewModel(
 
         val resultado = escrituras.withLock {
             runCatching {
-                directorio.alternarFavorito(id, siguiendo, _estado.value.perfil.veCortos)
+                directorio.alternarFavorito(id, siguiendo, _estado.value.perfil.recibeAvisosCortos)
             }
         }
         versionPerfil++
@@ -317,7 +319,7 @@ class AppViewModel(
 
         val resultado = escrituras.withLock {
             runCatching {
-                directorio.alternarProductora(id, siguiendo, _estado.value.perfil.veCortos)
+                directorio.alternarProductora(id, siguiendo, _estado.value.perfil.recibeAvisosCortos)
             }
         }
         versionPerfil++
@@ -352,7 +354,7 @@ class AppViewModel(
 
         val resultado = escrituras.withLock {
             runCatching {
-                directorio.alternarCanal(id, siguiendo, _estado.value.perfil.veCortos)
+                directorio.alternarCanal(id, siguiendo, _estado.value.perfil.recibeAvisosCortos)
             }
         }
         versionPerfil++
@@ -378,13 +380,13 @@ class AppViewModel(
         versionPerfil++
 
         resultado.onSuccess {
-            if (clave == "cortos") {
+            if (clave == "cortos" || clave == "avisosCortos") {
                 // Ver o no los cortos cambia dos cosas más que la pantalla:
                 // la lista que se pide al servidor y los avisos que llegan a
-                // este aparato.
+                // este aparato. Sus avisos, solo lo segundo.
                 perfilFlow.update { p -> p.conPreferencia(clave, valor) }
                 val p = _estado.value.perfil
-                directorio.sincronizarTopics(p.favoritos, p.productoras, p.veCortos, p.canales)
+                directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
             }
         }
 
@@ -838,6 +840,7 @@ private fun Perfil.preferencia(clave: String): Any? = when (clave) {
     "escalaTexto" -> escalaTexto
     "avisos" -> avisos
     "cortos" -> cortos
+    "avisosCortos" -> avisosCortos
     else -> null
 }
 
@@ -846,5 +849,6 @@ private fun Perfil.conPreferencia(clave: String, valor: Any?): Perfil = when (cl
     "escalaTexto" -> copy(escalaTexto = valor as? String ?: escalaTexto)
     "avisos" -> copy(avisos = valor as? Boolean ?: avisos)
     "cortos" -> copy(cortos = valor as? Boolean ?: cortos)
+    "avisosCortos" -> copy(avisosCortos = valor as? Boolean ?: avisosCortos)
     else -> this
 }

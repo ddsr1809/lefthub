@@ -49,7 +49,8 @@ internal fun canalDe(json: JSONObject) = Canal(
     channelId = json.optStringONull("channelId"),
     creadorId = json.optStringONull("creadorId"),
     productoraId = json.optStringONull("productoraId"),
-    tambien = json.optJSONArray("creadores").mapJsonStrings()
+    tambien = json.optJSONArray("creadores").mapJsonStrings(),
+    titulo = json.optStringONull("titulo")
 )
 
 internal fun productoraDe(json: JSONObject) = Productora(
@@ -110,6 +111,7 @@ internal fun perfilDe(json: JSONObject): Perfil {
         // Un servidor anterior no la manda: entonces no sigue ningún canal suelto.
         canales = json.optJSONArray("canales").mapJsonStrings(),
         cortos = json.optBoolean("cortos", true),
+        avisosCortos = json.optBoolean("avisosCortos", false),
         cortosDisponibles = json.optBoolean("cortosDisponibles", false),
         anuncios = json.optBoolean("anuncios", false),
         sinAnuncios = json.optBoolean("sinAnuncios", false),

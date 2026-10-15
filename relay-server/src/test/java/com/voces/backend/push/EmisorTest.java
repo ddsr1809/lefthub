@@ -140,7 +140,7 @@ class EmisorTest {
         Creador juan = creador("Juan Pérez");
         Emisor emisor = Emisor.de(juan);
 
-        assertEquals(List.of(new Destino("creator_" + juan.getId() + "_cortos", null)),
+        assertEquals(List.of(new Destino("creator_" + juan.getId() + "_avisos_cortos", null)),
                 emisor.destinos(true));
         assertEquals(emisor.destinos(), emisor.destinos(false), "lo demás no cambia");
         assertTrue(emisor.topics().stream().noneMatch(t -> t.endsWith("_cortos")));
@@ -154,8 +154,8 @@ class EmisorTest {
 
         List<Destino> destinos = Emisor.de(null, gobierno, List.of(claudia)).destinos(true);
 
-        assertEquals(List.of(new Destino(null, o("productora_" + gobierno.getId() + "_cortos",
-                "creator_" + claudia + "_cortos"))), destinos);
+        assertEquals(List.of(new Destino(null, o("productora_" + gobierno.getId() + "_avisos_cortos",
+                "creator_" + claudia + "_avisos_cortos"))), destinos);
     }
 
     @Test
@@ -170,7 +170,7 @@ class EmisorTest {
         // Una sola condición: quien sigue al creador y además al canal recibe un aviso, no dos.
         assertEquals(List.of(new Destino(null, o("creator_" + juan.getId(), "canal_" + canal))),
                 emisor.destinos());
-        assertEquals(List.of(new Destino(null, o("creator_" + juan.getId() + "_cortos", "canal_" + canal + "_cortos"))),
+        assertEquals(List.of(new Destino(null, o("creator_" + juan.getId() + "_avisos_cortos", "canal_" + canal + "_avisos_cortos"))),
                 emisor.destinos(true));
     }
 

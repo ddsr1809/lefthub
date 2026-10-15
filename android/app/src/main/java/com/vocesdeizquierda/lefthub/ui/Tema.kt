@@ -46,6 +46,10 @@ object Colores {
     val Peligro = Color(0xFFFF7A69)
 
     val FondoClaro = Color(0xFFFAFAF8)
+    // Las filas alternas de las listas. Bastante más oscura que el fondo para
+    // que se note dónde acaba una fila y empieza la siguiente, sin bajar el
+    // contraste del texto: TextoSuaveClaro queda a 5.6:1 encima.
+    val FranjaClara = Color(0xFFE3E6EB)
     val SuperficieClara = Color(0xFFFFFFFF)
     val BordeClaro = Color(0xFFC9CDD3)
     val TextoClaro = Color(0xFF14161A)     // 16.1:1
@@ -90,6 +94,12 @@ enum class EscalaTexto(val clave: String, val etiqueta: String, val factor: Floa
 }
 
 val LocalEscala = compositionLocalOf { 1.0f }
+
+/**
+ * El fondo de una fila sí y otra no en las listas del Directorio. Ayuda a
+ * seguir con la vista una fila de lado a lado, hasta su botón.
+ */
+val LocalFranja = compositionLocalOf { Colores.FranjaClara }
 
 private fun tipografia(factor: Float) = Typography(
     displayLarge = TextStyle(fontSize = (28 * factor).sp, lineHeight = (34 * factor).sp, fontWeight = FontWeight.Bold),
@@ -149,7 +159,10 @@ fun TemaRelay(
     val total = min(escalaSistema * escala.factor, 2.0f)
     val nuestroFactor = total / escalaSistema
 
-    CompositionLocalProvider(LocalEscala provides nuestroFactor) {
+    CompositionLocalProvider(
+        LocalEscala provides nuestroFactor,
+        LocalFranja provides if (oscuro) Colores.SuperficieAlta else Colores.FranjaClara
+    ) {
         MaterialTheme(
             colorScheme = if (oscuro) esquemaOscuro else esquemaClaro,
             typography = tipografia(nuestroFactor),

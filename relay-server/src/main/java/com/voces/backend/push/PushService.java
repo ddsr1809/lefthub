@@ -118,11 +118,14 @@ public class PushService {
 
     /**
      * Los videos cortos van por topics aparte: el de siempre con este final.
-     * Así cada teléfono decide si los quiere con solo suscribirse o no, y una
-     * versión de la app anterior a esto, que no conoce estos topics, no recibe
-     * ninguno.
+     * Así cada teléfono decide si los quiere con solo suscribirse o no.
+     *
+     * Antes era "_cortos", y las apps hasta la 1.0.6 se suscribían a él solas
+     * con solo ver los cortos. Ahora los avisos de cortos van apagados hasta
+     * que la persona los encienda, y con el final nuevo esas apps dejan de
+     * recibirlos: no tienen dónde encenderlos.
      */
-    public static final String SUFIJO_CORTOS = "_cortos";
+    public static final String SUFIJO_CORTOS = "_avisos_cortos";
 
     /**
      * En nombre de quién sale un aviso y a quién le llega.

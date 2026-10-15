@@ -66,6 +66,13 @@ public class Usuario {
     private boolean cortos = true;
 
     /**
+     * Quiere una notificación por cada video corto de quienes sigue. Apagado
+     * de entrada: ver los cortos en su apartado no trae avisos si no se pide.
+     */
+    @Column(name = "avisos_cortos", nullable = false)
+    private boolean avisosCortos = false;
+
+    /**
      * Ya no ve anuncios: lo compró, canjeó un folio de regalo o se lo puso el
      * equipo desde el panel. Va en la cuenta para que la acompañe si cambia
      * de teléfono. Ver V11.
@@ -175,6 +182,9 @@ public class Usuario {
 
     public boolean isCortos() { return cortos; }
     public void setCortos(boolean cortos) { this.cortos = cortos; }
+
+    public boolean isAvisosCortos() { return avisosCortos; }
+    public void setAvisosCortos(boolean avisosCortos) { this.avisosCortos = avisosCortos; }
 
     public boolean isSinAnuncios() { return sinAnuncios; }
     public String getSinAnunciosOrigen() { return sinAnunciosOrigen; }

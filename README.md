@@ -359,6 +359,59 @@ Por dentro:
 Las apps anteriores no saben seguir canales sueltos y siguen funcionando igual:
 solo cambian cosas para quien actualiza.
 
+## Al seguir a un creador o a un medio
+
+Seguir a un creador o a un medio es seguir sus canales de YouTube. Antes de
+hacerlo, la app enseña una ventana que dice **cuántos y cuáles** son, cada uno
+con una casilla marcada:
+
+- **Seguir los N canales** (todas marcadas): sigue al creador entero, que trae
+  también los canales que se le agreguen después.
+- **Quitar la marca** a los que no quiera y tocar *Seguir solo K canales*:
+  sigue solo esos, cada uno por su lado.
+- **Ver sus canales antes de decidir**: lleva a la pantalla con todos sus
+  canales (o, si tiene uno solo, a la ficha de ese canal), donde cada uno
+  tiene su botón de *Seguir*.
+- **Ahora no**: no sigue nada; lo puede hacer después desde su ficha.
+
+Si ya sigue algunos de sus canales sueltos, su fila y su ficha lo dicen
+("Sigues 2 de sus 3 canales") y el botón abre la misma ventana con esos
+marcados, para cambiar cuáles. Sin canales de YouTube (solo redes) se sigue de
+un toque, y dejar de seguir nunca pregunta.
+
+## La lista de canales de YouTube
+
+*Canales de YouTube* es la primera lista del Directorio, antes de
+*Creadores* y *Medios*, y es la que se ve al abrirlo.
+
+En las tres listas, **lo que la persona sigue va arriba**, bajo el título
+"Canales que sigues" (o "Creadores que sigues", "Medios que sigues"), y lo
+demás debajo, cada parte en orden alfabético. El orden se decide al abrir el
+Directorio, al cambiar de lista y cada vez que se refresca (cada cinco
+minutos), pero no en el momento de tocar *Seguir*: si la fila saltara arriba
+al tocarla, la persona perdería de vista dónde estaba.
+
+Cada fila de canal dice, de arriba abajo:
+
+1. **El nombre del canal**, el mismo que se ve en YouTube.
+2. **De quién es**: "De Claudia Sheinbaum", o "Del medio …" si es el canal
+   propio de un medio.
+3. Lo demás que ayuda a reconocerlo: su medio, con quién más aparece y su
+   @usuario.
+
+Las filas van **una sí y otra no con fondo gris** (en el tema oscuro, un gris
+más claro que el fondo), en las tres listas del Directorio y en la de elegir
+canales: así se sigue con la vista una fila hasta su botón. Los colores
+cumplen el contraste AA con todo el texto encima.
+
+El nombre del canal lo pone el servidor solo: cada diez minutos busca los
+canales de YouTube que todavía no lo tienen, o que no se revisan desde hace
+una semana, y se lo pregunta a YouTube (1 unidad de cuota por cada 50
+canales). Se guarda en `canales.titulo` (V15) y viaja en el campo `titulo` de
+cada canal. Para no esperar, `POST /api/admin/canales/titulos` lo hace en el
+momento. Mientras no se sabe, la app usa la etiqueta que se le puso en el
+panel ("Clips") o su @usuario. Sin `YOUTUBE_API_KEY` no se llena nunca.
+
 ## Etiquetas
 
 Las etiquetas son la forma de agrupar el directorio, y las decide el equipo:
@@ -519,14 +572,20 @@ equipo y para cada persona.
 - **Cada persona decide si los ve.** Con el interruptor encendido aparece en
   los Ajustes de la app la sección *Videos cortos*, con *Verlos* / *No verlos*.
   Si el equipo lo apaga, esa sección desaparece.
+- **Y, aparte, si le avisan de ellos.** Verlos no trae notificaciones: los
+  avisos de cortos vienen **apagados para todos** (columna
+  `usuarios.avisos_cortos`, V15). Quien los quiera los enciende en Ajustes, en
+  *Avisos de videos cortos* → *Avisarme también de los cortos*.
 
 Reglas que conviene saber:
 
 - Un corto **nunca** sale mezclado en Novedades ni en la ficha de un canal.
-- Sus avisos van por topics aparte (`creator_<id>_cortos`,
-  `productora_<id>_cortos`), a los que solo se suscribe el teléfono de quien
-  los ve. Las versiones de la app anteriores a esto no los conocen: dejan de
-  ver y de recibir Shorts del todo.
+- Sus avisos van por topics aparte (`creator_<id>_avisos_cortos`,
+  `productora_<id>_avisos_cortos`, `canal_<id>_avisos_cortos`), a los que solo
+  se suscribe el teléfono de quien los ve **y** encendió sus avisos. Hasta la
+  1.0.6 el final era `_cortos` y la app se suscribía con solo ver los cortos;
+  con el final nuevo esas versiones ya no reciben avisos de cortos (no tienen
+  dónde encenderlos), y la app nueva se da de baja de los viejos.
 - **Cómo se sabe que un video es un Short.** La Data API no lo dice. Si dura
   más de tres minutos o es un directo, no lo es. Si dura menos, el servidor
   pide `youtube.com/shorts/ID` (solo la cabecera, sin cuota): YouTube contesta
@@ -540,7 +599,8 @@ Reglas que conviene saber:
 En la API: `GET /api/publicaciones` no trae cortos; `GET
 /api/publicaciones?tipo=cortos` trae solo cortos (vacío si están apagados o la
 persona no los quiere). `GET /api/perfil` dice `cortos` (lo que eligió la
-persona) y `cortosDisponibles` (lo que decidió el equipo). El interruptor es
+persona), `avisosCortos` (si quiere sus avisos) y `cortosDisponibles` (lo que
+decidió el equipo). Las dos de la persona se cambian con `PUT /api/preferencias`. El interruptor es
 `GET`/`PUT /api/admin/ajustes`, y se guarda en la tabla `ajustes` (V8).
 
 ## "¿Estoy suscrito en YouTube?"

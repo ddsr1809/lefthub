@@ -50,6 +50,19 @@ public final class Repositorios {
         @Query("select k from Canal k where k.plataforma = 'youtube' and k.channelId = :canal")
         Optional<Canal> porCanalDeYouTube(@Param("canal") String canal);
 
+        /**
+         * Canales de YouTube a los que hay que preguntarles el nombre: los que
+         * nunca se preguntaron y los que se preguntaron antes de {@code antes}.
+         */
+        @Query("""
+                select k from Canal k
+                where k.plataforma = 'youtube' and k.channelId is not null
+                  and (k.tituloEn is null or k.tituloEn < :antes)
+                order by k.tituloEn asc nulls first, k.creadoEn asc
+                """)
+        List<Canal> sinTituloReciente(@Param("antes") java.time.Instant antes,
+                                      org.springframework.data.domain.Pageable pagina);
+
         /** Todo el directorio de una vez, ya en el orden en que se muestra. */
         @Query("select k from Canal k order by k.orden asc, k.creadoEn asc, k.id asc")
         List<Canal> todosEnOrden();

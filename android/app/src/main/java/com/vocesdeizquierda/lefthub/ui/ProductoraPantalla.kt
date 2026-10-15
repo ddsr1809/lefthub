@@ -91,18 +91,25 @@ fun ProductoraPantalla(
 
         // Seguir al medio es seguir todos sus canales. Con varios, el botón
         // lo dice así, porque más abajo cada canal se puede seguir por separado.
-        val variosCanales = productora.canales.count { it.sePuedeSeguir } >= 2
+        val cuantosCanales = productora.canales.count { it.sePuedeSeguir }
+        val variosCanales = cuantosCanales >= 2
+        // Sigue algunos de sus canales sueltos, sin seguir al medio entero.
+        val sueltos = if (siguiendo) 0 else perfil.sueltosDe(productora.canales)
         BotonGrande(
             titulo = when {
+                sueltos > 0 && !variosCanales -> "Sigues su canal"
+                sueltos > 0 -> "Sigues ${deCuales(sueltos, cuantosCanales)}"
                 !variosCanales -> if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique"
                 siguiendo -> "Sigues todos sus canales"
                 else -> "Seguir todos sus canales"
             },
-            subtitulo = if (siguiendo)
-                "Toca para dejar de recibir sus avisos"
-            else
-                "Te avisamos de lo que salga en los canales de este medio",
-            variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
+            subtitulo = when {
+                sueltos > 0 && !variosCanales -> "Toca para dejar de seguirlo"
+                sueltos > 0 -> "Toca para elegir cuáles"
+                siguiendo -> "Toca para dejar de recibir sus avisos"
+                else -> "Te avisamos de lo que salga en los canales de este medio"
+            },
+            variante = if (siguiendo || sueltos > 0) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
             onClick = onSeguir
         )
 
@@ -150,13 +157,14 @@ fun ProductoraPantalla(
                 color = esquema.onBackground,
                 modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.sm)
             )
-            figuran.forEach { creador ->
+            figuran.forEachIndexed { i, creador ->
                 FilaCreador(
                     creador = creador,
                     siguiendo = creador.id in favoritos,
                     onAbrir = { onAbrirCreador(creador.id) },
                     onSeguir = { onSeguirCreador(creador.id) },
-                    suscritoEnYouTube = youtube.suscritoA(creador.id)
+                    suscritoEnYouTube = youtube.suscritoA(creador.id),
+                    conFranja = i % 2 == 0
                 )
             }
         }

@@ -33,6 +33,7 @@ import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.AyudaTele
 import com.vocesdeizquierda.lefthub.data.EstadoServidor
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
+import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import com.vocesdeizquierda.lefthub.ui.*
 import kotlinx.coroutines.launch
@@ -249,12 +250,44 @@ private fun PantallaDeCarga() {
  * inferior de la pantalla.
  */
 /** Las pantallas a las que se entra desde el directorio. */
-private val FICHAS = listOf("creador/", "productora/", "canal/")
+private val FICHAS = listOf("creador/", "productora/", "canal/", "elegir/")
 
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
     val contexto = LocalContext.current
+
+    // Todos los canales de YouTube del directorio, con lo que pinta su fila.
+    val todosLosCanales = remember(estado.creadores, estado.productoras) {
+        canalesDelDirectorio(estado.creadores, estado.productoras)
+    }
+
+    // Seguir a alguien es seguir sus canales de YouTube. Antes una ventana
+    // dice cuántos y cuáles, y deja quitar los que no quiera o ir a verlos.
+    // Sin canales de YouTube se sigue de un toque, y dejar de seguir nunca
+    // pregunta.
+    var porSeguirAhora by remember { mutableStateOf<PorSeguir?>(null) }
+    // Si ya sigue algunos de sus canales sueltos, la misma ventana sirve para
+    // cambiar cuáles; con uno solo, se deja de seguir ese canal y ya.
+    val preguntarOSeguir: (PorSeguir?, () -> Unit) -> Unit = { preguntar, seguirDeUnToque ->
+        val unico = preguntar?.unicoSeguido(estado.perfil)
+        when {
+            unico != null -> modelo.alternarCanal(unico)
+            preguntar != null -> porSeguirAhora = preguntar
+            else -> seguirDeUnToque()
+        }
+    }
+    val seguirCreador: (String) -> Unit = { id ->
+        preguntarOSeguir(
+            porSeguir(modelo.creador(id), todosLosCanales).takeIf { id !in estado.perfil.favoritos }
+        ) { modelo.alternarFavorito(id) }
+    }
+    val seguirProductora: (String) -> Unit = { id ->
+        preguntarOSeguir(
+            porSeguir(estado.productoras.firstOrNull { it.id == id }, todosLosCanales)
+                .takeIf { id !in estado.perfil.productoras }
+        ) { modelo.alternarProductora(id) }
+    }
     val snackbar = remember { SnackbarHostState() }
 
     val destinos = listOf(
@@ -371,16 +404,17 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     creadores = estado.creadores,
                     favoritos = estado.perfil.favoritos,
                     youtube = estado.youtube,
-                    onSeguir = { modelo.alternarFavorito(it) },
+                    onSeguir = seguirCreador,
                     onAbrirCreador = { nav.navigate("creador/$it") },
                     productoras = estado.productoras,
                     productorasSeguidas = estado.perfil.productoras,
-                    onSeguirProductora = { modelo.alternarProductora(it) },
+                    onSeguirProductora = seguirProductora,
                     onAbrirProductora = { nav.navigate("productora/$it") },
                     onAbrirCanal = { nav.navigate("canal/$it") },
                     etiquetas = estado.etiquetas,
                     perfil = estado.perfil,
-                    onSeguirCanal = { modelo.alternarCanal(it) }
+                    onSeguirCanal = { modelo.alternarCanal(it) },
+                    perfilCargado = estado.perfilCargado
                 )
             }
 
@@ -398,7 +432,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     siguiendo = id in estado.perfil.favoritos,
                     youtube = estado.youtube,
                     esAnonimo = estado.esAnonimo,
-                    onSeguir = { modelo.alternarFavorito(id) },
+                    onSeguir = { seguirCreador(id) },
                     onConectarYouTube = { modelo.conectarYouTube(contexto) },
                     onVolver = { nav.popBackStack() },
                     productoras = estado.productoras,
@@ -457,8 +491,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     creadores = estado.creadores,
                     favoritos = estado.perfil.favoritos,
                     youtube = estado.youtube,
-                    onSeguir = { modelo.alternarProductora(id) },
-                    onSeguirCreador = { modelo.alternarFavorito(it) },
+                    onSeguir = { seguirProductora(id) },
+                    onSeguirCreador = seguirCreador,
                     onAbrirCreador = { nav.navigate("creador/$it") },
                     onAbrirCanal = { nav.navigate("canal/$it") },
                     // Mientras llegan los de este medio, no se pintan los del anterior.
@@ -467,6 +501,33 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     perfil = estado.perfil,
                     onSeguirCanal = { modelo.alternarCanal(it) },
                     onVolver = { nav.popBackStack() }
+                )
+            }
+
+            // Los canales de un creador o de un medio, para seguir solo algunos.
+            composable(
+                "elegir/{tipo}/{id}",
+                arguments = listOf(
+                    navArgument("tipo") { type = NavType.StringType },
+                    navArgument("id") { type = NavType.StringType }
+                )
+            ) { entrada ->
+                val esMedio = entrada.arguments?.getString("tipo") == "productora"
+                val id = entrada.arguments?.getString("id").orEmpty()
+                val creador = if (esMedio) null else modelo.creador(id)
+                val productora = if (esMedio) estado.productoras.firstOrNull { it.id == id } else null
+                ElegirCanalesPantalla(
+                    nombre = creador?.name ?: productora?.nombre,
+                    listados = canalesParaElegir(creador, productora, todosLosCanales),
+                    sigueATodos = if (esMedio) id in estado.perfil.productoras else id in estado.perfil.favoritos,
+                    perfil = estado.perfil,
+                    youtube = estado.youtube,
+                    onSeguirCanal = { modelo.alternarCanal(it) },
+                    onSeguirTodos = {
+                        if (esMedio) modelo.alternarProductora(id) else modelo.alternarFavorito(id)
+                    },
+                    onAbrirCanal = { nav.navigate("canal/$it") },
+                    onListo = { nav.popBackStack() }
                 )
             }
 
@@ -493,6 +554,29 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 )
             }
         }
+    }
+
+    porSeguirAhora?.let { por ->
+        VentanaAlSeguir(
+            por = por,
+            perfil = estado.perfil,
+            onSeguir = { marcados ->
+                porSeguirAhora = null
+                val plan = por.queSeguir(marcados, estado.perfil)
+                // Primero lo que se deja: con todos marcados, los sueltos
+                // sobran porque ya llegan por seguirlo entero.
+                plan.dejar.forEach { modelo.alternarCanal(it) }
+                plan.seguir.forEach { modelo.alternarCanal(it) }
+                if (plan.todo) {
+                    if (por.esMedio) modelo.alternarProductora(por.id) else modelo.alternarFavorito(por.id)
+                }
+            },
+            onVerCanales = {
+                porSeguirAhora = null
+                nav.navigate(por.rutaDeCanales)
+            },
+            onCancelar = { porSeguirAhora = null }
+        )
     }
 
     // Dejó de estar suscrito en YouTube a alguien del directorio. Es una
