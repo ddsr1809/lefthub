@@ -82,6 +82,11 @@ public class TitulosDeCanales {
             if (titulo != null) canal.setTitulo(recortar(titulo));
             canal.setTituloEn(ahora);
         }
+        // Guardado explícito: la revisión programada llama a este método desde
+        // la misma clase, así que su @Transactional no aplica y los canales
+        // llegan aquí ya desconectados de la base. Sin esto el nombre nunca se
+        // guardaba y cada diez minutos se volvía a preguntar por los mismos.
+        canales.saveAll(pendientes);
         log.info("Nombres de canales revisados: {} ({} con nombre)", pendientes.size(), titulos.size());
         return pendientes.size();
     }

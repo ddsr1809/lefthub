@@ -193,7 +193,9 @@ class DirectorioRepo(
      * suscripciones muertas en el aparato. Una vez por proceso basta.
      */
     private suspend fun dejarCortosViejos(topics: List<String>) {
-        if (viejosQuitados) return
+        // Con la lista vacía (todavía sin perfil) no se marca: se haría una
+        // sola vez y sin nada que quitar.
+        if (viejosQuitados || topics.isEmpty()) return
         viejosQuitados = true
         topics.forEach { topic ->
             runCatching { mensajeria.unsubscribeFromTopic(topic + SUFIJO_CORTOS_VIEJO).await() }
