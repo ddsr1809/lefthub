@@ -1393,7 +1393,7 @@
         const casa = !deProductora && k.productoraId ? nombreProductora(k.productoraId) : null;
         const con = nombresDe(k.creadores);
         return `<tr>
-          <td><b>${esc(k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal'))}</b><div><a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></div></td>
+          <td><b>${esc(k.titulo || k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal'))}</b>${k.titulo && k.nombre ? ' <span class="badge b-mute">' + esc(k.nombre) + '</span>' : ''}<div><a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></div></td>
           <td><div class="who">${avatar(deProductora ? d.logoUrl : d.fotoUrl)}<div><b>${esc(d.nombre)}</b><span>${deProductora ? 'Medio' : (casa ? 'Creador · canal de ' + esc(casa) : 'Creador')}${d.activo ? '' : ' · oculto'}</span></div></div></td>
           <td>${con.length ? esc(con.join(', ')) : '<span class="muted">—</span>'}</td>
           <td>${d.activo ? badgeSusc(k.estadoSuscripcion || 'PENDIENTE_VERIFICACION') : '<span class="badge b-mute">Sin suscribir</span>'}${k.expiraEn ? `<div class="muted" style="font-size:12.5px" title="${esc(fmtFecha(k.expiraEn))}">vence ${esc(relativo(k.expiraEn))}${vencePronto(k) ? ' <span class="badge b-warn">pronto</span>' : ''}</div>` : ''}</td>

@@ -265,6 +265,39 @@ public class YouTubeClient {
     }
 
     /**
+     * El nombre en YouTube de cada canal. Coste: 1 unidad por cada 50 canales.
+     *
+     * @return channelId → nombre de los que YouTube conoce; los que no vienen
+     *         no existen o son privados. null si la API no contestó: entonces
+     *         no se sabe nada de ninguno.
+     */
+    public Map<String, String> titulosDeCanales(List<String> channelIds) {
+        Map<String, String> titulos = new LinkedHashMap<>();
+
+        for (int desde = 0; desde < channelIds.size(); desde += 50) {
+            List<String> lote = channelIds.subList(desde, Math.min(desde + 50, channelIds.size()));
+
+            JsonNode respuesta = pedir(BASE + "/channels"
+                    + "?part=snippet"
+                    + "&maxResults=50"
+                    + "&id=" + codificar(String.join(",", lote))
+                    + "&key=" + config.youtube().apiKey());
+
+            if (respuesta == null) return null;
+
+            JsonNode items = respuesta.get("items");
+            if (items == null || !items.isArray()) continue;
+
+            for (JsonNode item : items) {
+                String id = texto(item, "id");
+                String titulo = texto(item.path("snippet"), "title");
+                if (id != null && titulo != null && !titulo.isBlank()) titulos.put(id, titulo.strip());
+            }
+        }
+        return titulos;
+    }
+
+    /**
      * Resuelve un @handle a su channelId (UC...). Coste: 1 unidad.
      * WebSub exige el ID canónico; los handles no valen como hub.topic.
      */

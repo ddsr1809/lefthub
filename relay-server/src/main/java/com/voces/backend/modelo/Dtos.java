@@ -103,7 +103,9 @@ public final class Dtos {
             String channelId,
             UUID creadorId,
             UUID productoraId,
-            List<UUID> creadores
+            List<UUID> creadores,
+            /** Su nombre en YouTube, si ya se sabe. */
+            String titulo
     ) {
         /**
          * @param productoraId la del canal, o null si no hay que mostrarla.
@@ -111,7 +113,8 @@ public final class Dtos {
          */
         public static CanalDto de(Canal k, UUID productoraId, List<UUID> creadores) {
             return new CanalDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
-                    k.getHandle(), k.getChannelId(), k.getCreadorId(), productoraId, creadores);
+                    k.getHandle(), k.getChannelId(), k.getCreadorId(), productoraId, creadores,
+                    k.getTitulo());
         }
     }
 
@@ -224,7 +227,12 @@ public final class Dtos {
              * El equipo encendió la comprobación de suscripciones de YouTube.
              * Con esto en false la app no la ofrece ni la hace por su cuenta.
              */
-            boolean youtube
+            boolean youtube,
+            /**
+             * Quiere una notificación por cada video corto. Apagado de entrada;
+             * solo cuenta si además ve los cortos y están disponibles.
+             */
+            boolean avisosCortos
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -244,11 +252,13 @@ public final class Dtos {
                     List.copyOf(u.getProductorasSeguidas()),
                     List.copyOf(u.getCanalesSeguidos()),
                     u.isCortos(), cortosDisponibles,
-                    anuncios, u.isSinAnuncios(), compraDisponible, youtube);
+                    anuncios, u.isSinAnuncios(), compraDisponible, youtube,
+                    u.isAvisosCortos());
         }
     }
 
-    public record Preferencias(String escalaTexto, String tema, Boolean avisos, Boolean cortos) {}
+    public record Preferencias(String escalaTexto, String tema, Boolean avisos, Boolean cortos,
+                               Boolean avisosCortos) {}
 
     // -------------------------------------------------------------------------
     // Suscripciones de YouTube del usuario
@@ -510,7 +520,9 @@ public final class Dtos {
             String estadoSuscripcion,
             Instant expiraEn,
             /** Los otros creadores con los que aparece, visibles o no. */
-            List<UUID> creadores
+            List<UUID> creadores,
+            /** Su nombre en YouTube, si ya se sabe. */
+            String titulo
     ) {}
 
     /**

@@ -359,6 +359,44 @@ Por dentro:
 Las apps anteriores no saben seguir canales sueltos y siguen funcionando igual:
 solo cambian cosas para quien actualiza.
 
+## Al seguir a alguien con varios canales
+
+Seguir a un creador o a un medio es seguir todos sus canales. Cuando tiene
+**dos o más** canales de YouTube, la app no lo hace de un toque: antes enseña
+una ventana que lo explica, con tres salidas:
+
+- **Seguir todos sus canales**: lo de siempre.
+- **Elegir qué canales seguir**: abre una pantalla con sus canales, cada uno
+  con su botón de *Seguir*. Ahí se queda con los que quiera.
+- **Ahora no**: no sigue nada. Lo puede hacer después desde su ficha, donde
+  cada canal tiene *Seguir solo este canal*.
+
+Con un solo canal (o ninguno) no hay nada que elegir y se sigue de un toque.
+Dejar de seguir nunca pregunta.
+
+## La lista de canales de YouTube
+
+En *Directorio → Canales de YouTube* cada fila dice, de arriba abajo:
+
+1. **El nombre del canal**, el mismo que se ve en YouTube.
+2. **De quién es**: "De Claudia Sheinbaum", o "Del medio …" si es el canal
+   propio de un medio.
+3. Lo demás que ayuda a reconocerlo: su medio, con quién más aparece y su
+   @usuario.
+
+Las filas van **una sí y otra no con fondo gris** (en el tema oscuro, un gris
+más claro que el fondo), en las tres listas del Directorio y en la de elegir
+canales: así se sigue con la vista una fila hasta su botón. Los colores
+cumplen el contraste AA con todo el texto encima.
+
+El nombre del canal lo pone el servidor solo: cada diez minutos busca los
+canales de YouTube que todavía no lo tienen, o que no se revisan desde hace
+una semana, y se lo pregunta a YouTube (1 unidad de cuota por cada 50
+canales). Se guarda en `canales.titulo` (V15) y viaja en el campo `titulo` de
+cada canal. Para no esperar, `POST /api/admin/canales/titulos` lo hace en el
+momento. Mientras no se sabe, la app usa la etiqueta que se le puso en el
+panel ("Clips") o su @usuario. Sin `YOUTUBE_API_KEY` no se llena nunca.
+
 ## Etiquetas
 
 Las etiquetas son la forma de agrupar el directorio, y las decide el equipo:
@@ -519,14 +557,20 @@ equipo y para cada persona.
 - **Cada persona decide si los ve.** Con el interruptor encendido aparece en
   los Ajustes de la app la sección *Videos cortos*, con *Verlos* / *No verlos*.
   Si el equipo lo apaga, esa sección desaparece.
+- **Y, aparte, si le avisan de ellos.** Verlos no trae notificaciones: los
+  avisos de cortos vienen **apagados para todos** (columna
+  `usuarios.avisos_cortos`, V15). Quien los quiera los enciende en Ajustes, en
+  *Avisos de videos cortos* → *Avisarme también de los cortos*.
 
 Reglas que conviene saber:
 
 - Un corto **nunca** sale mezclado en Novedades ni en la ficha de un canal.
-- Sus avisos van por topics aparte (`creator_<id>_cortos`,
-  `productora_<id>_cortos`), a los que solo se suscribe el teléfono de quien
-  los ve. Las versiones de la app anteriores a esto no los conocen: dejan de
-  ver y de recibir Shorts del todo.
+- Sus avisos van por topics aparte (`creator_<id>_avisos_cortos`,
+  `productora_<id>_avisos_cortos`, `canal_<id>_avisos_cortos`), a los que solo
+  se suscribe el teléfono de quien los ve **y** encendió sus avisos. Hasta la
+  1.0.6 el final era `_cortos` y la app se suscribía con solo ver los cortos;
+  con el final nuevo esas versiones ya no reciben avisos de cortos (no tienen
+  dónde encenderlos), y la app nueva se da de baja de los viejos.
 - **Cómo se sabe que un video es un Short.** La Data API no lo dice. Si dura
   más de tres minutos o es un directo, no lo es. Si dura menos, el servidor
   pide `youtube.com/shorts/ID` (solo la cabecera, sin cuota): YouTube contesta
@@ -540,7 +584,8 @@ Reglas que conviene saber:
 En la API: `GET /api/publicaciones` no trae cortos; `GET
 /api/publicaciones?tipo=cortos` trae solo cortos (vacío si están apagados o la
 persona no los quiere). `GET /api/perfil` dice `cortos` (lo que eligió la
-persona) y `cortosDisponibles` (lo que decidió el equipo). El interruptor es
+persona), `avisosCortos` (si quiere sus avisos) y `cortosDisponibles` (lo que
+decidió el equipo). Las dos de la persona se cambian con `PUT /api/preferencias`. El interruptor es
 `GET`/`PUT /api/admin/ajustes`, y se guarda en la tabla `ajustes` (V8).
 
 ## "¿Estoy suscrito en YouTube?"

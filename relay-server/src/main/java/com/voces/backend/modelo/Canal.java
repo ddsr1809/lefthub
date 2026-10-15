@@ -64,6 +64,16 @@ public class Canal {
     private String channelId;
 
     /**
+     * Su nombre en YouTube ("Claudia Sheinbaum Clips"). Lo llena el servidor
+     * solo, desde la Data API: ver TitulosDeCanales. Null mientras no se sepa.
+     */
+    private String titulo;
+
+    /** Cuándo se le preguntó a YouTube por su nombre; null es nunca. */
+    @Column(name = "titulo_en")
+    private Instant tituloEn;
+
+    /**
      * Posición dentro del dueño. El primero de cada plataforma es el
      * principal: el que reciben las versiones de la app anteriores a los
      * canales múltiples.
@@ -108,7 +118,20 @@ public class Canal {
     public void setHandle(String handle) { this.handle = handle; }
 
     public String getChannelId() { return channelId; }
-    public void setChannelId(String channelId) { this.channelId = channelId; }
+    /** Si cambia de canal, el nombre que se sabía era del otro: se vuelve a preguntar. */
+    public void setChannelId(String channelId) {
+        if (!java.util.Objects.equals(this.channelId, channelId)) {
+            this.titulo = null;
+            this.tituloEn = null;
+        }
+        this.channelId = channelId;
+    }
+
+    public String getTitulo() { return titulo; }
+    public void setTitulo(String titulo) { this.titulo = titulo; }
+
+    public Instant getTituloEn() { return tituloEn; }
+    public void setTituloEn(Instant tituloEn) { this.tituloEn = tituloEn; }
 
     public int getOrden() { return orden; }
     public void setOrden(int orden) { this.orden = orden; }
