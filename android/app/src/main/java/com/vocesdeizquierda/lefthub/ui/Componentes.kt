@@ -97,9 +97,15 @@ fun FilaCreador(
     // true o false si se sabe; null si no (sin permiso, sin canal o sin
     // comprobar todavía). Con null la fila queda como siempre.
     suscritoEnYouTube: Boolean? = null,
-    conFranja: Boolean = false
+    conFranja: Boolean = false,
+    /** De sus [deCuantos] canales de YouTube, cuántos sigue sueltos. */
+    sueltos: Int = 0,
+    deCuantos: Int = 0
 ) {
     val lugares = creador.canalesVisibles.size
+    // Sigue algunos de sus canales sin seguirlo entero: la fila lo dice, y el
+    // botón dice "Siguiendo" (al tocarlo, la ventana deja cambiar cuáles).
+    val parcial = !siguiendo && sueltos > 0
     val textoYouTube = when (suscritoEnYouTube) {
         true -> "Suscrito en YouTube"
         false -> "Sin suscripción en YouTube"
@@ -111,8 +117,9 @@ fun FilaCreador(
         fotoUrl = creador.photoUrl,
         // Sin el tema fijo de antes: ahora el directorio se agrupa con las
         // etiquetas que el equipo enciende, y van arriba, como filtro.
-        detalle = "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
-        siguiendo = siguiendo,
+        detalle = if (parcial) "Sigues ${deCuales(sueltos, deCuantos)}"
+            else "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
+        siguiendo = siguiendo || parcial,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
         descripcionAlAbrir = "${creador.name}. " +
@@ -130,9 +137,12 @@ fun FilaProductora(
     siguiendo: Boolean,
     onAbrir: () -> Unit,
     onSeguir: () -> Unit,
-    conFranja: Boolean = false
+    conFranja: Boolean = false,
+    sueltos: Int = 0,
+    deCuantos: Int = 0
 ) {
     val canales = productora.canales.size
+    val parcial = !siguiendo && sueltos > 0
     val creadores = productora.creadores.size
     val detalle = listOfNotNull(
         "Medio",
@@ -143,14 +153,18 @@ fun FilaProductora(
     FilaDeDirectorio(
         nombre = productora.nombre,
         fotoUrl = productora.logoUrl,
-        detalle = detalle,
-        siguiendo = siguiendo,
+        detalle = if (parcial) "Medio · Sigues ${deCuales(sueltos, deCuantos)}" else detalle,
+        siguiendo = siguiendo || parcial,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
         descripcionAlAbrir = "${productora.nombre}, medio. Ver sus canales y creadores.",
         conFranja = conFranja
     )
 }
+
+/** "1 de sus 3 canales", "2 de sus 3 canales". */
+internal fun deCuales(sueltos: Int, deCuantos: Int): String =
+    "$sueltos de sus $deCuantos ${if (deCuantos == 1) "canal" else "canales"}"
 
 /**
  * Fila de un canal de YouTube en el directorio.

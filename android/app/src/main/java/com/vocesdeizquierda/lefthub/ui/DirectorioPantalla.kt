@@ -3,6 +3,7 @@ package com.vocesdeizquierda.lefthub.ui
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -42,7 +44,8 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 // panel; mientras no haya ninguna encendida que alguien lleve, no hay filtro.
 
 // Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
-// de debajo filtran dentro de la que esté elegida.
+// de debajo filtran dentro de la que esté elegida. Los canales van primero:
+// es lo que la persona reconoce de YouTube, y lo que avisa.
 private const val CREADORES = "creadores"
 private const val CANALES = "canales"
 private const val PRODUCTORAS = "productoras"
@@ -66,9 +69,14 @@ fun DirectorioPantalla(
     etiquetas: List<Etiqueta> = emptyList(),
     /** A quién sigue: de aquí sale si un canal ya le manda sus avisos. */
     perfil: Perfil = Perfil(),
-    onSeguirCanal: (Canal) -> Unit = {}
+    onSeguirCanal: (Canal) -> Unit = {},
+    /**
+     * Ya llegó el perfil del servidor. Hasta entonces no se sabe qué sigue, y
+     * las listas se vuelven a ordenar cuando llega.
+     */
+    perfilCargado: Boolean = true
 ) {
-    var seccionElegida by remember { mutableStateOf(CREADORES) }
+    var seccionElegida by remember { mutableStateOf(CANALES) }
     // El id de la etiqueta elegida; null es "Todos".
     var etiquetaElegida by remember { mutableStateOf<String?>(null) }
     val esquema = MaterialTheme.colorScheme
@@ -82,13 +90,30 @@ fun DirectorioPantalla(
     // Solo se ofrecen las listas que tienen algo. Una pestaña vacía es una
     // promesa incumplida.
     val secciones = listOfNotNull(
-        CREADORES to "Creadores",
         (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
+        CREADORES to "Creadores",
         (PRODUCTORAS to "Medios").takeIf { productoras.isNotEmpty() }
     )
     // Si la lista que se estaba viendo se queda vacía (se retiró la última
-    // productora, por ejemplo), su pestaña desaparece y se vuelve a los creadores.
-    val seccion = if (secciones.any { it.first == seccionElegida }) seccionElegida else CREADORES
+    // productora, por ejemplo), su pestaña desaparece y se vuelve a la primera.
+    val seccion = if (secciones.any { it.first == seccionElegida }) seccionElegida else secciones.first().first
+
+    // Lo que sigue va arriba en cada lista. Se decide al abrir el Directorio,
+    // al cambiar de lista y cada vez que se refresca, pero no en cada toque:
+    // si la fila saltara arriba al tocar "Seguir", la persona perdería de
+    // vista dónde estaba. Un creador o un medio del que sigue algún canal
+    // suelto cuenta como seguido.
+    val seguidosAlAbrir = remember(creadores, productoras, seccion, perfilCargado) {
+        SeguidosAlAbrir(
+            creadores = personas.filter {
+                it.id in favoritos || perfil.sueltosDe(it.canalesDeYouTube) > 0
+            }.map { it.id }.toSet(),
+            productoras = productoras.filter {
+                it.id in productorasSeguidas || perfil.sueltosDe(it.canales) > 0
+            }.map { it.id }.toSet(),
+            canales = canales.filter { perfil.recibe(it.canal) }.map { it.canal.id }.toSet()
+        )
+    }
 
     // Las etiquetas que de verdad llevan a alguien de la lista elegida. Una
     // etiqueta sin nadie no se enseña; y sin ninguna, no hay fila de filtros.
@@ -202,14 +227,16 @@ fun DirectorioPantalla(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Una fila sí y otra no, con fondo: la primera con él.
-                itemsIndexed(productorasVisibles, key = { _, it -> it.id }) { i, productora ->
+                val (seguidas, demas) = seguidosPrimero(productorasVisibles) { it.id in seguidosAlAbrir.productoras }
+                enDosGrupos(seguidas, demas, "Medios que sigues", "Los demás medios", { it.id }) { productora, franja ->
                     FilaProductora(
                         productora = productora,
                         siguiendo = productora.id in productorasSeguidas,
                         onAbrir = { onAbrirProductora(productora.id) },
                         onSeguir = { onSeguirProductora(productora.id) },
-                        conFranja = i % 2 == 0
+                        conFranja = franja,
+                        sueltos = perfil.sueltosDe(productora.canales),
+                        deCuantos = productora.canales.count { it.sePuedeSeguir }
                     )
                 }
             }
@@ -224,14 +251,15 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                itemsIndexed(canalesVisibles, key = { _, it -> it.canal.id }) { i, listado ->
+                val (seguidos, demas) = seguidosPrimero(canalesVisibles) { it.canal.id in seguidosAlAbrir.canales }
+                enDosGrupos(seguidos, demas, "Canales que sigues", "Los demás canales", { it.canal.id }) { listado, franja ->
                     FilaCanal(
                         listado = listado,
                         onAbrir = { onAbrirCanal(listado.canal.id) },
                         suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
                         siguiendo = perfil.recibe(listado.canal),
                         onSeguir = { onSeguirCanal(listado.canal) },
-                        conFranja = i % 2 == 0
+                        conFranja = franja
                     )
                 }
             }
@@ -250,19 +278,61 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                itemsIndexed(creadoresVisibles, key = { _, it -> it.id }) { i, creador ->
+                val (seguidos, demas) = seguidosPrimero(creadoresVisibles) { it.id in seguidosAlAbrir.creadores }
+                enDosGrupos(seguidos, demas, "Creadores que sigues", "Los demás creadores", { it.id }) { creador, franja ->
                     FilaCreador(
                         creador = creador,
                         siguiendo = creador.id in favoritos,
                         onAbrir = { onAbrirCreador(creador.id) },
                         onSeguir = { onSeguir(creador.id) },
                         suscritoEnYouTube = youtube.suscritoA(creador.id),
-                        conFranja = i % 2 == 0
+                        conFranja = franja,
+                        sueltos = perfil.sueltosDe(creador.canalesDeYouTube),
+                        deCuantos = creador.canalesDeYouTube.count { it.sePuedeSeguir }
                     )
                 }
             }
         }
     }
+}
+
+/** Lo que seguía la persona al abrir la lista, por id. */
+private data class SeguidosAlAbrir(
+    val creadores: Set<String>,
+    val productoras: Set<String>,
+    val canales: Set<String>
+)
+
+/**
+ * Una lista en dos partes: arriba lo que sigue, debajo lo demás. Cada parte
+ * lleva su título solo si hay de las dos; si sigue todo o nada, sobra. Las
+ * franjas alternas empiezan de nuevo en cada parte.
+ */
+private fun <T> LazyListScope.enDosGrupos(
+    seguidos: List<T>,
+    demas: List<T>,
+    tituloSeguidos: String,
+    tituloDemas: String,
+    clave: (T) -> String,
+    fila: @Composable (T, Boolean) -> Unit
+) {
+    val conTitulos = seguidos.isNotEmpty() && demas.isNotEmpty()
+    if (conTitulos) item(key = "titulo-seguidos") { TituloDeGrupo(tituloSeguidos) }
+    itemsIndexed(seguidos, key = { _, it -> clave(it) }) { i, x -> fila(x, i % 2 == 0) }
+    if (conTitulos) item(key = "titulo-demas") { TituloDeGrupo(tituloDemas) }
+    itemsIndexed(demas, key = { _, it -> clave(it) }) { i, x -> fila(x, i % 2 == 0) }
+}
+
+@Composable
+private fun TituloDeGrupo(texto: String) {
+    Text(
+        texto,
+        style = MaterialTheme.typography.headlineMedium,
+        color = MaterialTheme.colorScheme.onBackground,
+        modifier = Modifier
+            .padding(top = Espacio.md, bottom = Espacio.sm)
+            .semantics { heading() }
+    )
 }
 
 /**
@@ -343,19 +413,26 @@ fun CreadorPantalla(
         // Seguir al creador es seguir todos sus canales. Con uno solo no hay
         // diferencia y el botón lo dice como siempre; con varios, dice que
         // son todos, porque más abajo cada canal se puede seguir por separado.
-        val variosCanales = creador.canalesDeYouTube.count { it.sePuedeSeguir } >= 2
+        val cuantosCanales = creador.canalesDeYouTube.count { it.sePuedeSeguir }
+        val variosCanales = cuantosCanales >= 2
+        // Sigue algunos de sus canales sueltos, sin seguirlo entero.
+        val sueltos = if (siguiendo) 0 else perfil.sueltosDe(creador.canalesDeYouTube)
         BotonGrande(
             titulo = when {
+                sueltos > 0 && !variosCanales -> "Sigues su canal"
+                sueltos > 0 -> "Sigues ${deCuales(sueltos, cuantosCanales)}"
                 !variosCanales -> if (siguiendo) "Ya recibes sus avisos" else "Avísame cuando publique"
                 siguiendo -> "Sigues todos sus canales"
                 else -> "Seguir todos sus canales"
             },
             subtitulo = when {
+                sueltos > 0 && !variosCanales -> "Toca para dejar de seguirlo"
+                sueltos > 0 -> "Toca para elegir cuáles"
                 siguiendo -> "Toca para dejar de recibir sus avisos"
                 variosCanales -> "Te avisamos de lo que publique en cualquiera de ellos"
                 else -> "Te llegará una notificación a este teléfono"
             },
-            variante = if (siguiendo) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
+            variante = if (siguiendo || sueltos > 0) VarianteBoton.SECUNDARIO else VarianteBoton.PRIMARIO,
             onClick = onSeguir
         )
 

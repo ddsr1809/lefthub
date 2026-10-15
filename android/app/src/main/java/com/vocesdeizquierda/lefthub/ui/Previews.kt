@@ -338,10 +338,11 @@ private fun PreviaDirectorio() {
 @Composable
 private fun PreviaSeguirTodos() {
     Marco {
-        VentanaSeguirTodos(
-            por = porSeguir(juan)!!,
-            onSeguirTodos = {},
-            onElegir = {},
+        VentanaAlSeguir(
+            por = porSeguir(juan, canalesDelDirectorio(creadores, listOf(estudio)))!!,
+            perfil = Perfil(),
+            onSeguir = {},
+            onVerCanales = {},
             onCancelar = {}
         )
     }
