@@ -359,24 +359,39 @@ Por dentro:
 Las apps anteriores no saben seguir canales sueltos y siguen funcionando igual:
 solo cambian cosas para quien actualiza.
 
-## Al seguir a alguien con varios canales
+## Al seguir a un creador o a un medio
 
-Seguir a un creador o a un medio es seguir todos sus canales. Cuando tiene
-**dos o más** canales de YouTube, la app no lo hace de un toque: antes enseña
-una ventana que lo explica, con tres salidas:
+Seguir a un creador o a un medio es seguir sus canales de YouTube. Antes de
+hacerlo, la app enseña una ventana que dice **cuántos y cuáles** son, cada uno
+con una casilla marcada:
 
-- **Seguir todos sus canales**: lo de siempre.
-- **Elegir qué canales seguir**: abre una pantalla con sus canales, cada uno
-  con su botón de *Seguir*. Ahí se queda con los que quiera.
-- **Ahora no**: no sigue nada. Lo puede hacer después desde su ficha, donde
-  cada canal tiene *Seguir solo este canal*.
+- **Seguir los N canales** (todas marcadas): sigue al creador entero, que trae
+  también los canales que se le agreguen después.
+- **Quitar la marca** a los que no quiera y tocar *Seguir solo K canales*:
+  sigue solo esos, cada uno por su lado.
+- **Ver sus canales antes de decidir**: lleva a la pantalla con todos sus
+  canales (o, si tiene uno solo, a la ficha de ese canal), donde cada uno
+  tiene su botón de *Seguir*.
+- **Ahora no**: no sigue nada; lo puede hacer después desde su ficha.
 
-Con un solo canal (o ninguno) no hay nada que elegir y se sigue de un toque.
-Dejar de seguir nunca pregunta.
+Si ya sigue algunos de sus canales sueltos, su fila y su ficha lo dicen
+("Sigues 2 de sus 3 canales") y el botón abre la misma ventana con esos
+marcados, para cambiar cuáles. Sin canales de YouTube (solo redes) se sigue de
+un toque, y dejar de seguir nunca pregunta.
 
 ## La lista de canales de YouTube
 
-En *Directorio → Canales de YouTube* cada fila dice, de arriba abajo:
+*Canales de YouTube* es la primera lista del Directorio, antes de
+*Creadores* y *Medios*, y es la que se ve al abrirlo.
+
+En las tres listas, **lo que la persona sigue va arriba**, bajo el título
+"Canales que sigues" (o "Creadores que sigues", "Medios que sigues"), y lo
+demás debajo, cada parte en orden alfabético. El orden se decide al abrir el
+Directorio, al cambiar de lista y cada vez que se refresca (cada cinco
+minutos), pero no en el momento de tocar *Seguir*: si la fila saltara arriba
+al tocarla, la persona perdería de vista dónde estaba.
+
+Cada fila de canal dice, de arriba abajo:
 
 1. **El nombre del canal**, el mismo que se ve en YouTube.
 2. **De quién es**: "De Claudia Sheinbaum", o "Del medio …" si es el canal

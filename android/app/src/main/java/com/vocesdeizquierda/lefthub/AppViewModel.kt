@@ -25,6 +25,8 @@ data class EstadoApp(
     /** Los videos cortos, que van en su propio apartado de Novedades. */
     val cortos: List<Publicacion> = emptyList(),
     val perfil: Perfil = Perfil(),
+    /** Ya llegó el perfil del servidor al menos una vez: se sabe qué sigue. */
+    val perfilCargado: Boolean = false,
     val esAnonimo: Boolean = true,
     val correo: String? = null,
     val ocupado: Boolean = false,
@@ -269,7 +271,7 @@ class AppViewModel(
         val p = if (BuildConfig.ADMOB_BANNER.isBlank()) leido.copy(anuncios = false) else leido
 
         perfilFlow.value = p
-        _estado.update { it.copy(perfil = p) }
+        _estado.update { it.copy(perfil = p, perfilCargado = true) }
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
         directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
