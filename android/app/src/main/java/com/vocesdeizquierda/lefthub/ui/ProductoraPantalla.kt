@@ -150,13 +150,14 @@ fun ProductoraPantalla(
                 color = esquema.onBackground,
                 modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.sm)
             )
-            figuran.forEach { creador ->
+            figuran.forEachIndexed { i, creador ->
                 FilaCreador(
                     creador = creador,
                     siguiendo = creador.id in favoritos,
                     onAbrir = { onAbrirCreador(creador.id) },
                     onSeguir = { onSeguirCreador(creador.id) },
-                    suscritoEnYouTube = youtube.suscritoA(creador.id)
+                    suscritoEnYouTube = youtube.suscritoA(creador.id),
+                    conFranja = i % 2 == 0
                 )
             }
         }

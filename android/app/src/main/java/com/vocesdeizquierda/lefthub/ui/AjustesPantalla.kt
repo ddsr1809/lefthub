@@ -111,16 +111,46 @@ fun AjustesPantalla(
                 )
                 BotonGrande(
                     titulo = "Verlos",
-                    subtitulo = "En su apartado, y con aviso cuando publiquen uno",
+                    subtitulo = "En su propio apartado de Novedades",
                     variante = if (estado.perfil.cortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
                     onClick = { onGuardarPreferencia("cortos", true) }
                 )
                 BotonGrande(
                     titulo = "No verlos",
-                    subtitulo = "Solo los videos de siempre, sin avisos de cortos",
+                    subtitulo = "Solo los videos de siempre",
                     variante = if (!estado.perfil.cortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
                     onClick = { onGuardarPreferencia("cortos", false) }
                 )
+            }
+
+            // Los avisos van aparte y apagados de entrada: un creador puede
+            // subir varios cortos al día, y una notificación por cada uno
+            // termina por tapar los avisos de los videos de siempre.
+            if (estado.perfil.cortos) {
+                Seccion("Avisos de videos cortos") {
+                    Text(
+                        if (estado.perfil.avisosCortos)
+                            "Te llega una notificación cada vez que alguien que sigues publica un video corto."
+                        else
+                            "No te llegan notificaciones de los videos cortos. Los encuentras en su " +
+                                "apartado de Novedades cuando quieras verlos.",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = esquema.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = Espacio.md)
+                    )
+                    BotonGrande(
+                        titulo = "Sin avisos de cortos",
+                        subtitulo = "Solo te avisamos de los videos de siempre",
+                        variante = if (!estado.perfil.avisosCortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+                        onClick = { onGuardarPreferencia("avisosCortos", false) }
+                    )
+                    BotonGrande(
+                        titulo = "Avisarme también de los cortos",
+                        subtitulo = "Una notificación por cada video corto nuevo",
+                        variante = if (estado.perfil.avisosCortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+                        onClick = { onGuardarPreferencia("avisosCortos", true) }
+                    )
+                }
             }
         }
 

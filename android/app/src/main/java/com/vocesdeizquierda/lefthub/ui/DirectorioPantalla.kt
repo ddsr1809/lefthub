@@ -4,6 +4,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -201,12 +202,14 @@ fun DirectorioPantalla(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                items(productorasVisibles, key = { it.id }) { productora ->
+                // Una fila sí y otra no, con fondo: la primera con él.
+                itemsIndexed(productorasVisibles, key = { _, it -> it.id }) { i, productora ->
                     FilaProductora(
                         productora = productora,
                         siguiendo = productora.id in productorasSeguidas,
                         onAbrir = { onAbrirProductora(productora.id) },
-                        onSeguir = { onSeguirProductora(productora.id) }
+                        onSeguir = { onSeguirProductora(productora.id) },
+                        conFranja = i % 2 == 0
                     )
                 }
             }
@@ -221,13 +224,14 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                items(canalesVisibles, key = { it.canal.id }) { listado ->
+                itemsIndexed(canalesVisibles, key = { _, it -> it.canal.id }) { i, listado ->
                     FilaCanal(
                         listado = listado,
                         onAbrir = { onAbrirCanal(listado.canal.id) },
                         suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
                         siguiendo = perfil.recibe(listado.canal),
-                        onSeguir = { onSeguirCanal(listado.canal) }
+                        onSeguir = { onSeguirCanal(listado.canal) },
+                        conFranja = i % 2 == 0
                     )
                 }
             }
@@ -246,13 +250,14 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                items(creadoresVisibles, key = { it.id }) { creador ->
+                itemsIndexed(creadoresVisibles, key = { _, it -> it.id }) { i, creador ->
                     FilaCreador(
                         creador = creador,
                         siguiendo = creador.id in favoritos,
                         onAbrir = { onAbrirCreador(creador.id) },
                         onSeguir = { onSeguir(creador.id) },
-                        suscritoEnYouTube = youtube.suscritoA(creador.id)
+                        suscritoEnYouTube = youtube.suscritoA(creador.id),
+                        conFranja = i % 2 == 0
                     )
                 }
             }
@@ -631,10 +636,11 @@ internal fun BotonCanal(
         "Se abre la app de ${Enrutador.nombreDe(canal.plataforma)}"
 
     BotonGrande(
-        // Con dos canales en la misma plataforma, la etiqueta es lo único que
-        // los distingue: "Ver videos largos · Clips".
+        // Con dos canales en la misma plataforma, su nombre es lo único que
+        // los distingue: "Ver videos largos · Claudia Sheinbaum Clips". El de
+        // YouTube si ya se sabe; si no, la etiqueta del panel.
         titulo = Enrutador.accionDe(canal.plataforma) +
-            (canal.nombre?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+            ((canal.titulo ?: canal.nombre)?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
         subtitulo = if (dueno != null) "$dueno. $destino" else destino,
         variante = VarianteBoton.SECUNDARIO,
         onClick = {

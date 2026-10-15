@@ -183,6 +183,21 @@ class DirectorioRepo(
         }
 
         sincronizarCortos(topics.map { it + SUFIJO_CORTOS }, conCortos)
+        dejarCortosViejos(topics)
+    }
+
+    /**
+     * Hasta la 1.0.6 los avisos de cortos iban por topics que terminaban en
+     * "_cortos", y la app se suscribía a ellos con solo ver los cortos. El
+     * servidor ya no manda nada ahí; darse de baja es solo para no dejar
+     * suscripciones muertas en el aparato. Una vez por proceso basta.
+     */
+    private suspend fun dejarCortosViejos(topics: List<String>) {
+        if (viejosQuitados) return
+        viejosQuitados = true
+        topics.forEach { topic ->
+            runCatching { mensajeria.unsubscribeFromTopic(topic + SUFIJO_CORTOS_VIEJO).await() }
+        }
     }
 
     /**
@@ -258,8 +273,16 @@ class DirectorioRepo(
         /** El de quien sigue un canal por sí solo. Lo mismo que PushService.topicDeCanal. */
         fun topicDeCanal(canalId: String) = "canal_$canalId"
 
-        /** Lo mismo que PushService.SUFIJO_CORTOS en el servidor. */
-        const val SUFIJO_CORTOS = "_cortos"
+        /**
+         * Lo mismo que PushService.SUFIJO_CORTOS en el servidor. Cambió para
+         * que los avisos de cortos empiecen apagados para todos: ver
+         * dejarCortosViejos.
+         */
+        const val SUFIJO_CORTOS = "_avisos_cortos"
+        private const val SUFIJO_CORTOS_VIEJO = "_cortos"
+
+        @Volatile
+        private var viejosQuitados = false
 
         // A qué topics de cortos está suscrito este aparato, hasta donde se
         // sabe. Es del proceso y no de cada DirectorioRepo, porque los topics

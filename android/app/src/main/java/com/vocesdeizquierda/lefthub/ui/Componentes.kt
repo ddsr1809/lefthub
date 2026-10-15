@@ -96,7 +96,8 @@ fun FilaCreador(
     onSeguir: () -> Unit,
     // true o false si se sabe; null si no (sin permiso, sin canal o sin
     // comprobar todavía). Con null la fila queda como siempre.
-    suscritoEnYouTube: Boolean? = null
+    suscritoEnYouTube: Boolean? = null,
+    conFranja: Boolean = false
 ) {
     val lugares = creador.canalesVisibles.size
     val textoYouTube = when (suscritoEnYouTube) {
@@ -117,7 +118,8 @@ fun FilaCreador(
         descripcionAlAbrir = "${creador.name}. " +
             (textoYouTube?.let { "$it. " } ?: "") + "Ver su perfil.",
         lineaExtra = textoYouTube,
-        lineaExtraDestacada = suscritoEnYouTube == true
+        lineaExtraDestacada = suscritoEnYouTube == true,
+        conFranja = conFranja
     )
 }
 
@@ -127,7 +129,8 @@ fun FilaProductora(
     productora: Productora,
     siguiendo: Boolean,
     onAbrir: () -> Unit,
-    onSeguir: () -> Unit
+    onSeguir: () -> Unit,
+    conFranja: Boolean = false
 ) {
     val canales = productora.canales.size
     val creadores = productora.creadores.size
@@ -144,12 +147,17 @@ fun FilaProductora(
         siguiendo = siguiendo,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
-        descripcionAlAbrir = "${productora.nombre}, medio. Ver sus canales y creadores."
+        descripcionAlAbrir = "${productora.nombre}, medio. Ver sus canales y creadores.",
+        conFranja = conFranja
     )
 }
 
 /**
  * Fila de un canal de YouTube en el directorio.
+ *
+ * De arriba abajo: cómo se llama el canal, de quién es y lo demás que ayuda a
+ * reconocerlo (su medio, con quién aparece, su @usuario). El nombre del canal
+ * va primero porque es el que la persona ve en YouTube.
  *
  * Un canal se puede seguir por sí solo, sin seguir a su creador ni a su
  * medio. El botón de la derecha es el mismo "Seguir" de las otras filas; sale
@@ -161,33 +169,44 @@ fun FilaCanal(
     onAbrir: () -> Unit,
     suscritoEnYouTube: Boolean? = null,
     siguiendo: Boolean = false,
-    onSeguir: () -> Unit = {}
+    onSeguir: () -> Unit = {},
+    conFranja: Boolean = false
 ) {
-    val arroba = listado.canal.handle?.takeIf { it.isNotBlank() }?.let { "@" + it.removePrefix("@") }
     val textoYouTube = when (suscritoEnYouTube) {
         true -> "Suscrito en YouTube"
         false -> "Sin suscripción en YouTube"
         null -> null
     }
+    val deQuien = if (listado.duenoEsMedio) "Del medio ${listado.dueno}" else "De ${listado.dueno}"
+    // El @usuario, si no es ya el nombre que se enseña arriba.
+    val arroba = listado.canal.arroba?.takeIf { it != listado.nombreCanal }
+    val detalle = listOfNotNull(listado.deQuien.takeIf { it.isNotBlank() }, arroba)
+        .joinToString(" · ")
+        .ifBlank { "Canal de YouTube" }
 
     FilaDeDirectorio(
-        nombre = listado.titulo,
+        nombre = listado.nombreCanal,
+        subtitulo = deQuien,
         fotoUrl = listado.fotoUrl,
-        detalle = listOfNotNull("Canal de YouTube", arroba, listado.deQuien.takeIf { it.isNotBlank() })
-            .joinToString(" · "),
+        detalle = detalle,
         siguiendo = siguiendo,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
-        descripcionAlAbrir = "Canal de YouTube de ${listado.titulo}. " +
+        descripcionAlAbrir = "Canal de YouTube ${listado.nombreCanal}. $deQuien. " +
             (textoYouTube?.let { "$it. " } ?: "") + "Ver el canal y sus últimos videos.",
         lineaExtra = textoYouTube,
-        lineaExtraDestacada = suscritoEnYouTube == true
+        lineaExtraDestacada = suscritoEnYouTube == true,
+        conFranja = conFranja
     )
 }
 
 /**
  * Lo que comparten las filas: a la izquierda quién es, y al tocarlo se abre
  * su ficha; a la derecha, el botón de seguir.
+ *
+ * Con [conFranja] la fila lleva un fondo más oscuro. Las listas lo encienden
+ * una fila sí y otra no: así se ve de un vistazo qué botón es de qué fila,
+ * que con la letra grande y los nombres largos no siempre es evidente.
  */
 @Composable
 private fun FilaDeDirectorio(
@@ -199,15 +218,21 @@ private fun FilaDeDirectorio(
     onSeguir: () -> Unit,
     descripcionAlAbrir: String,
     lineaExtra: String? = null,
-    lineaExtraDestacada: Boolean = false
+    lineaExtraDestacada: Boolean = false,
+    /** Una línea entre el nombre y el detalle: de quién es un canal. */
+    subtitulo: String? = null,
+    conFranja: Boolean = false
 ) {
     val esquema = MaterialTheme.colorScheme
+    val franja = LocalFranja.current
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = Espacio.sm)
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (conFranja) franja else Color.Transparent)
+            .padding(horizontal = Espacio.sm, vertical = Espacio.sm)
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -225,13 +250,24 @@ private fun FilaDeDirectorio(
         ) {
             Avatar(fotoUrl, nombre)
             Column(Modifier.weight(1f)) {
+                // Hasta dos renglones: con la letra grande, un nombre largo
+                // cortado a uno solo ya no se reconoce.
                 Text(
                     nombre,
                     style = MaterialTheme.typography.bodyMedium,
                     color = esquema.onBackground,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
+                if (subtitulo != null) {
+                    Text(
+                        subtitulo,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = esquema.onBackground,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
                 Text(
                     detalle,
                     style = MaterialTheme.typography.bodySmall,
