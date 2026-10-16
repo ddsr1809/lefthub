@@ -169,9 +169,9 @@ internal fun deCuales(sueltos: Int, deCuantos: Int): String =
 /**
  * Fila de un canal de YouTube en el directorio.
  *
- * De arriba abajo: cómo se llama el canal, de quién es y lo demás que ayuda a
- * reconocerlo (su medio, con quién aparece, su @usuario). El nombre del canal
- * va primero porque es el que la persona ve en YouTube.
+ * De arriba abajo: cómo se llama el canal, en mayúsculas; de quién es; y lo
+ * demás que ayuda a reconocerlo (su medio, con quién aparece). El nombre del
+ * canal va primero porque es el que la persona ve en YouTube.
  *
  * Un canal se puede seguir por sí solo, sin seguir a su creador ni a su
  * medio. El botón de la derecha es el mismo "Seguir" de las otras filas; sale
@@ -192,11 +192,9 @@ fun FilaCanal(
         null -> null
     }
     val deQuien = if (listado.duenoEsMedio) "Del medio ${listado.dueno}" else "De ${listado.dueno}"
-    // El @usuario, si no es ya el nombre que se enseña arriba.
-    val arroba = listado.canal.arroba?.takeIf { it != listado.nombreCanal }
-    val detalle = listOfNotNull(listado.deQuien.takeIf { it.isNotBlank() }, arroba)
-        .joinToString(" · ")
-        .ifBlank { "Canal de YouTube" }
+    // Sin el @usuario: el nombre de arriba ya lo identifica, y la arroba
+    // confunde más de lo que ayuda.
+    val detalle = listado.deQuien.ifBlank { "Canal de YouTube" }
 
     FilaDeDirectorio(
         nombre = listado.nombreCanal,

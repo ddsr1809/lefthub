@@ -331,7 +331,7 @@ internal fun TarjetaPublicacion(
  * quien no distingue bien los colores la lee igual.
  */
 @Composable
-private fun EtiquetaDeEstado(abierto: Boolean) {
+internal fun EtiquetaDeEstado(abierto: Boolean) {
     val esquema = MaterialTheme.colorScheme
     val forma = RoundedCornerShape(8.dp)
 
@@ -440,7 +440,7 @@ private fun aQuienSigue(creadores: Int, productoras: Int, canales: Int = 0): Str
  * Fechas en palabras. "hace 2 horas" se entiende de un vistazo; una marca
  * como 09/09/2026 15:04 obliga a hacer la resta mentalmente.
  */
-private fun tiempoRelativo(marca: Instant?): String {
+internal fun tiempoRelativo(marca: Instant?): String {
     val fecha = marca?.let { java.util.Date.from(it) } ?: return ""
     val minutos = (System.currentTimeMillis() - fecha.time) / 60_000
 

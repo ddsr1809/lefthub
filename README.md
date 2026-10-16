@@ -393,11 +393,11 @@ al tocarla, la persona perdería de vista dónde estaba.
 
 Cada fila de canal dice, de arriba abajo:
 
-1. **El nombre del canal**, el mismo que se ve en YouTube.
+1. **El nombre del canal, en mayúsculas** ("HISTORIANETWORK"), el mismo que
+   se ve en YouTube. Así se distingue de un vistazo del nombre de la persona.
 2. **De quién es**: "De Claudia Sheinbaum", o "Del medio …" si es el canal
    propio de un medio.
-3. Lo demás que ayuda a reconocerlo: su medio, con quién más aparece y su
-   @usuario.
+3. Lo demás que ayuda a reconocerlo: su medio y con quién más aparece.
 
 Las filas van **una sí y otra no con fondo gris** (en el tema oscuro, un gris
 más claro que el fondo), en las tres listas del Directorio y en la de elegir
@@ -410,7 +410,40 @@ una semana, y se lo pregunta a YouTube (1 unidad de cuota por cada 50
 canales). Se guarda en `canales.titulo` (V15) y viaja en el campo `titulo` de
 cada canal. Para no esperar, `POST /api/admin/canales/titulos` lo hace en el
 momento. Mientras no se sabe, la app usa la etiqueta que se le puso en el
-panel ("Clips") o su @usuario. Sin `YOUTUBE_API_KEY` no se llena nunca.
+panel ("Clips") o su usuario de YouTube, sin la arroba. En la app el
+nombre del canal va siempre en mayúsculas, también en su ficha. Sin `YOUTUBE_API_KEY` no se llena nunca.
+
+## Volver a la lista correcta del Directorio
+
+El Directorio recuerda en qué lista se estaba (*Canales de YouTube*,
+*Creadores* o *Medios*). Al abrir una ficha y volver con el botón de atrás, o
+al ir a Novedades y volver a la pestaña del Directorio, se ve la lista de la
+**última ficha** que se abrió: la de un creador lleva a *Creadores*; la de un
+canal, a *Canales de YouTube*; la de un medio, a *Medios*. Solo al abrir la app
+se empieza por *Canales de YouTube*, y la persona puede cambiar de lista
+cuando quiera con los botones de arriba. El filtro de etiquetas elegido
+también se conserva.
+
+## Al tocar una notificación: la ficha del video
+
+Tocar el aviso de un video ya no abre YouTube directamente: abre la **ficha
+del video** dentro de la app. De arriba abajo tiene la miniatura, de quién es
+y cuándo salió, el título, el botón grande *Ver el video* (que lo abre en
+YouTube) y, debajo, el **espacio para un anuncio**. Después vienen *Ver la
+ficha de …* (su creador, o su canal), *Ir a Novedades* y *El enlace no
+funciona*.
+
+El anuncio es un banner de AdMob, como los de Novedades, con la palabra
+"Publicidad" encima y el botón *Quitar los anuncios*. Solo sale si los
+anuncios están encendidos en el panel, la compilación tiene los
+identificadores de AdMob y la persona no los quitó; si no, el hueco no existe.
+
+Los datos del video los da `GET /api/videos/{videoId}` (cualquier sesión, no
+depende de a quién se siga; 404 si el video no existe o su dueño está oculto).
+Mientras llegan, *Ver el video* ya funciona con lo que traía el aviso. Los
+avisos de contenido movido abren la misma ficha y el botón lleva al sitio
+nuevo. Los videos que se abren desde la lista de Novedades siguen yendo
+directo a YouTube.
 
 ## Etiquetas
 
@@ -595,6 +628,29 @@ Reglas que conviene saber:
   / *No es corto*. Y *Repasar los cortos guardados* vuelve a preguntarle a
   YouTube por los últimos: sirve sobre todo la primera vez, porque lo guardado
   antes de esta versión se clasificó solo por la duración.
+
+**Videos que llegaron sin datos.** Al llegar un video, el servidor pide a la
+Data API su duración. Si no contesta (la clave no vale, se acabó la cuota,
+YouTube todavía lo procesa), el video se guarda como normal y sin duración, y
+sin duración no se sabe si es corto. La revisión de videos (`RevisionDeVideos`)
+vuelve a preguntar por ellos cada diez minutos, 50 por unidad de cuota: les
+pone duración, miniatura y descripción, y los que son Shorts pasan a cortos.
+No manda avisos (el de ese video ya salió) y no cambia el tipo de los que se
+marcaron a mano con *Es corto* / *No es corto*. Los que YouTube ya no tiene se
+marcan y no se vuelve a preguntar por ellos. Para no esperar, en Publicaciones
+está *Completar los videos sin datos* (`POST /api/admin/videos/completar`;
+`GET /api/admin/videos/sin-datos` dice cuántos quedan). Se guarda en
+`publicaciones.datos_revisados_en` y `publicaciones.tipo_a_mano` (V16).
+
+Si muchos videos llegan sin duración, lo primero es probar la clave:
+
+```bash
+curl -s "https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=ID_DE_UN_VIDEO&key=LA_CLAVE"
+```
+
+`API_KEY_INVALID` es que la clave no existe en Google Cloud (se borró o se
+regeneró); hay que crear otra, ponerla en `YOUTUBE_API_KEY` del `.env` y
+recrear el contenedor del servidor.
 
 En la API: `GET /api/publicaciones` no trae cortos; `GET
 /api/publicaciones?tipo=cortos` trae solo cortos (vacío si están apagados o la

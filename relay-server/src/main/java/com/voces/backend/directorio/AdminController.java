@@ -54,6 +54,7 @@ public class AdminController {
     private final PerfilesService perfiles;
     private final BorradoService borrado;
     private final TitulosDeCanales titulos;
+    private final RevisionDeVideos revisionDeVideos;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -67,8 +68,10 @@ public class AdminController {
                            CanalesService canalesService, Catalogo catalogo,
                            ReplicaService replica, AjustesService ajustes,
                            FotosService fotos, PerfilesService perfiles,
-                           BorradoService borrado, TitulosDeCanales titulos) {
+                           BorradoService borrado, TitulosDeCanales titulos,
+                           RevisionDeVideos revisionDeVideos) {
         this.titulos = titulos;
+        this.revisionDeVideos = revisionDeVideos;
         this.creadores = creadores;
         this.productoras = productoras;
         this.canales = canales;
@@ -527,6 +530,8 @@ public class AdminController {
         }
 
         p.setTipo(peticion.tipo());
+        // Elegido a mano: la revisión automática ya no se lo cambia.
+        p.setTipoAMano(true);
         publicaciones.save(p);
 
         return Dtos.RespuestaSimple.de(p.esCorto()
@@ -560,6 +565,22 @@ public class AdminController {
             }
         }
         return new Dtos.RevisionDeCortos(lista.size(), corregidos, sinRespuesta);
+    }
+
+    /**
+     * Una pasada de la revisión de los videos que llegaron sin sus datos de
+     * YouTube, sin esperar a la de cada diez minutos. Va de pocos en pocos para
+     * contestar rápido: el panel la repite mientras queden.
+     */
+    @PostMapping("/videos/completar")
+    public Dtos.RevisionDeVideos completarVideos(@RequestParam(defaultValue = "25") int limite) {
+        return revisionDeVideos.completar(Math.max(1, Math.min(limite, 100)));
+    }
+
+    /** Cuántos videos esperan sus datos: lo enseña el panel en Publicaciones. */
+    @GetMapping("/videos/sin-datos")
+    public java.util.Map<String, Long> videosSinDatos() {
+        return java.util.Map.of("quedan", publicaciones.cuantosSinDatos());
     }
 
     // -------------------------------------------------------------------------

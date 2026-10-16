@@ -1539,6 +1539,7 @@
           ? 'Salen en un apartado propio de Novedades, nunca mezclados con los demás videos, y avisan solo a quien los quiere. Cada persona puede apagarlos para sí en los Ajustes de la app.'
           : 'El servidor los guarda, pero no avisan a nadie ni salen en la app, y la app no ofrece la opción de verlos. Si los enciendes, aparecen en un apartado propio y cada persona decide si los quiere.'}</p>
         <p class="hint">¿Hay videos normales marcados como cortos, o al revés? Corrígelos en la lista con «Es corto» / «No es corto», o deja que el servidor le pregunte a YouTube por los últimos: <button class="link" data-accion="revisar-cortos">Repasar los cortos guardados</button></p>
+        <p class="hint">¿Videos que llegaron sin duración ni miniatura (porque YouTube no contestó en ese momento)? Sin duración no se sabe si son cortos. El servidor los revisa solo cada diez minutos, o ahora: <button class="link" data-accion="completar-videos">Completar los videos sin datos</button></p>
       </div></section>`;
   }
 
@@ -2673,6 +2674,40 @@
               : (r.corregidos ? plural(r.corregidos, 'video pasó', 'videos pasaron') + ' a normal' : 'Ninguno cambió')
                 + ' de ' + plural(r.revisados, 'corto repasado', 'cortos repasados')
                 + (r.sinRespuesta ? '; de ' + num(r.sinRespuesta) + ' YouTube no aclaró nada.' : '.'));
+          } finally {
+            b.disabled = false;
+            b.textContent = antes;
+          }
+          if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
+
+        case 'completar-videos': {
+          // Va de pocos en pocos para que cada llamada conteste rápido, y se
+          // repite mientras queden y haya avance.
+          b.disabled = true;
+          const antes = b.textContent;
+          let completados = 0, aCortos = 0, noExisten = 0, r = null;
+          try {
+            for (let vuelta = 0; vuelta < 400; vuelta++) {
+              r = await api('/api/admin/videos/completar', { metodo: 'POST' });
+              completados += r.completados; aCortos += r.aCortos; noExisten += r.noExisten;
+              b.textContent = 'Preguntando a YouTube… quedan ' + num(r.quedan);
+              if (r.sinApi || r.ocupada || !r.revisados || !r.quedan) break;
+              if (!r.completados && !r.noExisten) break;
+            }
+            if (r && r.sinApi) {
+              toast('YouTube no contestó. Revisa la clave de la API (YOUTUBE_API_KEY) y la cuota.');
+            } else if (r && r.ocupada) {
+              toast('Ya hay una revisión en marcha. Prueba en unos minutos.');
+            } else if (!completados && !noExisten) {
+              toast(r && r.quedan ? 'YouTube todavía no tiene los datos de ' + plural(r.quedan, 'video', 'videos') + '; se vuelve a intentar sola.' : 'No hay videos sin datos.');
+            } else {
+              toast(plural(completados, 'video completado', 'videos completados')
+                + (aCortos ? ', ' + plural(aCortos, 'pasó', 'pasaron') + ' a cortos' : '')
+                + (noExisten ? '; ' + plural(noExisten, 'ya no existe', 'ya no existen') + ' en YouTube' : '')
+                + (r && r.quedan ? '; quedan ' + num(r.quedan) + '.' : '.'));
+            }
           } finally {
             b.disabled = false;
             b.textContent = antes;

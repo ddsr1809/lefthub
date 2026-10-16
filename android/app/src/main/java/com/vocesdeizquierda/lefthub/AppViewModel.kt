@@ -40,6 +40,8 @@ data class EstadoApp(
     val videosDeCreador: VideosDeCanal = VideosDeCanal(),
     /** Lo mismo para el medio cuya ficha está abierta. `canalId` es aquí el id del medio. */
     val videosDeProductora: VideosDeCanal = VideosDeCanal(),
+    /** La ficha del video que se abrió desde una notificación. */
+    val fichaDeVideo: FichaDeVideo = FichaDeVideo(),
     /**
      * Lo que cuesta quitar los anuncios, ya escrito con su moneda. Null
      * mientras no se sepa o si en este teléfono no se puede comprar: entonces
@@ -168,6 +170,29 @@ class AppViewModel(
     fun creador(id: String) = _estado.value.creadores.firstOrNull { it.id == id }
 
     fun productora(id: String) = _estado.value.productoras.firstOrNull { it.id == id }
+
+    /**
+     * Abre la ficha del video de una notificación. Si ya está en Novedades se
+     * pinta en el acto; si no, con lo que traía el aviso hasta que contesta el
+     * servidor. "Ver el video" funciona desde el primer momento.
+     */
+    fun abrirFichaDeVideo(aviso: VideoDeAviso) = viewModelScope.launch {
+        val yaLaTengo = (_estado.value.publicaciones + _estado.value.cortos)
+            .firstOrNull { it.videoId == aviso.videoId }
+        _estado.update {
+            it.copy(fichaDeVideo = FichaDeVideo(aviso, yaLaTengo, cargando = true))
+        }
+
+        val leida = runCatching { directorio.video(aviso.videoId) }.getOrNull()
+        _estado.update { e ->
+            // Si mientras tanto se abrió otro aviso, esta respuesta ya no vale.
+            if (e.fichaDeVideo.videoId != aviso.videoId) e
+            else e.copy(fichaDeVideo = e.fichaDeVideo.copy(
+                publicacion = leida ?: e.fichaDeVideo.publicacion,
+                cargando = false
+            ))
+        }
+    }
 
     /**
      * Trae los últimos videos de un canal para su ficha.

@@ -92,7 +92,8 @@ internal fun publicacionDe(json: JSONObject): Publicacion {
         esEnVivo = json.optBoolean("enVivo", false),
         tipo = json.optString("tipo", "video"),
         productoraId = json.optStringONull("productoraId"),
-        productoraNombre = json.optStringONull("productoraNombre")
+        productoraNombre = json.optStringONull("productoraNombre"),
+        canalId = json.optStringONull("canalId")
     )
 }
 

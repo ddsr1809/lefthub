@@ -456,6 +456,20 @@ public final class Dtos {
     /** Lo que salió de repasar los cortos guardados. */
     public record RevisionDeCortos(int revisados, int corregidos, int sinRespuesta) {}
 
+    /**
+     * Lo que salió de una pasada de RevisionDeVideos.
+     *
+     * @param revisados   a cuántos se les preguntó en esta pasada
+     * @param completados cuántos quedaron con su duración y sus datos
+     * @param aCortos     de esos, cuántos resultaron ser videos cortos
+     * @param noExisten   los que YouTube ya no tiene (borrados o privados)
+     * @param quedan      los que siguen sin datos, para la siguiente pasada
+     * @param sinApi      la Data API no contestó: la clave o la cuota
+     * @param ocupada     ya había una revisión en marcha; esta no hizo nada
+     */
+    public record RevisionDeVideos(int revisados, int completados, int aCortos, int noExisten,
+                                   long quedan, boolean sinApi, boolean ocupada) {}
+
     /** Corrige a mano si una publicación es un video normal o un corto. */
     public record CambiarTipo(
             @NotBlank(message = "Di si es un video o un corto.")
