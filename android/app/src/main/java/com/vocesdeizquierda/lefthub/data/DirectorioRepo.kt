@@ -79,6 +79,9 @@ class DirectorioRepo(
         if (!losVe || (favoritos.isEmpty() && productoras.isEmpty() && canales.isEmpty())) flow { emit(emptyList()) }
         else sondear(intervaloMs = 2 * 60_000L) { ApiRelay.publicaciones(cortos = true) }
 
+    /** Un video, para su ficha: la que abre tocar una notificación. */
+    suspend fun video(videoId: String): Publicacion? = ApiRelay.video(videoId)
+
     /** Los últimos videos de un canal, una sola lectura al abrir su ficha. */
     suspend fun videosDeCanal(canalId: String): List<Publicacion> =
         ApiRelay.publicacionesDeCanal(canalId)

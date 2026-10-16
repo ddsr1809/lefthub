@@ -47,10 +47,18 @@ data class Canal(
     /**
      * Cómo se llama: su nombre en YouTube, que es el que la persona va a ver
      * al abrirlo; si todavía no se sabe, la etiqueta que le puso el equipo en
-     * el panel ("Clips") o su @usuario. null si no hay ninguno.
+     * el panel ("Clips") o su usuario, sin la arroba. null si no hay ninguno.
      */
     val nombreVisible: String?
-        get() = titulo?.takeIf { it.isNotBlank() } ?: nombre?.takeIf { it.isNotBlank() } ?: arroba
+        get() = titulo?.takeIf { it.isNotBlank() } ?: nombre?.takeIf { it.isNotBlank() }
+            ?: arroba?.removePrefix("@")
+
+    /**
+     * El nombre tal como se enseña: en mayúsculas, "HISTORIANETWORK". Así se
+     * distingue de un vistazo del nombre de la persona, que va debajo.
+     */
+    val nombreEnPantalla: String?
+        get() = nombreVisible?.uppercase()
 
     /**
      * Se puede seguir por sí solo: es un canal de YouTube y el servidor lo
@@ -156,7 +164,7 @@ data class Etiqueta(
  */
 data class CanalListado(
     val canal: Canal,
-    /** Cómo se llama el canal. Va primero en su fila. Ver Canal.nombreVisible. */
+    /** Cómo se llama el canal, en mayúsculas. Va primero en su fila. Ver Canal.nombreEnPantalla. */
     val nombreCanal: String,
     /** De quién es: su creador o, si no tiene, su medio. Va debajo del nombre. */
     val dueno: String,
@@ -204,7 +212,7 @@ fun canalesDelDirectorio(creadores: List<Creador>, productoras: List<Productora>
 
         CanalListado(
             canal = canal,
-            nombreCanal = canal.nombreVisible ?: quien,
+            nombreCanal = canal.nombreEnPantalla ?: quien.uppercase(),
             dueno = quien,
             fotoUrl = dueno?.photoUrl ?: casa?.logoUrl ?: casaFila?.photoUrl,
             categoria = dueno?.category ?: casaFila?.category ?: "otros",
@@ -243,7 +251,9 @@ data class Publicacion(
     val tipo: String = "video",
     /** La productora del canal donde salió, si tiene. */
     val productoraId: String? = null,
-    val productoraNombre: String? = null
+    val productoraNombre: String? = null,
+    /** El canal donde salió: su ficha se abre desde la del video. */
+    val canalId: String? = null
 ) {
     val fueMovido: Boolean get() = status == "moved" && !overrideUrl.isNullOrBlank()
 
@@ -289,6 +299,46 @@ data class Destino(
     val url: String?,
     val videoId: String?
 )
+
+/**
+ * Lo que trae una notificación al tocarla: el video del que avisa y a dónde
+ * llevaba. Con esto se abre su ficha en la app; lo demás (título, miniatura,
+ * de quién es) se le pide al servidor.
+ *
+ * @param tipo "publicacion", o "movido" si avisa de que el video cambió de lugar.
+ */
+data class VideoDeAviso(
+    val videoId: String,
+    val plataforma: String = "youtube",
+    val url: String? = null,
+    val tipo: String? = null
+) {
+    val esMovido: Boolean get() = tipo == "movido"
+
+    /** A dónde lleva "Ver el video" mientras no llega lo que dice el servidor. */
+    val destino: Destino
+        get() = Destino(plataforma, url, videoId.takeIf { !esMovido })
+}
+
+/**
+ * La ficha del video abierta desde una notificación.
+ *
+ * @param publicacion lo que dice el servidor; null mientras llega, o si no
+ *                    se pudo leer: entonces se usa lo que traía el aviso.
+ */
+data class FichaDeVideo(
+    val aviso: VideoDeAviso? = null,
+    val publicacion: Publicacion? = null,
+    val cargando: Boolean = false
+) {
+    val videoId: String? get() = aviso?.videoId
+
+    /** A dónde lleva "Ver el video": lo del servidor si llegó (puede haberse movido después). */
+    val destino: Destino? get() = publicacion?.destino ?: aviso?.destino
+
+    val esMovido: Boolean get() = publicacion?.fueMovido ?: (aviso?.esMovido == true)
+}
+
 
 data class Perfil(
     val favoritos: List<String> = emptyList(),

@@ -285,6 +285,16 @@ object ApiRelay {
             .filter { it.esCorto == cortos }
 
     /**
+     * Un video por su id, para su ficha. null si el servidor no lo tiene (o
+     * es anterior a la ruta): la ficha se arregla con lo que traía el aviso.
+     */
+    suspend fun video(videoId: String): Publicacion? = try {
+        publicacionDe(getObject("/api/videos/" + java.net.URLEncoder.encode(videoId, "UTF-8")))
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) null else throw e
+    }
+
+    /**
      * Lo último que publicó un canal. Un servidor anterior a las fichas de
      * canal no tiene la ruta: para la app eso es "nada que mostrar".
      */

@@ -288,6 +288,31 @@ public class DirectorioController {
     }
 
     /**
+     * Un video por su id de YouTube: lo que pinta su ficha en la app, que es
+     * donde lleva tocar una notificación. Puede ser un video corto: el aviso
+     * de un corto también abre aquí.
+     *
+     * No depende de a quién siga la persona, igual que la ficha de un canal.
+     * Si el dueño de su canal ya no está visible, el video tampoco.
+     */
+    @GetMapping("/videos/{videoId}")
+    @Transactional(readOnly = true)
+    public Dtos.PublicacionDto video(@PathVariable String videoId) {
+        Catalogo.Vista vista = catalogo.vista();
+
+        Publicacion p = publicaciones.findByVideoId(videoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Ese video no está en el directorio."));
+
+        Canal canal = vista.canal(p.getCanalId());
+        if (canal != null && !vista.vivo(canal)) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
+                    "Ese video ya no está en el directorio.");
+        }
+        return aDtos(List.of(p), vista).get(0);
+    }
+
+    /**
      * Los canales que entran en las novedades de la persona sin ser de un
      * creador que sigue: los de las productoras visibles que sigue, los de
      * otros en los que aparece alguno de sus creadores, y los que sigue por sí
