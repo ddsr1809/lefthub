@@ -145,6 +145,26 @@ public final class Repositorios {
         /** Para el panel: solo los cortos, o todo menos los cortos. */
         List<Publicacion> findByTipoOrderByPublicadoEnDesc(String tipo, Pageable pagina);
 
+        /**
+         * Videos que llegaron sin sus datos de YouTube (sin duración) y a los
+         * que todavía no se ha vuelto a preguntar. Los más nuevos primero.
+         * Los directos tienen su propia vigilancia y no entran.
+         */
+        @Query("""
+                select p from Publicacion p
+                where p.duracion is null and p.datosRevisadosEn is null
+                  and p.directo = 'no' and p.plataforma = 'youtube'
+                order by p.publicadoEn desc
+                """)
+        List<Publicacion> sinDatos(Pageable pagina);
+
+        @Query("""
+                select count(p) from Publicacion p
+                where p.duracion is null and p.datosRevisadosEn is null
+                  and p.directo = 'no' and p.plataforma = 'youtube'
+                """)
+        long cuantosSinDatos();
+
         List<Publicacion> findByTipoNotOrderByPublicadoEnDesc(String tipo, Pageable pagina);
 
         /** Directos pendientes de arrancar o de terminar. */

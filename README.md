@@ -629,6 +629,29 @@ Reglas que conviene saber:
   YouTube por los últimos: sirve sobre todo la primera vez, porque lo guardado
   antes de esta versión se clasificó solo por la duración.
 
+**Videos que llegaron sin datos.** Al llegar un video, el servidor pide a la
+Data API su duración. Si no contesta (la clave no vale, se acabó la cuota,
+YouTube todavía lo procesa), el video se guarda como normal y sin duración, y
+sin duración no se sabe si es corto. La revisión de videos (`RevisionDeVideos`)
+vuelve a preguntar por ellos cada diez minutos, 50 por unidad de cuota: les
+pone duración, miniatura y descripción, y los que son Shorts pasan a cortos.
+No manda avisos (el de ese video ya salió) y no cambia el tipo de los que se
+marcaron a mano con *Es corto* / *No es corto*. Los que YouTube ya no tiene se
+marcan y no se vuelve a preguntar por ellos. Para no esperar, en Publicaciones
+está *Completar los videos sin datos* (`POST /api/admin/videos/completar`;
+`GET /api/admin/videos/sin-datos` dice cuántos quedan). Se guarda en
+`publicaciones.datos_revisados_en` y `publicaciones.tipo_a_mano` (V16).
+
+Si muchos videos llegan sin duración, lo primero es probar la clave:
+
+```bash
+curl -s "https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=ID_DE_UN_VIDEO&key=LA_CLAVE"
+```
+
+`API_KEY_INVALID` es que la clave no existe en Google Cloud (se borró o se
+regeneró); hay que crear otra, ponerla en `YOUTUBE_API_KEY` del `.env` y
+recrear el contenedor del servidor.
+
 En la API: `GET /api/publicaciones` no trae cortos; `GET
 /api/publicaciones?tipo=cortos` trae solo cortos (vacío si están apagados o la
 persona no los quiere). `GET /api/perfil` dice `cortos` (lo que eligió la
