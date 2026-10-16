@@ -227,11 +227,21 @@ class DirectorioRepo(
     private suspend fun sincronizarCortos(deQuienesSigue: List<String>, conCortos: Boolean) {
         val queridos = if (conCortos) deQuienesSigue.toSet() else emptySet()
         // La primera vez no se sabe a qué quedó suscrito el aparato en un uso
-        // anterior: se da de baja de todo lo que no toque.
-        val sobran = (cortosSuscritos ?: deQuienesSigue.toSet()) - queridos
-        val faltan = queridos - (cortosSuscritos ?: emptySet())
+        // anterior: se supone que a todo, para darse de baja de lo que no
+        // toque, y se suscribe a todo lo querido.
+        //
+        // Antes se anotaba "a nada" antes de darse de baja. Si una baja
+        // fallaba (sin red al abrir la app), el aparato seguía suscrito pero
+        // aquí constaba que no, y nunca se reintentaba: los avisos de cortos
+        // seguían llegando aunque estuvieran apagados. Ahora lo que no se
+        // logra quitar sigue anotado y se reintenta en la siguiente lectura
+        // del perfil.
+        val primera = cortosSuscritos == null
+        val actuales = cortosSuscritos ?: deQuienesSigue.toSet()
+        val sobran = actuales - queridos
+        val faltan = if (primera) queridos else queridos - actuales
 
-        if (cortosSuscritos == null) cortosSuscritos = emptySet()
+        if (primera) cortosSuscritos = actuales
         sobran.forEach { dejarCortos(it) }
         faltan.forEach { recibirCortos(it) }
     }
