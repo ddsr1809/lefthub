@@ -145,6 +145,14 @@ public final class Repositorios {
         /** Para el panel: solo los cortos, o todo menos los cortos. */
         List<Publicacion> findByTipoOrderByPublicadoEnDesc(String tipo, Pageable pagina);
 
+        /** Por canal, cuándo salió su último video normal: [canalId, fecha]. */
+        @Query("""
+                select p.canalId, max(p.publicadoEn) from Publicacion p
+                where p.canalId is not null and p.tipo = 'video' and p.publicadoEn is not null
+                group by p.canalId
+                """)
+        List<Object[]> ultimoVideoPorCanal();
+
         /**
          * Videos que llegaron sin sus datos de YouTube (sin duración) y a los
          * que todavía no se ha vuelto a preguntar. Los más nuevos primero.

@@ -88,7 +88,16 @@ class DirectorioRepo(
 
     /** Los últimos videos de un creador, una sola lectura al abrir su ficha. */
     suspend fun videosDeCreador(creadorId: String): List<Publicacion> =
-        ApiRelay.publicacionesDeCreador(creadorId)
+        ApiRelay.publicacionesDeCreador(creadorId, parte = "propios")
+
+    /** Los videos de canales de otros en los que aparece el creador. */
+    suspend fun videosDondeAparece(creadorId: String): List<Publicacion> =
+        ApiRelay.publicacionesDeCreador(creadorId, parte = "compartidos")
+
+    /** Cuándo publicó por última vez cada canal; se refresca con el directorio. */
+    fun ultimosVideos(): Flow<Map<String, java.time.Instant>> = sondear(intervaloMs = 5 * 60_000L) {
+        ApiRelay.ultimosVideos()
+    }
 
     /** Los últimos videos de un medio, una sola lectura al abrir su ficha. */
     suspend fun videosDeProductora(productoraId: String): List<Publicacion> =

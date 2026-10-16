@@ -226,6 +226,18 @@ fun canalesDelDirectorio(creadores: List<Creador>, productoras: List<Productora>
     }.sortedWith(compareBy({ it.nombreCanal.lowercase() }, { it.dueno.lowercase() }))
 }
 
+/** Cuándo publicó por última vez alguien con estos canales; null si nunca (o no se sabe). */
+fun ultimoVideoDe(canales: List<Canal>, ultimos: Map<String, Instant>): Instant? =
+    canales.mapNotNull { ultimos[it.id] }.maxOrNull()
+
+/**
+ * Lo más nuevo arriba: ordena por la fecha del último video, del más reciente
+ * al más viejo. Quien nunca ha publicado va al final. Entre iguales se queda
+ * el orden que traía la lista (alfabético).
+ */
+fun <T> porNovedad(lista: List<T>, cuando: (T) -> Instant?): List<T> =
+    lista.sortedWith(compareBy(nullsLast(reverseOrder<Instant>())) { cuando(it) })
+
 /** "Ana", "Ana y Luis", "Ana, Luis y Rosa". */
 private fun enumerar(nombres: List<String>): String =
     if (nombres.size <= 1) nombres.joinToString()

@@ -456,6 +456,9 @@ public final class Dtos {
     /** Lo que salió de repasar los cortos guardados. */
     public record RevisionDeCortos(int revisados, int corregidos, int sinRespuesta) {}
 
+    /** El último video normal de un canal: con qué se ordenan las listas de la app. */
+    public record UltimoVideo(UUID canalId, Instant publicadoEn) {}
+
     /**
      * Lo que salió de una pasada de RevisionDeVideos.
      *
