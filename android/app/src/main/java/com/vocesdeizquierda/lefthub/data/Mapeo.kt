@@ -71,6 +71,14 @@ internal fun etiquetaDe(json: JSONObject) = Etiqueta(
     canales = json.optJSONArray("canales").mapJsonStrings().toSet()
 )
 
+/** La respuesta de /api/canales/ultimos-videos: id del canal → cuándo salió su último video. */
+internal fun ultimosVideosDe(json: JSONArray): Map<String, Instant> =
+    json.mapJson { o ->
+        val canal = o.optStringONull("canalId")
+        val fecha = o.optStringONull("publicadoEn")?.let { runCatching { Instant.parse(it) }.getOrNull() }
+        if (canal != null && fecha != null) canal to fecha else null
+    }.filterNotNull().toMap()
+
 internal fun publicacionDe(json: JSONObject): Publicacion {
     val videoId = json.optString("videoId", "")
     return Publicacion(

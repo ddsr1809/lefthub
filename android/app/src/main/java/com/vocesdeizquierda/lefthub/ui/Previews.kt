@@ -397,8 +397,9 @@ private fun PreviaPerfilDeCreador() {
             onSeguir = {},
             onVolver = {},
             productoras = listOf(estudio),
-            // El mini feed: sus últimos videos, arriba de sus canales.
-            videos = VideosDeCanal("juan", lista = publicaciones)
+            // Su canal principal, sus últimos videos y los de otros canales en los que aparece.
+            videos = VideosDeCanal("juan", lista = publicaciones),
+            videosDondeAparece = VideosDeCanal("juan", lista = publicaciones.take(1))
         )
     }
 }

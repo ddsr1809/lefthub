@@ -309,10 +309,27 @@ object ApiRelay {
      * de sus canales y los de canales de otros en los que aparece. Un
      * servidor anterior no tiene la ruta: para la app eso es "nada que mostrar".
      */
-    suspend fun publicacionesDeCreador(creadorId: String, limite: Int = 5): List<Publicacion> = try {
-        getArray("/api/creadores/$creadorId/publicaciones?limite=$limite").mapJson { publicacionDe(it) }
+    suspend fun publicacionesDeCreador(
+        creadorId: String,
+        limite: Int = 5,
+        /** "propios" (sus canales), "compartidos" (canales de otros en los que aparece) o null, todo. */
+        parte: String? = null
+    ): List<Publicacion> = try {
+        getArray("/api/creadores/$creadorId/publicaciones?limite=$limite" + (parte?.let { "&parte=$it" } ?: ""))
+            .mapJson { publicacionDe(it) }
     } catch (e: ErrorHttp) {
         if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
+     * Cuándo salió el último video de cada canal: id del canal → fecha. Con
+     * esto se ordenan las listas del Directorio. Un servidor anterior no tiene
+     * la ruta: entonces no se sabe de nadie, y las listas quedan por nombre.
+     */
+    suspend fun ultimosVideos(): Map<String, java.time.Instant> = try {
+        ultimosVideosDe(getArray("/api/canales/ultimos-videos"))
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyMap() else throw e
     }
 
     /** Lo mismo para un medio: lo último que salió en los canales que le pertenecen. */
