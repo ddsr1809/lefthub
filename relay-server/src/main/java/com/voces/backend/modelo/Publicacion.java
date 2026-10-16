@@ -95,6 +95,20 @@ public class Publicacion {
     @Column(name = "detectado_en", nullable = false)
     private Instant detectadoEn = Instant.now();
 
+    /** Cuándo se volvió a pedir a YouTube un video que llegó sin datos. Ver RevisionDeVideos. */
+    @Column(name = "datos_revisados_en")
+    private Instant datosRevisadosEn;
+
+    /** El equipo eligió a mano si es corto o no: nada automático se lo cambia. */
+    @Column(name = "tipo_a_mano", nullable = false)
+    private boolean tipoAMano = false;
+
+    public Instant getDatosRevisadosEn() { return datosRevisadosEn; }
+    public void setDatosRevisadosEn(Instant datosRevisadosEn) { this.datosRevisadosEn = datosRevisadosEn; }
+
+    public boolean isTipoAMano() { return tipoAMano; }
+    public void setTipoAMano(boolean tipoAMano) { this.tipoAMano = tipoAMano; }
+
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
 
