@@ -15,6 +15,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -30,8 +32,11 @@ import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.ApiRelay
+import com.vocesdeizquierda.lefthub.data.AvisoTocado
 import com.vocesdeizquierda.lefthub.data.AyudaTele
+import com.vocesdeizquierda.lefthub.data.VideoDeAviso
 import com.vocesdeizquierda.lefthub.data.EstadoServidor
+import com.vocesdeizquierda.lefthub.data.FichaDeVideo
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -187,8 +192,8 @@ class MainActivity : ComponentActivity() {
 
     /**
      * FCM mete los pares de `data` como extras del Intent cuando el usuario
-     * toca la notificación. Un toque, y el video ya está abriéndose en su app
-     * oficial: cero pantallas intermedias.
+     * toca la notificación. Si trae un video, se abre su ficha en la app,
+     * con el botón grande para verlo en YouTube.
      */
     private fun procesarIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
@@ -198,6 +203,15 @@ class MainActivity : ComponentActivity() {
         val url = extras.getString("url")
         val tipo = extras.getString("tipo")
 
+        // Con un video, a su ficha dentro de la app: ahí se ve de qué se trata
+        // antes de ir a YouTube, y cabe un anuncio. La navegación lo recoge.
+        if (!videoId.isNullOrBlank()) {
+            AvisoTocado.pendiente.value = VideoDeAviso(videoId, plataforma, url, tipo)
+            intent.replaceExtras(Bundle())
+            return
+        }
+
+        // Sin video (un aviso de otro tipo con un enlace), directo a él.
         Enrutador.abrirVideo(
             contexto = this,
             plataforma = plataforma,
@@ -252,10 +266,31 @@ private fun PantallaDeCarga() {
 /** Las pantallas a las que se entra desde el directorio. */
 private val FICHAS = listOf("creador/", "productora/", "canal/", "elegir/")
 
+// La ficha de un video se abre desde una notificación: es parte de Novedades.
+private const val FICHA_DE_VIDEO = "video/"
+
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
     val contexto = LocalContext.current
+
+    // Qué lista del Directorio se ve: Canales de YouTube, Creadores o Medios.
+    // Vive aquí y no en el Directorio para que no se pierda al abrir una
+    // ficha: con el botón de atrás, o al volver a la pestaña desde Novedades,
+    // se vuelve a la lista de la última ficha que se vio (la de un creador
+    // lleva a Creadores; la de un canal, a Canales). Al abrir la app, Canales.
+    var seccionDirectorio by rememberSaveable { mutableStateOf(SeccionDirectorio.CANALES) }
+
+    // Tocar una notificación abre la ficha de su video. El toque puede llegar
+    // antes que esta pantalla (la app estaba cerrada): queda guardado en
+    // AvisoTocado hasta aquí.
+    val avisoPendiente by AvisoTocado.pendiente.collectAsState()
+    LaunchedEffect(avisoPendiente) {
+        val aviso = avisoPendiente ?: return@LaunchedEffect
+        AvisoTocado.pendiente.value = null
+        modelo.abrirFichaDeVideo(aviso)
+        nav.navigate(FICHA_DE_VIDEO + aviso.videoId) { launchSingleTop = true }
+    }
 
     // Todos los canales de YouTube del directorio, con lo que pinta su fila.
     val todosLosCanales = remember(estado.creadores, estado.productoras) {
@@ -350,7 +385,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         // La ficha de un creador, de una productora o de un
                         // canal es parte del directorio: su pestaña sigue marcada.
                         selected = ruta == destino ||
-                            (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }),
+                            (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }) ||
+                            (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)),
                         onClick = {
                             // Cada pestaña abre siempre su pantalla principal.
                             // Antes se guardaba dónde se había quedado cada
@@ -414,7 +450,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     etiquetas = estado.etiquetas,
                     perfil = estado.perfil,
                     onSeguirCanal = { modelo.alternarCanal(it) },
-                    perfilCargado = estado.perfilCargado
+                    perfilCargado = estado.perfilCargado,
+                    seccionElegida = seccionDirectorio,
+                    onElegirSeccion = { seccionDirectorio = it }
                 )
             }
 
@@ -425,7 +463,11 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 val id = entrada.arguments?.getString("creatorId").orEmpty()
 
                 // Sus últimos videos se piden al abrir su ficha.
-                LaunchedEffect(id) { modelo.cargarVideosDeCreador(id) }
+                LaunchedEffect(id) {
+                    modelo.cargarVideosDeCreador(id)
+                    // Al volver al Directorio, a la lista de creadores.
+                    seccionDirectorio = SeccionDirectorio.CREADORES
+                }
 
                 CreadorPantalla(
                     creador = modelo.creador(id),
@@ -454,7 +496,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 val id = entrada.arguments?.getString("canalId").orEmpty()
 
                 // Los videos del canal se piden al abrir su ficha.
-                LaunchedEffect(id) { modelo.cargarVideosDeCanal(id) }
+                LaunchedEffect(id) {
+                    modelo.cargarVideosDeCanal(id)
+                    seccionDirectorio = SeccionDirectorio.CANALES
+                }
 
                 CanalPantalla(
                     canal = estado.canal(id),
@@ -481,7 +526,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 val id = entrada.arguments?.getString("productoraId").orEmpty()
 
                 // Sus últimos videos se piden al abrir su ficha.
-                LaunchedEffect(id) { modelo.cargarVideosDeProductora(id) }
+                LaunchedEffect(id) {
+                    modelo.cargarVideosDeProductora(id)
+                    seccionDirectorio = SeccionDirectorio.PRODUCTORAS
+                }
 
                 ProductoraPantalla(
                     // De la lista del estado y no del modelo: así la ficha se
@@ -514,6 +562,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             ) { entrada ->
                 val esMedio = entrada.arguments?.getString("tipo") == "productora"
                 val id = entrada.arguments?.getString("id").orEmpty()
+                LaunchedEffect(esMedio) {
+                    seccionDirectorio = if (esMedio) SeccionDirectorio.PRODUCTORAS else SeccionDirectorio.CREADORES
+                }
                 val creador = if (esMedio) null else modelo.creador(id)
                 val productora = if (esMedio) estado.productoras.firstOrNull { it.id == id } else null
                 ElegirCanalesPantalla(
@@ -528,6 +579,63 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     },
                     onAbrirCanal = { nav.navigate("canal/$it") },
                     onListo = { nav.popBackStack() }
+                )
+            }
+
+            // La ficha de un video: a donde lleva tocar una notificación.
+            composable(
+                FICHA_DE_VIDEO + "{videoId}",
+                arguments = listOf(navArgument("videoId") { type = NavType.StringType })
+            ) { entrada ->
+                val id = entrada.arguments?.getString("videoId").orEmpty()
+                // Si Android cerró la app y la rehizo, el estado se perdió:
+                // se vuelve a pedir con lo que hay, el id.
+                LaunchedEffect(id) {
+                    if (estado.fichaDeVideo.videoId != id) modelo.abrirFichaDeVideo(VideoDeAviso(id))
+                }
+
+                // Su propio anuncio, apartado de los de Novedades. Solo se
+                // pide si el equipo tiene los anuncios encendidos y la persona
+                // no los quitó, y se suelta al salir de la ficha.
+                val bannerDelVideo = remember { BannersDelFeed() }
+                DisposableEffect(Unit) { onDispose { bannerDelVideo.destruir() } }
+                val anchoDeAnuncio = LocalConfiguration.current.screenWidthDp - 2 * Espacio.md.value.toInt() - 2
+                LaunchedEffect(conAnuncios, anchoDeAnuncio) {
+                    if (conAnuncios) bannerDelVideo.asegurar(contexto, 1, anchoDeAnuncio)
+                    else bannerDelVideo.destruir()
+                }
+                val banner = bannerDelVideo.banners.firstOrNull()?.takeIf { conAnuncios && it.cargado }
+                val anuncio: (@Composable () -> Unit)? = banner?.let { b ->
+                    @Composable { TarjetaAnuncio(banner = b, onQuitar = irAAjustes) }
+                }
+
+                val ficha = estado.fichaDeVideo.takeIf { it.videoId == id }
+                    ?: FichaDeVideo(VideoDeAviso(id), cargando = true)
+                VideoPantalla(
+                    ficha = ficha,
+                    abierto = id in Abiertos.videos,
+                    onVer = { destino ->
+                        Enrutador.abrirVideo(
+                            contexto,
+                            destino.plataforma,
+                            destino.videoId,
+                            destino.url,
+                            campana = if (ficha.esMovido) "contenido_movido" else "aviso_publicacion"
+                        )
+                        Abiertos.marcar(contexto, id)
+                    },
+                    onVolver = {
+                        nav.navigate("novedades") {
+                            popUpTo(nav.graph.startDestinationId)
+                            launchSingleTop = true
+                        }
+                    },
+                    onAbrirCreador = { nav.navigate("creador/$it") },
+                    onAbrirCanal = { nav.navigate("canal/$it") },
+                    onReportar = {
+                        ficha.publicacion?.let { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
+                    },
+                    anuncio = anuncio
                 )
             }
 

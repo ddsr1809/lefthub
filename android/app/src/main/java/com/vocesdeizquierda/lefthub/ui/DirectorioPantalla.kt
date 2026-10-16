@@ -11,6 +11,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -46,9 +47,19 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 // Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
 // de debajo filtran dentro de la que esté elegida. Los canales van primero:
 // es lo que la persona reconoce de YouTube, y lo que avisa.
-private const val CREADORES = "creadores"
-private const val CANALES = "canales"
-private const val PRODUCTORAS = "productoras"
+//
+// Cuál se ve no lo guarda esta pantalla sino la navegación (Navegacion en
+// MainActivity): así, al volver de una ficha con el botón de atrás, o al
+// volver a la pestaña del Directorio, se ve la lista de esa ficha y no la
+// primera. Ver SeccionDirectorio.
+object SeccionDirectorio {
+    const val CANALES = "canales"
+    const val CREADORES = "creadores"
+    const val PRODUCTORAS = "productoras"
+}
+private const val CREADORES = SeccionDirectorio.CREADORES
+private const val CANALES = SeccionDirectorio.CANALES
+private const val PRODUCTORAS = SeccionDirectorio.PRODUCTORAS
 
 @Composable
 fun DirectorioPantalla(
@@ -74,11 +85,15 @@ fun DirectorioPantalla(
      * Ya llegó el perfil del servidor. Hasta entonces no se sabe qué sigue, y
      * las listas se vuelven a ordenar cuando llega.
      */
-    perfilCargado: Boolean = true
+    perfilCargado: Boolean = true,
+    /** La lista que se ve: una de SeccionDirectorio. */
+    seccionElegida: String = CANALES,
+    /** La persona tocó otra de las listas de arriba. */
+    onElegirSeccion: (String) -> Unit = {}
 ) {
-    var seccionElegida by remember { mutableStateOf(CANALES) }
-    // El id de la etiqueta elegida; null es "Todos".
-    var etiquetaElegida by remember { mutableStateOf<String?>(null) }
+    // El id de la etiqueta elegida; null es "Todos". Se guarda también al ir
+    // a una ficha y volver.
+    var etiquetaElegida by rememberSaveable { mutableStateOf<String?>(null) }
     val esquema = MaterialTheme.colorScheme
 
     // Los creadores son las personas. Una productora que el servidor manda
@@ -164,7 +179,7 @@ fun DirectorioPantalla(
                 secciones.forEach { (clave, nombre) ->
                     val activa = clave == seccion
                     Button(
-                        onClick = { seccionElegida = clave },
+                        onClick = { onElegirSeccion(clave) },
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (activa) esquema.primary else esquema.surface,
@@ -717,7 +732,8 @@ internal fun BotonCanal(
         // los distingue: "Ver videos largos · Claudia Sheinbaum Clips". El de
         // YouTube si ya se sabe; si no, la etiqueta del panel.
         titulo = Enrutador.accionDe(canal.plataforma) +
-            ((canal.titulo ?: canal.nombre)?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
+            ((if (canal.esDeYouTube) canal.nombreEnPantalla else canal.nombre)
+                ?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
         subtitulo = if (dueno != null) "$dueno. $destino" else destino,
         variante = VarianteBoton.SECUNDARIO,
         onClick = {

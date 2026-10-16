@@ -160,10 +160,7 @@ private fun CanalConMarca(
                 style = MaterialTheme.typography.bodyMedium,
                 color = esquema.onBackground
             )
-            val detalle = listOfNotNull(
-                deOtro?.let { if (listado.duenoEsMedio) "Del medio $it" else "De $it" },
-                listado.canal.arroba?.takeIf { it != listado.nombreCanal }
-            ).joinToString(" · ")
+            val detalle = deOtro?.let { if (listado.duenoEsMedio) "Del medio $it" else "De $it" }.orEmpty()
             if (detalle.isNotBlank()) {
                 Text(
                     detalle,

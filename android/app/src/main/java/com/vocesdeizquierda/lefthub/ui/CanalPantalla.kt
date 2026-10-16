@@ -70,8 +70,8 @@ fun CanalPantalla(
     // "Clips" si tiene etiqueta; si no, el nombre de quien lo firma.
     // Su nombre en YouTube, como en la lista de canales; si no se sabe, el
     // nombre de quien lo firma.
-    val titulo = canal.titulo?.takeIf { it.isNotBlank() } ?: canal.nombre?.takeIf { it.isNotBlank() }
-        ?: dueno?.name ?: productora?.nombre ?: "Canal de YouTube"
+    val titulo = canal.nombreEnPantalla
+        ?: dueno?.name?.uppercase() ?: productora?.nombre?.uppercase() ?: "Canal de YouTube"
     val suscrito = youtube.suscritoAlCanal(canal)
 
     Column(

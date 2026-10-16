@@ -29,6 +29,8 @@ import com.vocesdeizquierda.lefthub.data.Perfil
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.Publicacion
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
+import com.vocesdeizquierda.lefthub.data.VideoDeAviso
+import com.vocesdeizquierda.lefthub.data.FichaDeVideo
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 
 
@@ -329,6 +331,24 @@ private fun PreviaDirectorio() {
                 Etiqueta("e1", "Cocina", creadores = setOf("juan")),
                 Etiqueta("e2", "Cine", creadores = setOf("ana"), productoras = setOf("estudio"))
             )
+        )
+    }
+}
+
+/** La ficha de un video, como queda al tocar su notificación, con el hueco de un anuncio. */
+@VistaPreviaAccesible
+@Composable
+private fun PreviaFichaDeVideo() {
+    Marco {
+        VideoPantalla(
+            ficha = FichaDeVideo(
+                aviso = VideoDeAviso(publicaciones.first().videoId),
+                publicacion = publicaciones.first()
+            ),
+            abierto = false,
+            onVer = {},
+            onVolver = {},
+            anuncio = { MarcoDeAnuncio(onQuitar = {}) { Text("Aquí va el anuncio") } }
         )
     }
 }
