@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -55,6 +57,7 @@ public class AdminController {
     private final BorradoService borrado;
     private final TitulosDeCanales titulos;
     private final RevisionDeVideos revisionDeVideos;
+    private final CifrasDeVideos cifras;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -69,7 +72,8 @@ public class AdminController {
                            ReplicaService replica, AjustesService ajustes,
                            FotosService fotos, PerfilesService perfiles,
                            BorradoService borrado, TitulosDeCanales titulos,
-                           RevisionDeVideos revisionDeVideos) {
+                           RevisionDeVideos revisionDeVideos, CifrasDeVideos cifras) {
+        this.cifras = cifras;
         this.titulos = titulos;
         this.revisionDeVideos = revisionDeVideos;
         this.creadores = creadores;
@@ -490,19 +494,73 @@ public class AdminController {
     // Publicaciones y redirección de emergencia
     // -------------------------------------------------------------------------
 
+    /**
+     * Los videos, con sus cifras.
+     *
+     * @param orden "recientes" (lo de siempre) o "vistas": los más vistos de
+     *              los publicados en los últimos {@code dias} (0 = todos). Las
+     *              cifras son las guardadas: aquí no se pregunta a YouTube,
+     *              para que la lista cargue rápido (ver CifrasDeVideos).
+     */
     @GetMapping("/publicaciones")
     @Transactional(readOnly = true)
-    public List<Dtos.PublicacionDto> recientes(@RequestParam(defaultValue = "40") int limite,
-                                               @RequestParam(required = false) String tipo) {
+    public List<Dtos.PublicacionAdminDto> recientes(@RequestParam(defaultValue = "40") int limite,
+                                                    @RequestParam(required = false) String tipo,
+                                                    @RequestParam(defaultValue = "recientes") String orden,
+                                                    @RequestParam(defaultValue = "0") int dias) {
         PageRequest pagina = PageRequest.of(0, Math.max(1, Math.min(limite, 200)));
 
-        // Sin `tipo`, todo junto, como siempre: el panel marca cuáles son cortos.
-        List<Publicacion> lista =
-                "cortos".equals(tipo) ? publicaciones.findByTipoOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
-                : "videos".equals(tipo) ? publicaciones.findByTipoNotOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
-                : publicaciones.findAllByOrderByPublicadoEnDesc(pagina);
+        List<Publicacion> lista;
+        if ("vistas".equals(orden)) {
+            Instant desde = dias > 0 ? Instant.now().minus(Duration.ofDays(Math.min(dias, 3650))) : Instant.EPOCH;
+            lista = "cortos".equals(tipo) ? publicaciones.masVistosDeTipo(desde, Publicacion.TIPO_CORTO, pagina)
+                    : "videos".equals(tipo) ? publicaciones.masVistosSinTipo(desde, Publicacion.TIPO_CORTO, pagina)
+                    : publicaciones.masVistos(desde, pagina);
+        } else {
+            // Sin `tipo`, todo junto, como siempre: el panel marca cuáles son cortos.
+            lista = "cortos".equals(tipo) ? publicaciones.findByTipoOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
+                    : "videos".equals(tipo) ? publicaciones.findByTipoNotOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
+                    : publicaciones.findAllByOrderByPublicadoEnDesc(pagina);
+        }
 
-        return DirectorioController.aDtos(lista, catalogo.vista());
+        return paraElPanel(lista, false);
+    }
+
+    /**
+     * La ficha de un video. Quien la abre quiere el número de ahora: si las
+     * cifras tienen más de diez minutos, se piden otra vez (1 unidad).
+     */
+    @GetMapping("/videos/{videoId}")
+    @Transactional
+    public Dtos.PublicacionAdminDto video(@PathVariable String videoId) {
+        Publicacion p = publicaciones.findByVideoId(videoId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Ese video no está en el directorio."));
+        cifras.refrescarSiHaceFalta(p);
+        return paraElPanel(List.of(p), true).get(0);
+    }
+
+    /**
+     * Pide ahora a YouTube las cifras de los videos que el panel tiene en
+     * pantalla. 1 unidad de cuota por cada 50; como mucho 200 videos.
+     */
+    @PostMapping("/videos/cifras")
+    public Dtos.CifrasActualizadas actualizarCifras(@Valid @RequestBody Dtos.PedirCifras peticion) {
+        return cifras.deVideos(peticion.videoIds() != null ? peticion.videoIds() : List.of());
+    }
+
+    private List<Dtos.PublicacionAdminDto> paraElPanel(List<Publicacion> lista, boolean conDescripcion) {
+        Catalogo.Vista vista = catalogo.vista();
+        List<Dtos.PublicacionDto> base = DirectorioController.aDtos(lista, vista);
+        List<Dtos.PublicacionAdminDto> salida = new ArrayList<>(lista.size());
+        for (int i = 0; i < lista.size(); i++) {
+            Canal canal = vista.canal(lista.get(i).getCanalId());
+            String canalNombre = canal == null ? null
+                    : canal.getNombre() != null && !canal.getNombre().isBlank() ? canal.getNombre()
+                    : canal.getHandle();
+            salida.add(Dtos.PublicacionAdminDto.de(base.get(i), lista.get(i), canalNombre, conDescripcion));
+        }
+        return salida;
     }
 
     /**

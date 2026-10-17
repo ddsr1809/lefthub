@@ -99,9 +99,40 @@ public class Publicacion {
     @Column(name = "datos_revisados_en")
     private Instant datosRevisadosEn;
 
+    // Las cifras públicas de YouTube, como estaban en `cifrasEn`. Las pone al
+    // día CifrasDeVideos; null es que YouTube no las da (el canal las oculta)
+    // o que todavía no se han pedido. Solo las ve el panel.
+    private Long vistas;
+
+    @Column(name = "me_gusta")
+    private Long meGusta;
+
+    private Long comentarios;
+
+    /** Cuántos lo veían en directo en `cifrasEn`. Solo mientras está al aire. */
+    private Long espectadores;
+
+    @Column(name = "cifras_en")
+    private Instant cifrasEn;
+
     /** El equipo eligió a mano si es corto o no: nada automático se lo cambia. */
     @Column(name = "tipo_a_mano", nullable = false)
     private boolean tipoAMano = false;
+
+    public Long getVistas() { return vistas; }
+    public void setVistas(Long vistas) { this.vistas = vistas; }
+
+    public Long getMeGusta() { return meGusta; }
+    public void setMeGusta(Long meGusta) { this.meGusta = meGusta; }
+
+    public Long getComentarios() { return comentarios; }
+    public void setComentarios(Long comentarios) { this.comentarios = comentarios; }
+
+    public Long getEspectadores() { return espectadores; }
+    public void setEspectadores(Long espectadores) { this.espectadores = espectadores; }
+
+    public Instant getCifrasEn() { return cifrasEn; }
+    public void setCifrasEn(Instant cifrasEn) { this.cifrasEn = cifrasEn; }
 
     public Instant getDatosRevisadosEn() { return datosRevisadosEn; }
     public void setDatosRevisadosEn(Instant datosRevisadosEn) { this.datosRevisadosEn = datosRevisadosEn; }

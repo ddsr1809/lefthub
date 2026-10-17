@@ -150,6 +150,8 @@ public class RevisionDeVideos {
      */
     private boolean aplicar(Publicacion p, YouTubeClient.DetalleDeVideo d) {
         p.setDuracion(d.duracion());
+        // Vienen en la misma respuesta, sin costo extra.
+        d.copiarCifras(p, Instant.now());
         if (p.getDescripcion() == null && d.descripcion() != null) p.setDescripcion(d.descripcion());
         // La miniatura que se pone cuando no hay datos es la genérica de
         // i.ytimg.com; la de la API es mejor.

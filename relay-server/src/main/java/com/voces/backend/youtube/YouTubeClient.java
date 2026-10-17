@@ -3,6 +3,7 @@ package com.voces.backend.youtube;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voces.backend.config.RelayProperties;
 import com.voces.backend.modelo.Dtos;
+import com.voces.backend.modelo.Publicacion;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -17,6 +18,7 @@ import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -155,8 +157,36 @@ public class YouTubeClient {
             boolean enVivo,
             String tipo,
             /** no | programado | en_vivo | terminado. Ver Publicacion.DIRECTO_*. */
-            String directo
-    ) {}
+            String directo,
+            /** Las cifras públicas. Null si el canal las oculta (los "me gusta", sobre todo). */
+            Long vistas,
+            Long meGusta,
+            Long comentarios,
+            /** Cuántos lo ven en este momento. Solo mientras un directo está al aire. */
+            Long espectadores
+    ) {
+
+        /**
+         * Le pone al video sus cifras de ahora y apunta cuándo se leyeron.
+         *
+         * Un dato que YouTube no da (el canal oculta los "me gusta") queda
+         * vacío; no se conserva el de antes, que ya no sería cierto.
+         */
+        public void copiarCifras(Publicacion p, Instant ahora) {
+            p.setVistas(vistas);
+            p.setMeGusta(meGusta);
+            p.setComentarios(comentarios);
+            p.setEspectadores("en_vivo".equals(directo) ? espectadores : null);
+            p.setCifrasEn(ahora);
+        }
+    }
+
+    /**
+     * Lo que se le pide a videos.list. Pedir más partes no cuesta más: la
+     * llamada vale 1 unidad pida lo que pida, así que las cifras (statistics)
+     * vienen siempre, también al llegar un video o al vigilar un directo.
+     */
+    static final String PARTES = "snippet,liveStreamingDetails,contentDetails,statistics";
 
     /**
      * Metadatos completos de un video. Coste: 1 unidad.
@@ -166,7 +196,7 @@ public class YouTubeClient {
      */
     public DetalleDeVideo detallesDeVideo(String videoId) {
         JsonNode respuesta = pedir(BASE + "/videos"
-                + "?part=snippet,liveStreamingDetails,contentDetails"
+                + "?part=" + PARTES
                 + "&id=" + codificar(videoId)
                 + "&key=" + config.youtube().apiKey());
 
@@ -196,7 +226,7 @@ public class YouTubeClient {
             List<String> lote = videoIds.subList(desde, Math.min(desde + 50, videoIds.size()));
 
             JsonNode respuesta = pedir(BASE + "/videos"
-                    + "?part=snippet,liveStreamingDetails,contentDetails"
+                    + "?part=" + PARTES
                     + "&maxResults=50"
                     + "&id=" + codificar(String.join(",", lote))
                     + "&key=" + config.youtube().apiKey());
@@ -214,7 +244,8 @@ public class YouTubeClient {
         return detalles;
     }
 
-    private DetalleDeVideo aDetalle(String videoId, JsonNode item) {
+    /** Un item de videos.list. Sin red: se prueba con el JSON de la API. */
+    static DetalleDeVideo aDetalle(String videoId, JsonNode item) {
         JsonNode snippet = item.get("snippet");
         JsonNode enVivo = item.get("liveStreamingDetails");
         String duracion = texto(item.path("contentDetails"), "duration");
@@ -228,6 +259,8 @@ public class YouTubeClient {
         else if (enVivo.has("actualStartTime")) directo = "en_vivo";
         else directo = "programado";
 
+        JsonNode cifras = item.path("statistics");
+
         return new DetalleDeVideo(
                 videoId,
                 textoODefecto(snippet, "title", "Video nuevo"),
@@ -239,8 +272,40 @@ public class YouTubeClient {
                 duracion,
                 "en_vivo".equals(directo),
                 esCorto(duracion) ? "short" : "video",
-                directo
+                directo,
+                numero(cifras, "viewCount"),
+                numero(cifras, "likeCount"),
+                numero(cifras, "commentCount"),
+                enVivo != null ? numero(enVivo, "concurrentViewers") : null
         );
+    }
+
+    /**
+     * Una cifra de la API. YouTube las manda como texto ("12345"), y omite la
+     * que el canal oculta: entonces es null, no cero.
+     */
+    static Long numero(JsonNode nodo, String campo) {
+        if (nodo == null) return null;
+        JsonNode valor = nodo.get(campo);
+        if (valor == null || valor.isNull()) return null;
+        if (valor.isNumber()) return valor.asLong();
+        try {
+            return Long.parseLong(valor.asText().trim());
+        } catch (NumberFormatException e) {
+            return null;
+        }
+    }
+
+    /** Lo que dura un video en segundos, de "PT1H2M3S". Null si no se sabe. */
+    public static Long segundos(String duracionIso) {
+        if (duracionIso == null || duracionIso.isBlank()) return null;
+        try {
+            long s = Duration.parse(duracionIso).getSeconds();
+            return s > 0 ? s : null;
+        } catch (Exception e) {
+            // Duration no entiende los días con fecha ("P1DT2H" sí; "P1W" no).
+            return null;
+        }
     }
 
     /** Datos públicos de un canal, para prellenar el formulario del panel. */
@@ -408,7 +473,7 @@ public class YouTubeClient {
         return items != null && items.isArray() && !items.isEmpty() ? items.get(0) : null;
     }
 
-    private String mejorMiniatura(JsonNode snippet) {
+    private static String mejorMiniatura(JsonNode snippet) {
         if (snippet == null) return null;
         JsonNode miniaturas = snippet.get("thumbnails");
         if (miniaturas == null) return null;
@@ -425,7 +490,7 @@ public class YouTubeClient {
      * también puede durar eso, así que esto solo dice "podría serlo": lo
      * confirma esShort().
      */
-    private boolean esCorto(String duracionIso) {
+    private static boolean esCorto(String duracionIso) {
         if (duracionIso == null || duracionIso.isBlank()) return false;
         try {
             long segundos = Duration.parse(duracionIso).getSeconds();
@@ -435,18 +500,18 @@ public class YouTubeClient {
         }
     }
 
-    private String texto(JsonNode nodo, String campo) {
+    private static String texto(JsonNode nodo, String campo) {
         if (nodo == null) return null;
         JsonNode valor = nodo.get(campo);
         return valor != null && !valor.isNull() ? valor.asText() : null;
     }
 
-    private String textoODefecto(JsonNode nodo, String campo, String porDefecto) {
+    private static String textoODefecto(JsonNode nodo, String campo, String porDefecto) {
         String valor = texto(nodo, campo);
         return valor != null ? valor : porDefecto;
     }
 
-    private String recortar(String texto, int maximo) {
+    private static String recortar(String texto, int maximo) {
         if (texto == null) return "";
         return texto.length() <= maximo ? texto : texto.substring(0, maximo);
     }
