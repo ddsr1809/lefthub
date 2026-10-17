@@ -243,10 +243,21 @@ Tienes 10,000 unidades al día. El diseño gasta ~1 por video publicado.
 | Método | Coste | Uso aquí |
 |---|---|---|
 | WebSub | 0 | Detección de publicaciones |
-| `videos.list` | 1 | Rellenar título, descripción y miniatura |
+| `videos.list` | 1 | Rellenar título, descripción y miniatura; de paso trae duración, vistas, "me gusta" y comentarios sin costo extra |
+| `videos.list` (cifras) | 1 por cada 50 videos | Poner al día las vistas del panel: cada media hora los videos que tocan (ver abajo) |
 | `channels.list` | 1 | Solo al dar de alta un creador |
 | `subscriptions.list` | 1 por cada 50 creadores | Saber si el usuario está suscrito a los creadores del directorio, al abrir la app |
 | `search.list` | **100** | **Prohibido.** Agotaría el día en 100 llamadas |
+
+**Cifras de los videos en el panel.** La sección Publicaciones enseña la
+duración, las vistas, los "me gusta", los comentarios y, en un directo al
+aire, cuántos lo están viendo; tocar el título abre la ficha completa del
+video. Las cifras se guardan en la base (V17) y las pone al día
+`CifrasDeVideos`: los videos de los últimos dos días cada media hora, los del
+último mes cada seis horas y los demás cada tres días; los directos, cada dos
+minutos con el vigilante de siempre. Con mil videos son unas 30 unidades al
+día. El botón «Actualizar cifras» y abrir la ficha de un video las piden al
+momento (1 unidad por cada 50 videos). La app no recibe nada de esto.
 
 Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlist de subidas del canal (1 unidad), nunca con `search.list`.
 
