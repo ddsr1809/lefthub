@@ -328,12 +328,17 @@ public class WebSubService {
                 ? detalle.miniatura()
                 : "https://i.ytimg.com/vi/" + entrada.videoId() + "/hqdefault.jpg");
         p.setDuracion(detalle != null ? detalle.duracion() : null);
-        p.setTipo(tipoDe(entrada.videoId(), detalle));
+        // null: YouTube no dijo si es un corto. Se guarda como video normal,
+        // pero no se avisa todavía (ver más abajo).
+        String tipo = tipoDe(entrada.videoId(), detalle);
+        p.setTipo(tipo != null ? tipo : Publicacion.TIPO_VIDEO);
         p.setEnVivo(detalle != null && detalle.enVivo());
         p.setDirecto(detalle != null ? detalle.directo() : Publicacion.DIRECTO_NO);
         p.setUrl("https://www.youtube.com/watch?v=" + entrada.videoId());
         p.setPublicadoEn(entrada.publicado() != null ? entrada.publicado() : Instant.now());
         p.setEstado(Publicacion.OK);
+        // Las primeras cifras (casi siempre cero): vienen en la misma llamada.
+        if (detalle != null) detalle.copiarCifras(p, Instant.now());
 
         try {
             publicaciones.saveAndFlush(p);
@@ -358,6 +363,15 @@ public class WebSubService {
         if (esViejo && !alAire) {
             log.info("Video {} guardado sin notificar (publicado {})",
                     entrada.videoId(), entrada.publicado());
+            return;
+        }
+
+        // Sin saber si es un corto no se avisa: si lo fuera, el aviso de
+        // "video nuevo" llegaría a quienes apagaron los avisos de cortos. La
+        // revisión de videos sin datos (cada diez minutos) lo clasifica y
+        // manda entonces el aviso que toque.
+        if (tipo == null) {
+            log.info("Video {} sin datos de YouTube: se avisará al completarlo", entrada.videoId());
             return;
         }
 
@@ -392,9 +406,21 @@ public class WebSubService {
      * tratarlos de cortos sería esconderlos. Por eso, a los que duran poco se
      * les pregunta además a YouTube, que es quien lo sabe. A los largos y a
      * los directos no hace falta.
+     *
+     * @return null si no hay datos de YouTube y tampoco se pudo saber si es
+     *         un Short.
      */
     private String tipoDe(String videoId, YouTubeClient.DetalleDeVideo detalle) {
-        if (detalle == null) return Publicacion.TIPO_VIDEO;
+        if (detalle == null) {
+            // La Data API no contestó (cuota, clave, video aún procesándose).
+            // Antes se daba por video normal y se avisaba como tal, aunque
+            // fuera un Short: así llegaban avisos de cortos a quien los tenía
+            // apagados. youtube.com/shorts no gasta cuota y suele contestar
+            // aunque la API no lo haga.
+            Boolean esShort = youtube.esShort(videoId);
+            if (esShort == null) return null;
+            return esShort ? Publicacion.TIPO_CORTO : Publicacion.TIPO_VIDEO;
+        }
 
         boolean hayDuda = Publicacion.TIPO_CORTO.equals(detalle.tipo())
                 && Publicacion.DIRECTO_NO.equals(detalle.directo());
@@ -450,7 +476,14 @@ public class WebSubService {
         boolean alAire = Publicacion.DIRECTO_EN_VIVO.equals(ahora);
         boolean faltaAvisar = alAire && !p.isDirectoAvisado();
 
-        if (ahora.equals(antes) && !faltaAvisar) return;
+        // Cuántos lo están viendo, y sus vistas: vienen en la misma llamada
+        // de cada dos minutos, así el panel los tiene casi al momento.
+        if (detalle != null) detalle.copiarCifras(p, Instant.now());
+
+        if (ahora.equals(antes) && !faltaAvisar) {
+            if (detalle != null) publicaciones.save(p);
+            return;
+        }
 
         p.setDirecto(ahora);
         p.setEnVivo(alAire);

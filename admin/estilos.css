@@ -140,6 +140,21 @@ td.acciones .btn{margin-left:4px}
 .who b{display:block;font-weight:700}
 .who span{color:var(--muted);font-size:13px;display:block}
 .thumb{width:96px;height:54px;border-radius:6px;object-fit:cover;background:var(--surface-2);display:block}
+/* La miniatura con su duración en la esquina, como en YouTube */
+.miniatura{position:relative;display:inline-block;line-height:0}
+.miniatura .duracion{position:absolute;right:4px;bottom:4px;padding:2px 5px;border-radius:4px;background:rgba(0,0,0,.82);color:#fff;
+  font-size:11.5px;font-weight:700;line-height:1.3;font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.miniatura .duracion.en-vivo{background:#CC0000}
+.miniatura.grande{display:block;width:min(100%,440px)}
+.miniatura.grande img{width:100%;aspect-ratio:16/9;object-fit:cover;border-radius:var(--radius);background:var(--surface-2);display:block}
+.miniatura.grande .duracion{right:8px;bottom:8px;font-size:13px}
+.cifras{min-width:120px}
+.cifras .muted{white-space:nowrap}
+.titulo-video{font-weight:700;color:var(--ink);text-align:left;font-size:14px;line-height:1.35}
+.titulo-video:hover{color:var(--accent);text-decoration:underline}
+#modal .stat .v{font-size:22px;white-space:nowrap}
+.descripcion summary{cursor:pointer;font-weight:700;font-size:13.5px;color:var(--muted)}
+.descripcion p{white-space:pre-wrap;overflow-wrap:anywhere;font-size:13.5px;margin:10px 0 0;max-height:280px;overflow:auto}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px}
 .num{font-variant-numeric:tabular-nums;white-space:nowrap}
 .muted{color:var(--muted)}

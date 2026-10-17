@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vocesdeizquierda.lefthub.data.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.*
@@ -42,6 +43,10 @@ data class EstadoApp(
     val videosDeProductora: VideosDeCanal = VideosDeCanal(),
     /** La ficha del video que se abrió desde una notificación. */
     val fichaDeVideo: FichaDeVideo = FichaDeVideo(),
+    /** Los de canales de otros en los que aparece el creador cuya ficha está abierta. */
+    val videosDondeAparece: VideosDeCanal = VideosDeCanal(),
+    /** Cuándo salió el último video de cada canal: ordena las listas del Directorio. */
+    val ultimosVideos: Map<String, java.time.Instant> = emptyMap(),
     /**
      * Lo que cuesta quitar los anuncios, ya escrito con su moneda. Null
      * mientras no se sepa o si en este teléfono no se puede comprar: entonces
@@ -125,6 +130,12 @@ class AppViewModel(
         viewModelScope.launch {
             directorio.productoras().collect { lista ->
                 _estado.update { it.copy(productoras = lista) }
+            }
+        }
+
+        viewModelScope.launch {
+            directorio.ultimosVideos().collect { mapa ->
+                _estado.update { it.copy(ultimosVideos = mapa) }
             }
         }
 
@@ -231,21 +242,31 @@ class AppViewModel(
         if (creadorId.isBlank()) return@launch
 
         _estado.update { e ->
-            val previos = if (e.videosDeCreador.canalId == creadorId) e.videosDeCreador.lista else emptyList()
-            e.copy(videosDeCreador = VideosDeCanal(creadorId, cargando = true, lista = previos))
+            val mismo = e.videosDeCreador.canalId == creadorId
+            e.copy(
+                videosDeCreador = VideosDeCanal(creadorId, cargando = true,
+                    lista = if (mismo) e.videosDeCreador.lista else emptyList()),
+                videosDondeAparece = VideosDeCanal(creadorId, cargando = true,
+                    lista = if (mismo) e.videosDondeAparece.lista else emptyList())
+            )
         }
 
-        val resultado = runCatching { directorio.videosDeCreador(creadorId) }
+        // Los de sus canales y los de canales de otros en los que aparece: la
+        // ficha los enseña en dos apartados.
+        val propios = async { runCatching { directorio.videosDeCreador(creadorId) } }
+        val deOtros = async { runCatching { directorio.videosDondeAparece(creadorId) } }
+        val (r1, r2) = propios.await() to deOtros.await()
 
         _estado.update { e ->
             // Si mientras tanto se abrió la ficha de otro creador, esta
             // respuesta ya no es la que hay que pintar.
             if (e.videosDeCreador.canalId != creadorId) e
-            else e.copy(videosDeCreador = VideosDeCanal(
-                canalId = creadorId,
-                lista = resultado.getOrDefault(e.videosDeCreador.lista),
-                fallo = resultado.isFailure
-            ))
+            else e.copy(
+                videosDeCreador = VideosDeCanal(creadorId,
+                    lista = r1.getOrDefault(e.videosDeCreador.lista), fallo = r1.isFailure),
+                videosDondeAparece = VideosDeCanal(creadorId,
+                    lista = r2.getOrDefault(e.videosDondeAparece.lista), fallo = r2.isFailure)
+            )
         }
     }
 

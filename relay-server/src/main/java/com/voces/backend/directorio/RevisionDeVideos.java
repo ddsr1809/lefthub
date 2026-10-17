@@ -4,6 +4,8 @@ import com.voces.backend.config.RelayProperties;
 import com.voces.backend.modelo.Dtos;
 import com.voces.backend.modelo.Publicacion;
 import com.voces.backend.modelo.Repositorios;
+import com.voces.backend.push.Emisores;
+import com.voces.backend.push.PushService;
 import com.voces.backend.youtube.YouTubeClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,6 +17,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.locks.ReentrantLock;
 
@@ -30,7 +33,12 @@ import java.util.concurrent.locks.ReentrantLock;
  * Esto vuelve a preguntar por ellos: cada diez minutos una pasada, y desde el
  * panel cuando se quiera. Por cada video que YouTube devuelve se guarda su
  * duración, la miniatura buena y la descripción, y se decide de nuevo si es
- * corto, igual que al llegar. No manda ningún aviso: el de ese video ya salió.
+ * corto, igual que al llegar.
+ *
+ * Solo avisa de los videos que llegaron sin datos y de los que tampoco se supo
+ * si eran un Short: esos se guardaron sin aviso para no mandar un "video
+ * nuevo" que en realidad era un corto. Al completarlos se manda el aviso que
+ * toque, si todavía son recientes.
  *
  * Cuesta 1 unidad de cuota por cada 50 videos. A los que duran tres minutos o
  * menos se les pregunta además a youtube.com/shorts, que no cuesta cuota.
@@ -56,15 +64,22 @@ public class RevisionDeVideos {
     private final Repositorios.Publicaciones publicaciones;
     private final YouTubeClient youtube;
     private final RelayProperties config;
+    private final PushService push;
+    private final Emisores emisores;
+    private final AjustesService ajustes;
 
     // Una pasada a la vez: la programada y la del panel podrían coincidir.
     private final ReentrantLock enMarcha = new ReentrantLock();
 
     public RevisionDeVideos(Repositorios.Publicaciones publicaciones, YouTubeClient youtube,
-                            RelayProperties config) {
+                            RelayProperties config, PushService push, Emisores emisores,
+                            AjustesService ajustes) {
         this.publicaciones = publicaciones;
         this.youtube = youtube;
         this.config = config;
+        this.push = push;
+        this.emisores = emisores;
+        this.ajustes = ajustes;
     }
 
     @Scheduled(fixedDelay = 10, timeUnit = TimeUnit.MINUTES, initialDelay = 3)
@@ -130,9 +145,14 @@ public class RevisionDeVideos {
                     continue;
                 }
 
+                // Hay que mirarlo antes de aplicar: después ya puede ser corto.
+                boolean faltaAviso = avisoPendiente(p, ahora);
+
                 if (aplicar(p, d)) aCortos++;
                 p.setDatosRevisadosEn(ahora);
                 completados++;
+
+                if (faltaAviso) avisar(p, d);
             }
 
             publicaciones.saveAll(pendientes);
@@ -144,12 +164,45 @@ public class RevisionDeVideos {
     }
 
     /**
+     * ¿Se guardó sin aviso por no saber si era un corto?
+     *
+     * Es un video normal (así se guarda cuando no se sabe), sin avisar,
+     * reciente y sin directo de por medio. Uno que llegó como corto con los
+     * cortos apagados no entra: ese no se avisa nunca, igual que al llegar.
+     */
+    private boolean avisoPendiente(Publicacion p, Instant ahora) {
+        if (p.isNotificado() || p.esCorto()) return false;
+        if (!Publicacion.OK.equals(p.getEstado())) return false;
+        if (!Publicacion.DIRECTO_NO.equals(p.getDirecto())) return false;
+        Instant limite = ahora.minusSeconds(config.websub().antiguedadMaximaHoras() * 3600);
+        return p.getPublicadoEn() != null && p.getPublicadoEn().isAfter(limite);
+    }
+
+    /** El aviso que se dejó pendiente al llegar, ya con el tipo bien puesto. */
+    private void avisar(Publicacion p, YouTubeClient.DetalleDeVideo d) {
+        if (p.esCorto() && !ajustes.cortos()) return;
+
+        Optional<PushService.Emisor> emisor = emisores.de(p);
+        if (emisor.isEmpty()) return;
+
+        boolean enviado = p.esCorto()
+                ? push.avisarCorto(emisor.get(), p.getVideoId(), p.getTitulo(), p.getMiniaturaUrl())
+                : push.avisarPublicacion(emisor.get(), p.getVideoId(), p.getTitulo(),
+                        p.getMiniaturaUrl(), d);
+        p.setNotificado(enviado);
+        log.info("Aviso pendiente de {} ({}): {}", p.getVideoId(), p.getTipo(),
+                enviado ? "enviado" : "falló");
+    }
+
+    /**
      * Pone a un video lo que dice YouTube.
      *
      * @return true si pasó de video normal a corto.
      */
     private boolean aplicar(Publicacion p, YouTubeClient.DetalleDeVideo d) {
         p.setDuracion(d.duracion());
+        // Vienen en la misma respuesta, sin costo extra.
+        d.copiarCifras(p, Instant.now());
         if (p.getDescripcion() == null && d.descripcion() != null) p.setDescripcion(d.descripcion());
         // La miniatura que se pone cuando no hay datos es la genérica de
         // i.ytimg.com; la de la API es mejor.

@@ -243,10 +243,21 @@ Tienes 10,000 unidades al día. El diseño gasta ~1 por video publicado.
 | Método | Coste | Uso aquí |
 |---|---|---|
 | WebSub | 0 | Detección de publicaciones |
-| `videos.list` | 1 | Rellenar título, descripción y miniatura |
+| `videos.list` | 1 | Rellenar título, descripción y miniatura; de paso trae duración, vistas, "me gusta" y comentarios sin costo extra |
+| `videos.list` (cifras) | 1 por cada 50 videos | Poner al día las vistas del panel: cada media hora los videos que tocan (ver abajo) |
 | `channels.list` | 1 | Solo al dar de alta un creador |
 | `subscriptions.list` | 1 por cada 50 creadores | Saber si el usuario está suscrito a los creadores del directorio, al abrir la app |
 | `search.list` | **100** | **Prohibido.** Agotaría el día en 100 llamadas |
+
+**Cifras de los videos en el panel.** La sección Publicaciones enseña la
+duración, las vistas, los "me gusta", los comentarios y, en un directo al
+aire, cuántos lo están viendo; tocar el título abre la ficha completa del
+video. Las cifras se guardan en la base (V17) y las pone al día
+`CifrasDeVideos`: los videos de los últimos dos días cada media hora, los del
+último mes cada seis horas y los demás cada tres días; los directos, cada dos
+minutos con el vigilante de siempre. Con mil videos son unas 30 unidades al
+día. El botón «Actualizar cifras» y abrir la ficha de un video las piden al
+momento (1 unidad por cada 50 videos). La app no recibe nada de esto.
 
 Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlist de subidas del canal (1 unidad), nunca con `search.list`.
 
@@ -381,15 +392,23 @@ un toque, y dejar de seguir nunca pregunta.
 
 ## La lista de canales de YouTube
 
-*Canales de YouTube* es la primera lista del Directorio, antes de
-*Creadores* y *Medios*, y es la que se ve al abrirlo.
+La app se abre en el **Directorio**, que es la primera pestaña (luego
+*Novedades* y *Ajustes*). Dentro, las listas van en este orden: *Creadores*,
+*Canales de YouTube* y *Medios*; al abrir la app se ve *Creadores*.
 
 En las tres listas, **lo que la persona sigue va arriba**, bajo el título
-"Canales que sigues" (o "Creadores que sigues", "Medios que sigues"), y lo
-demás debajo, cada parte en orden alfabético. El orden se decide al abrir el
-Directorio, al cambiar de lista y cada vez que se refresca (cada cinco
-minutos), pero no en el momento de tocar *Seguir*: si la fila saltara arriba
-al tocarla, la persona perdería de vista dónde estaba.
+"Creadores que sigues" (o "Canales que sigues", "Medios que sigues"), y lo
+demás debajo. Dentro de cada parte, **arriba quien publicó más reciente**, y
+cada fila dice cuándo: "Último video: hace 2 horas". Quien nunca ha publicado
+va al final, por nombre. Para un creador cuenta el último video de cualquiera
+de sus canales (también de los de otros en los que aparece); para un medio, el
+de cualquiera de los suyos. Los videos cortos no cuentan, igual que en
+Novedades. Las fechas las da `GET /api/canales/ultimos-videos` (el servidor la
+guarda un minuto para no recalcularla con cada teléfono).
+
+El orden se decide al abrir el Directorio, al cambiar de lista y cada vez que
+se refresca (cada cinco minutos), pero no en el momento de tocar *Seguir*: si
+la fila saltara arriba al tocarla, la persona perdería de vista dónde estaba.
 
 Cada fila de canal dice, de arriba abajo:
 
@@ -413,14 +432,24 @@ momento. Mientras no se sabe, la app usa la etiqueta que se le puso en el
 panel ("Clips") o su usuario de YouTube, sin la arroba. En la app el
 nombre del canal va siempre en mayúsculas, también en su ficha. Sin `YOUTUBE_API_KEY` no se llena nunca.
 
+## La ficha de un creador
+
+De arriba abajo: su foto, nombre y descripción con el botón de seguir; **su
+canal principal** (el primero de los suyos); **sus últimos videos**, de sus
+propios canales; **videos donde también aparece**, de canales de otros (un
+medio, otro creador) en los que está marcado; y después sus otros canales, sus
+redes y sus medios. Los dos apartados de videos salen de
+`GET /api/creadores/{id}/publicaciones?parte=propios` y `?parte=compartidos`;
+si uno está vacío, no se enseña.
+
 ## Volver a la lista correcta del Directorio
 
-El Directorio recuerda en qué lista se estaba (*Canales de YouTube*,
-*Creadores* o *Medios*). Al abrir una ficha y volver con el botón de atrás, o
+El Directorio recuerda en qué lista se estaba (*Creadores*, *Canales de
+YouTube* o *Medios*). Al abrir una ficha y volver con el botón de atrás, o
 al ir a Novedades y volver a la pestaña del Directorio, se ve la lista de la
 **última ficha** que se abrió: la de un creador lleva a *Creadores*; la de un
 canal, a *Canales de YouTube*; la de un medio, a *Medios*. Solo al abrir la app
-se empieza por *Canales de YouTube*, y la persona puede cambiar de lista
+se empieza por *Creadores*, y la persona puede cambiar de lista
 cuando quiera con los botones de arriba. El filtro de etiquetas elegido
 también se conserva.
 

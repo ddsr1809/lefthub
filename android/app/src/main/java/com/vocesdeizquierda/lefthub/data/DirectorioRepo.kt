@@ -88,7 +88,16 @@ class DirectorioRepo(
 
     /** Los últimos videos de un creador, una sola lectura al abrir su ficha. */
     suspend fun videosDeCreador(creadorId: String): List<Publicacion> =
-        ApiRelay.publicacionesDeCreador(creadorId)
+        ApiRelay.publicacionesDeCreador(creadorId, parte = "propios")
+
+    /** Los videos de canales de otros en los que aparece el creador. */
+    suspend fun videosDondeAparece(creadorId: String): List<Publicacion> =
+        ApiRelay.publicacionesDeCreador(creadorId, parte = "compartidos")
+
+    /** Cuándo publicó por última vez cada canal; se refresca con el directorio. */
+    fun ultimosVideos(): Flow<Map<String, java.time.Instant>> = sondear(intervaloMs = 5 * 60_000L) {
+        ApiRelay.ultimosVideos()
+    }
 
     /** Los últimos videos de un medio, una sola lectura al abrir su ficha. */
     suspend fun videosDeProductora(productoraId: String): List<Publicacion> =
@@ -218,11 +227,21 @@ class DirectorioRepo(
     private suspend fun sincronizarCortos(deQuienesSigue: List<String>, conCortos: Boolean) {
         val queridos = if (conCortos) deQuienesSigue.toSet() else emptySet()
         // La primera vez no se sabe a qué quedó suscrito el aparato en un uso
-        // anterior: se da de baja de todo lo que no toque.
-        val sobran = (cortosSuscritos ?: deQuienesSigue.toSet()) - queridos
-        val faltan = queridos - (cortosSuscritos ?: emptySet())
+        // anterior: se supone que a todo, para darse de baja de lo que no
+        // toque, y se suscribe a todo lo querido.
+        //
+        // Antes se anotaba "a nada" antes de darse de baja. Si una baja
+        // fallaba (sin red al abrir la app), el aparato seguía suscrito pero
+        // aquí constaba que no, y nunca se reintentaba: los avisos de cortos
+        // seguían llegando aunque estuvieran apagados. Ahora lo que no se
+        // logra quitar sigue anotado y se reintenta en la siguiente lectura
+        // del perfil.
+        val primera = cortosSuscritos == null
+        val actuales = cortosSuscritos ?: deQuienesSigue.toSet()
+        val sobran = actuales - queridos
+        val faltan = if (primera) queridos else queridos - actuales
 
-        if (cortosSuscritos == null) cortosSuscritos = emptySet()
+        if (primera) cortosSuscritos = actuales
         sobran.forEach { dejarCortos(it) }
         faltan.forEach { recibirCortos(it) }
     }

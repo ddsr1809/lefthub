@@ -21,6 +21,7 @@ import coil.compose.AsyncImage
 import com.vocesdeizquierda.lefthub.data.CanalListado
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.Productora
+import java.time.Instant
 
 enum class VarianteBoton { PRIMARIO, SECUNDARIO, PELIGRO }
 
@@ -100,7 +101,9 @@ fun FilaCreador(
     conFranja: Boolean = false,
     /** De sus [deCuantos] canales de YouTube, cuántos sigue sueltos. */
     sueltos: Int = 0,
-    deCuantos: Int = 0
+    deCuantos: Int = 0,
+    /** Cuándo salió su último video, de cualquiera de sus canales. */
+    ultimoVideo: Instant? = null
 ) {
     val lugares = creador.canalesVisibles.size
     // Sigue algunos de sus canales sin seguirlo entero: la fila lo dice, y el
@@ -117,8 +120,11 @@ fun FilaCreador(
         fotoUrl = creador.photoUrl,
         // Sin el tema fijo de antes: ahora el directorio se agrupa con las
         // etiquetas que el equipo enciende, y van arriba, como filtro.
-        detalle = if (parcial) "Sigues ${deCuales(sueltos, deCuantos)}"
-            else "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica",
+        detalle = when {
+            parcial -> "Sigues ${deCuales(sueltos, deCuantos)}"
+            ultimoVideo != null -> ultimoVideoEnPalabras(ultimoVideo)
+            else -> "$lugares ${if (lugares == 1) "lugar" else "lugares"} donde publica"
+        },
         siguiendo = siguiendo || parcial,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
@@ -139,7 +145,8 @@ fun FilaProductora(
     onSeguir: () -> Unit,
     conFranja: Boolean = false,
     sueltos: Int = 0,
-    deCuantos: Int = 0
+    deCuantos: Int = 0,
+    ultimoVideo: Instant? = null
 ) {
     val canales = productora.canales.size
     val parcial = !siguiendo && sueltos > 0
@@ -153,7 +160,11 @@ fun FilaProductora(
     FilaDeDirectorio(
         nombre = productora.nombre,
         fotoUrl = productora.logoUrl,
-        detalle = if (parcial) "Medio · Sigues ${deCuales(sueltos, deCuantos)}" else detalle,
+        detalle = when {
+            parcial -> "Medio · Sigues ${deCuales(sueltos, deCuantos)}"
+            ultimoVideo != null -> "Medio · " + ultimoVideoEnPalabras(ultimoVideo)
+            else -> detalle
+        },
         siguiendo = siguiendo || parcial,
         onAbrir = onAbrir,
         onSeguir = onSeguir,
@@ -161,6 +172,9 @@ fun FilaProductora(
         conFranja = conFranja
     )
 }
+
+/** "Último video: hace 2 horas", "Último video: ayer". */
+internal fun ultimoVideoEnPalabras(cuando: Instant): String = "Último video: " + tiempoRelativo(cuando)
 
 /** "1 de sus 3 canales", "2 de sus 3 canales". */
 internal fun deCuales(sueltos: Int, deCuantos: Int): String =
@@ -184,7 +198,8 @@ fun FilaCanal(
     suscritoEnYouTube: Boolean? = null,
     siguiendo: Boolean = false,
     onSeguir: () -> Unit = {},
-    conFranja: Boolean = false
+    conFranja: Boolean = false,
+    ultimoVideo: Instant? = null
 ) {
     val textoYouTube = when (suscritoEnYouTube) {
         true -> "Suscrito en YouTube"
@@ -194,7 +209,10 @@ fun FilaCanal(
     val deQuien = if (listado.duenoEsMedio) "Del medio ${listado.dueno}" else "De ${listado.dueno}"
     // Sin el @usuario: el nombre de arriba ya lo identifica, y la arroba
     // confunde más de lo que ayuda.
-    val detalle = listado.deQuien.ifBlank { "Canal de YouTube" }
+    val detalle = listOfNotNull(
+        listado.deQuien.takeIf { it.isNotBlank() },
+        ultimoVideo?.let { ultimoVideoEnPalabras(it) }
+    ).joinToString(" · ").ifBlank { "Canal de YouTube" }
 
     FilaDeDirectorio(
         nombre = listado.nombreCanal,
@@ -284,7 +302,7 @@ private fun FilaDeDirectorio(
                     detalle,
                     style = MaterialTheme.typography.bodySmall,
                     color = esquema.onSurfaceVariant,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 // Línea aparte y con palabras: la diferencia no puede depender

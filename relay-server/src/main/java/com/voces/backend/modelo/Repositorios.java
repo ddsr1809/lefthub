@@ -145,6 +145,14 @@ public final class Repositorios {
         /** Para el panel: solo los cortos, o todo menos los cortos. */
         List<Publicacion> findByTipoOrderByPublicadoEnDesc(String tipo, Pageable pagina);
 
+        /** Por canal, cuándo salió su último video normal: [canalId, fecha]. */
+        @Query("""
+                select p.canalId, max(p.publicadoEn) from Publicacion p
+                where p.canalId is not null and p.tipo = 'video' and p.publicadoEn is not null
+                group by p.canalId
+                """)
+        List<Object[]> ultimoVideoPorCanal();
+
         /**
          * Videos que llegaron sin sus datos de YouTube (sin duración) y a los
          * que todavía no se ha vuelto a preguntar. Los más nuevos primero.
@@ -166,6 +174,51 @@ public final class Repositorios {
         long cuantosSinDatos();
 
         List<Publicacion> findByTipoNotOrderByPublicadoEnDesc(String tipo, Pageable pagina);
+
+        List<Publicacion> findByVideoIdIn(Collection<String> videoIds);
+
+        // --- Los más vistos, para el panel. Solo los publicados desde `desde`;
+        //     los que todavía no tienen cifras van al final.
+
+        @Query("""
+                select p from Publicacion p where p.publicadoEn >= :desde
+                order by coalesce(p.vistas, -1) desc, p.publicadoEn desc
+                """)
+        List<Publicacion> masVistos(@Param("desde") Instant desde, Pageable pagina);
+
+        @Query("""
+                select p from Publicacion p where p.publicadoEn >= :desde and p.tipo = :tipo
+                order by coalesce(p.vistas, -1) desc, p.publicadoEn desc
+                """)
+        List<Publicacion> masVistosDeTipo(@Param("desde") Instant desde, @Param("tipo") String tipo,
+                                          Pageable pagina);
+
+        @Query("""
+                select p from Publicacion p where p.publicadoEn >= :desde and p.tipo <> :tipo
+                order by coalesce(p.vistas, -1) desc, p.publicadoEn desc
+                """)
+        List<Publicacion> masVistosSinTipo(@Param("desde") Instant desde, @Param("tipo") String tipo,
+                                           Pageable pagina);
+
+        /**
+         * Los videos cuyas cifras toca pedir otra vez. Cuanto más nuevo el
+         * video, más rápido cambian: los de dos días, cada media hora; los del
+         * último mes, cada seis horas; los demás, cada tres días. Primero los
+         * que nunca se han pedido. Los retirados no: YouTube ya no los tiene.
+         */
+        @Query(value = """
+                select * from publicaciones
+                where plataforma = 'youtube'
+                  and estado <> 'removed'
+                  and (cifras_en is null
+                       or cifras_en < now() - case
+                            when publicado_en > now() - interval '2 days' then interval '30 minutes'
+                            when publicado_en > now() - interval '30 days' then interval '6 hours'
+                            else interval '3 days' end)
+                order by cifras_en asc nulls first, publicado_en desc nulls last
+                limit :limite
+                """, nativeQuery = true)
+        List<Publicacion> porActualizarCifras(@Param("limite") int limite);
 
         /** Directos pendientes de arrancar o de terminar. */
         List<Publicacion> findByDirectoIn(Collection<String> estados);

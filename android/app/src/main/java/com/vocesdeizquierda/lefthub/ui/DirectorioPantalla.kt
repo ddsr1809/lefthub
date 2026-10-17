@@ -33,6 +33,9 @@ import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
+import com.vocesdeizquierda.lefthub.data.porNovedad
+import com.vocesdeizquierda.lefthub.data.ultimoVideoDe
+import java.time.Instant
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 // El directorio es cerrado: solo aparecen los creadores que el equipo aprobó.
@@ -45,8 +48,9 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 // panel; mientras no haya ninguna encendida que alguien lleve, no hay filtro.
 
 // Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
-// de debajo filtran dentro de la que esté elegida. Los canales van primero:
-// es lo que la persona reconoce de YouTube, y lo que avisa.
+// de debajo filtran dentro de la que esté elegida. Van en este orden:
+// Creadores, Canales de YouTube y Medios. Dentro de cada una, arriba quien
+// publicó más reciente.
 //
 // Cuál se ve no lo guarda esta pantalla sino la navegación (Navegacion en
 // MainActivity): así, al volver de una ficha con el botón de atrás, o al
@@ -86,8 +90,10 @@ fun DirectorioPantalla(
      * las listas se vuelven a ordenar cuando llega.
      */
     perfilCargado: Boolean = true,
+    /** Cuándo salió el último video de cada canal, por id: ordena las listas. */
+    ultimosVideos: Map<String, Instant> = emptyMap(),
     /** La lista que se ve: una de SeccionDirectorio. */
-    seccionElegida: String = CANALES,
+    seccionElegida: String = CREADORES,
     /** La persona tocó otra de las listas de arriba. */
     onElegirSeccion: (String) -> Unit = {}
 ) {
@@ -105,8 +111,8 @@ fun DirectorioPantalla(
     // Solo se ofrecen las listas que tienen algo. Una pestaña vacía es una
     // promesa incumplida.
     val secciones = listOfNotNull(
-        (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
         CREADORES to "Creadores",
+        (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
         (PRODUCTORAS to "Medios").takeIf { productoras.isNotEmpty() }
     )
     // Si la lista que se estaba viendo se queda vacía (se retiró la última
@@ -242,7 +248,10 @@ fun DirectorioPantalla(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                val (seguidas, demas) = seguidosPrimero(productorasVisibles) { it.id in seguidosAlAbrir.productoras }
+                // Arriba lo que sigue; dentro de cada parte, quien publicó más reciente.
+                val (seguidas, demas) = seguidosPrimero(
+                    porNovedad(productorasVisibles) { ultimoVideoDe(it.canales, ultimosVideos) }
+                ) { it.id in seguidosAlAbrir.productoras }
                 enDosGrupos(seguidas, demas, "Medios que sigues", "Los demás medios", { it.id }) { productora, franja ->
                     FilaProductora(
                         productora = productora,
@@ -251,7 +260,8 @@ fun DirectorioPantalla(
                         onSeguir = { onSeguirProductora(productora.id) },
                         conFranja = franja,
                         sueltos = perfil.sueltosDe(productora.canales),
-                        deCuantos = productora.canales.count { it.sePuedeSeguir }
+                        deCuantos = productora.canales.count { it.sePuedeSeguir },
+                        ultimoVideo = ultimoVideoDe(productora.canales, ultimosVideos)
                     )
                 }
             }
@@ -266,7 +276,9 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                val (seguidos, demas) = seguidosPrimero(canalesVisibles) { it.canal.id in seguidosAlAbrir.canales }
+                val (seguidos, demas) = seguidosPrimero(
+                    porNovedad(canalesVisibles) { ultimosVideos[it.canal.id] }
+                ) { it.canal.id in seguidosAlAbrir.canales }
                 enDosGrupos(seguidos, demas, "Canales que sigues", "Los demás canales", { it.canal.id }) { listado, franja ->
                     FilaCanal(
                         listado = listado,
@@ -274,7 +286,8 @@ fun DirectorioPantalla(
                         suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
                         siguiendo = perfil.recibe(listado.canal),
                         onSeguir = { onSeguirCanal(listado.canal) },
-                        conFranja = franja
+                        conFranja = franja,
+                        ultimoVideo = ultimosVideos[listado.canal.id]
                     )
                 }
             }
@@ -293,7 +306,9 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                val (seguidos, demas) = seguidosPrimero(creadoresVisibles) { it.id in seguidosAlAbrir.creadores }
+                val (seguidos, demas) = seguidosPrimero(
+                    porNovedad(creadoresVisibles) { ultimoVideoDe(it.canalesDeYouTube, ultimosVideos) }
+                ) { it.id in seguidosAlAbrir.creadores }
                 enDosGrupos(seguidos, demas, "Creadores que sigues", "Los demás creadores", { it.id }) { creador, franja ->
                     FilaCreador(
                         creador = creador,
@@ -303,7 +318,8 @@ fun DirectorioPantalla(
                         suscritoEnYouTube = youtube.suscritoA(creador.id),
                         conFranja = franja,
                         sueltos = perfil.sueltosDe(creador.canalesDeYouTube),
-                        deCuantos = creador.canalesDeYouTube.count { it.sePuedeSeguir }
+                        deCuantos = creador.canalesDeYouTube.count { it.sePuedeSeguir },
+                        ultimoVideo = ultimoVideoDe(creador.canalesDeYouTube, ultimosVideos)
                     )
                 }
             }
@@ -357,9 +373,10 @@ private fun TituloDeGrupo(texto: String) {
  * persona publica en varios lugares; la app los junta bajo un solo perfil y
  * cada botón dice en palabras qué va a pasar al tocarlo.
  *
- * Tiene las mismas partes que su ficha del panel: sus canales de YouTube, sus
- * redes sociales y sus productoras. Puede faltar cualquiera: hay quien solo
- * tiene una cuenta de X o de Instagram.
+ * De arriba abajo: quién es y el botón de seguir; su canal principal; sus
+ * últimos videos; los videos de canales de otros en los que también aparece;
+ * sus otros canales, sus redes y sus medios. Puede faltar cualquiera: hay
+ * quien solo tiene una cuenta de X o de Instagram.
  */
 @Composable
 fun CreadorPantalla(
@@ -375,13 +392,15 @@ fun CreadorPantalla(
     // El directorio: para decir de quién es un canal ajeno en el que aparece.
     creadores: List<Creador> = emptyList(),
     onAbrirCanal: (String) -> Unit = {},
-    /** Sus últimos videos: el mini feed de arriba. */
+    /** Sus últimos videos, de sus propios canales. */
     videos: VideosDeCanal = VideosDeCanal(),
     /** Los videos que ya abrió desde la app: su fila se ve distinta. */
     abiertos: Set<String> = emptySet(),
     /** A quién sigue: para saber qué canales sigue sueltos. */
     perfil: Perfil = Perfil(),
-    onSeguirCanal: (Canal) -> Unit = {}
+    onSeguirCanal: (Canal) -> Unit = {},
+    /** Los videos de canales de otros (un medio, otro creador) en los que aparece. */
+    videosDondeAparece: VideosDeCanal = VideosDeCanal()
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -451,36 +470,6 @@ fun CreadorPantalla(
             onClick = onSeguir
         )
 
-        // Lo último que publicó, lo primero que se ve: unos pocos videos en
-        // filas pequeñas. Si no hay ninguno (no tiene YouTube, o todavía no
-        // ha publicado desde que entró al directorio) el apartado no sale.
-        if (videos.lista.isNotEmpty()) {
-            Text(
-                "Sus últimos videos",
-                style = MaterialTheme.typography.headlineMedium,
-                color = esquema.onBackground,
-                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
-            )
-            videos.lista.forEach { publicacion ->
-                FilaVideo(
-                    publicacion = publicacion,
-                    abierto = publicacion.videoId in abiertos,
-                    sinFirmarPor = creador.name,
-                    onAbrir = {
-                        val destino = publicacion.destino
-                        Enrutador.abrirVideo(
-                            contexto,
-                            destino.plataforma,
-                            destino.videoId,
-                            destino.url,
-                            campana = "perfil_creador"
-                        )
-                        Abiertos.marcar(contexto, publicacion.videoId)
-                    }
-                )
-            }
-        }
-
         // La misma división que en su ficha del panel: de un lado sus
         // canales de YouTube, que es de donde salen los videos y los avisos;
         // del otro sus redes, que son enlaces.
@@ -488,39 +477,16 @@ fun CreadorPantalla(
         val deYouTube = creador.canalesDeYouTube
         val redes = creador.redes
 
-        if (canales.isEmpty()) {
-            Text(
-                "Todavía no hemos agregado sus enlaces.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = esquema.onSurfaceVariant,
-                modifier = Modifier.padding(top = Espacio.lg)
-            )
-        }
-
-        if (deYouTube.isNotEmpty()) {
-            Text(
-                if (deYouTube.size == 1) "Canal de YouTube" else "Canales de YouTube",
-                style = MaterialTheme.typography.headlineMedium,
-                color = esquema.onBackground,
-                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
-            )
-        } else if (redes.isNotEmpty()) {
-            // Sin canal de YouTube no hay de dónde avisar: mejor decirlo que
-            // dejar a alguien esperando una notificación que no va a llegar.
-            Text(
-                "No tiene canal de YouTube, así que no hay avisos de videos suyos. " +
-                    "Puedes verlo en sus redes.",
-                style = MaterialTheme.typography.bodyLarge,
-                color = esquema.onSurfaceVariant,
-                modifier = Modifier.padding(top = Espacio.md)
-            )
-        }
+        // Su canal principal: el primero de los suyos. Si solo aparece en
+        // canales de otros, el primero de esos.
+        val principal = deYouTube.firstOrNull { it.creadorId == creador.id } ?: deYouTube.firstOrNull()
+        val otrosCanales = deYouTube.filter { it !== principal }
 
         // Con varios canales de YouTube, el botón para dar el permiso y las
         // frases de "todavía no se sabe" salen una sola vez, en el primero.
-        val primeroDeYouTube = deYouTube.firstOrNull { it.esDeYouTube }
+        val primeroDeYouTube = principal?.takeIf { it.esDeYouTube } ?: deYouTube.firstOrNull { it.esDeYouTube }
 
-        deYouTube.forEach { canal ->
+        val pintarCanal: @Composable (Canal) -> Unit = { canal ->
             val suscrito = youtube.suscritoAlCanal(canal)
             val productora = productoras.firstOrNull { it.id == canal.productoraId }
 
@@ -560,6 +526,84 @@ fun CreadorPantalla(
                     onSeguir = { onSeguirCanal(canal) }
                 )
             }
+        }
+
+        val pintarVideos: @Composable (String, VideosDeCanal) -> Unit = { titulo, lista ->
+            // Si no hay ninguno, el apartado no sale.
+            if (lista.lista.isNotEmpty()) {
+                Text(
+                    titulo,
+                    style = MaterialTheme.typography.headlineMedium,
+                    color = esquema.onBackground,
+                    modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+                )
+                lista.lista.forEach { publicacion ->
+                    FilaVideo(
+                        publicacion = publicacion,
+                        abierto = publicacion.videoId in abiertos,
+                        sinFirmarPor = creador.name,
+                        onAbrir = {
+                            val destino = publicacion.destino
+                            Enrutador.abrirVideo(
+                                contexto,
+                                destino.plataforma,
+                                destino.videoId,
+                                destino.url,
+                                campana = "perfil_creador"
+                            )
+                            Abiertos.marcar(contexto, publicacion.videoId)
+                        }
+                    )
+                }
+            }
+        }
+
+        if (canales.isEmpty()) {
+            Text(
+                "Todavía no hemos agregado sus enlaces.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(top = Espacio.lg)
+            )
+        }
+
+        // 1. Su canal principal, lo primero después del botón de seguir.
+        if (principal != null) {
+            Text(
+                "Su canal principal",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            pintarCanal(principal)
+        } else if (redes.isNotEmpty()) {
+            // Sin canal de YouTube no hay de dónde avisar: mejor decirlo que
+            // dejar a alguien esperando una notificación que no va a llegar.
+            Text(
+                "No tiene canal de YouTube, así que no hay avisos de videos suyos. " +
+                    "Puedes verlo en sus redes.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(top = Espacio.md)
+            )
+        }
+
+        // 2. Lo último que subió a sus canales.
+        pintarVideos("Sus últimos videos", videos)
+
+        // 3. Los videos de canales de otros (un medio, otro creador) en los
+        //    que también aparece.
+        pintarVideos("Videos donde también aparece", videosDondeAparece)
+
+        // 4. Sus demás canales de YouTube, y los de otros en los que sale.
+        if (otrosCanales.isNotEmpty()) {
+            Text(
+                if (otrosCanales.size == 1) "Otro canal de YouTube" else "Otros canales de YouTube",
+                style = MaterialTheme.typography.headlineMedium,
+                color = esquema.onBackground,
+                modifier = Modifier.padding(top = Espacio.lg, bottom = Espacio.md)
+            )
+            otrosCanales.forEach { pintarCanal(it) }
         }
 
         if (redes.isNotEmpty()) {

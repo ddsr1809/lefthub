@@ -278,8 +278,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // Vive aquí y no en el Directorio para que no se pierda al abrir una
     // ficha: con el botón de atrás, o al volver a la pestaña desde Novedades,
     // se vuelve a la lista de la última ficha que se vio (la de un creador
-    // lleva a Creadores; la de un canal, a Canales). Al abrir la app, Canales.
-    var seccionDirectorio by rememberSaveable { mutableStateOf(SeccionDirectorio.CANALES) }
+    // lleva a Creadores; la de un canal, a Canales). Al abrir la app, Creadores.
+    var seccionDirectorio by rememberSaveable { mutableStateOf(SeccionDirectorio.CREADORES) }
 
     // Tocar una notificación abre la ficha de su video. El toque puede llegar
     // antes que esta pantalla (la app estaba cerrada): queda guardado en
@@ -325,9 +325,11 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     }
     val snackbar = remember { SnackbarHostState() }
 
+    // El Directorio va primero y es donde se abre la app: ahí están, arriba,
+    // los que acaban de publicar.
     val destinos = listOf(
-        "novedades" to "Novedades",
         "directorio" to "Directorio",
+        "novedades" to "Novedades",
         "ajustes" to "Ajustes"
     )
 
@@ -412,7 +414,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     ) { relleno ->
         NavHost(
             navController = nav,
-            startDestination = "novedades",
+            startDestination = "directorio",
             modifier = Modifier.padding(relleno)
         ) {
             composable("novedades") {
@@ -452,7 +454,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onSeguirCanal = { modelo.alternarCanal(it) },
                     perfilCargado = estado.perfilCargado,
                     seccionElegida = seccionDirectorio,
-                    onElegirSeccion = { seccionDirectorio = it }
+                    onElegirSeccion = { seccionDirectorio = it },
+                    ultimosVideos = estado.ultimosVideos
                 )
             }
 
@@ -483,6 +486,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onAbrirCanal = { nav.navigate("canal/$it") },
                     // Mientras llegan los de este creador, no se pintan los del anterior.
                     videos = estado.videosDeCreador.takeIf { it.canalId == id } ?: VideosDeCanal(id, cargando = true),
+                    videosDondeAparece = estado.videosDondeAparece.takeIf { it.canalId == id }
+                        ?: VideosDeCanal(id, cargando = true),
                     abiertos = Abiertos.videos,
                     perfil = estado.perfil,
                     onSeguirCanal = { modelo.alternarCanal(it) }

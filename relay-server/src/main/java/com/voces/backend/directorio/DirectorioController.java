@@ -45,13 +45,15 @@ public class DirectorioController {
     private final Catalogo catalogo;
     private final AjustesService ajustes;
     private final TiendaGoogle tienda;
+    private final UltimosVideos ultimosVideos;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
                                 Repositorios.Publicaciones publicaciones,
                                 Repositorios.Usuarios usuarios,
                                 Catalogo catalogo, AjustesService ajustes,
-                                TiendaGoogle tienda) {
+                                TiendaGoogle tienda, UltimosVideos ultimosVideos) {
+        this.ultimosVideos = ultimosVideos;
         this.creadores = creadores;
         this.productoras = productoras;
         this.publicaciones = publicaciones;
@@ -128,7 +130,8 @@ public class DirectorioController {
     @GetMapping("/creadores/{id}/publicaciones")
     @Transactional(readOnly = true)
     public List<Dtos.PublicacionDto> delCreador(@PathVariable UUID id,
-                                                @RequestParam(defaultValue = "5") int limite) {
+                                                @RequestParam(defaultValue = "5") int limite,
+                                                @RequestParam(required = false) String parte) {
         Catalogo.Vista vista = catalogo.vista();
 
         if (vista.creadorVisible(id) == null) {
@@ -142,10 +145,15 @@ public class DirectorioController {
                 .map(Canal::getId)
                 .toList();
 
+        // ?parte=propios: solo lo de sus canales. ?parte=compartidos: solo lo
+        // de canales de otros en los que aparece. Sin parte, todo junto.
+        boolean propios = !"compartidos".equals(parte);
+        boolean deOtros = !"propios".equals(parte);
+
         List<Publicacion> lista = publicaciones.delFeed(
-                List.of(id),
+                propios ? List.of(id) : List.of(NINGUNO),
                 // La consulta no admite una colección vacía.
-                compartidos.isEmpty() ? List.of(NINGUNO) : compartidos,
+                !deOtros || compartidos.isEmpty() ? List.of(NINGUNO) : compartidos,
                 false,
                 PageRequest.of(0, Math.max(1, Math.min(limite, 30))));
 
@@ -272,6 +280,16 @@ public class DirectorioController {
      *
      * Solo canales con el dueño visible, como en el resto del directorio.
      */
+    /**
+     * Cuándo salió el último video de cada canal visible. La app ordena con
+     * esto sus listas: arriba quien publicó más reciente. Sin los cortos,
+     * igual que Novedades. Los canales que nunca han publicado no vienen.
+     */
+    @GetMapping("/canales/ultimos-videos")
+    public List<Dtos.UltimoVideo> ultimosVideos() {
+        return ultimosVideos.lista();
+    }
+
     @GetMapping("/canales/{id}/publicaciones")
     @Transactional(readOnly = true)
     public List<Dtos.PublicacionDto> delCanal(@PathVariable UUID id,
