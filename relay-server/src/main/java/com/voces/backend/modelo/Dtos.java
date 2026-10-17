@@ -187,6 +187,87 @@ public final class Dtos {
         }
     }
 
+    /**
+     * Un video como lo ve el panel: lo mismo que la app y, además, sus cifras
+     * y lo que pasó con él en el servidor. La app no recibe nada de esto.
+     *
+     * @param duracion         como la da YouTube: "PT12M34S"
+     * @param duracionSegundos la misma, en segundos; null si no se sabe
+     * @param vistas           null si YouTube no la da o todavía no se ha pedido;
+     *                         lo mismo meGusta y comentarios
+     * @param espectadores     cuántos lo veían en directo; solo mientras está al aire
+     * @param cifrasEn         de cuándo son las cifras
+     * @param detectadoEn      cuándo se enteró el servidor (publicadoEn es cuándo lo subió el canal)
+     * @param notificado       si salió el aviso a los seguidores
+     * @param reportes         cuántas veces lo reportaron como roto
+     * @param directo          no | programado | en_vivo | terminado
+     * @param canalNombre      el canal de YouTube del que salió
+     * @param descripcion      solo en la ficha de un video, no en la lista
+     */
+    public record PublicacionAdminDto(
+            String videoId,
+            UUID creadorId,
+            String creadorNombre,
+            String plataforma,
+            String titulo,
+            String miniaturaUrl,
+            String url,
+            String tipo,
+            boolean enVivo,
+            String estado,
+            String destinoUrl,
+            String destinoPlataforma,
+            Instant publicadoEn,
+            UUID canalId,
+            UUID productoraId,
+            String productoraNombre,
+            String duracion,
+            Long duracionSegundos,
+            Long vistas,
+            Long meGusta,
+            Long comentarios,
+            Long espectadores,
+            Instant cifrasEn,
+            Instant detectadoEn,
+            boolean notificado,
+            int reportes,
+            String directo,
+            String canalNombre,
+            String descripcion
+    ) {
+        public static PublicacionAdminDto de(PublicacionDto base, Publicacion p, String canalNombre,
+                                             boolean conDescripcion) {
+            return new PublicacionAdminDto(
+                    base.videoId(), base.creadorId(), base.creadorNombre(), base.plataforma(),
+                    base.titulo(), base.miniaturaUrl(), base.url(), base.tipo(), base.enVivo(),
+                    base.estado(), base.destinoUrl(), base.destinoPlataforma(), base.publicadoEn(),
+                    base.canalId(), base.productoraId(), base.productoraNombre(),
+                    p.getDuracion(), com.voces.backend.youtube.YouTubeClient.segundos(p.getDuracion()),
+                    p.getVistas(), p.getMeGusta(), p.getComentarios(), p.getEspectadores(),
+                    p.getCifrasEn(), p.getDetectadoEn(), p.isNotificado(), p.getReportes(),
+                    p.getDirecto(), canalNombre,
+                    conDescripcion ? p.getDescripcion() : null);
+        }
+    }
+
+    /**
+     * Lo que pasó al pedir cifras a YouTube.
+     *
+     * @param pedidos      videos por los que se preguntó
+     * @param actualizados los que YouTube devolvió, con sus cifras de ahora
+     * @param noExisten    los que YouTube ya no tiene (borrados o privados)
+     * @param sinApi       la Data API no contestó: la clave o la cuota
+     * @param ocupada      ya había otra actualización en marcha; esta no hizo nada
+     */
+    public record CifrasActualizadas(int pedidos, int actualizados, int noExisten,
+                                     boolean sinApi, boolean ocupada) {}
+
+    /** Los videos que el panel tiene en pantalla, para pedir sus cifras. */
+    public record PedirCifras(
+            @Size(max = 200, message = "Son demasiados videos de una vez.")
+            List<String> videoIds
+    ) {}
+
     public record PerfilDto(
             UUID id,
             String proveedor,

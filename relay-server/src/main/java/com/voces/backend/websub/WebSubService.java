@@ -337,6 +337,8 @@ public class WebSubService {
         p.setUrl("https://www.youtube.com/watch?v=" + entrada.videoId());
         p.setPublicadoEn(entrada.publicado() != null ? entrada.publicado() : Instant.now());
         p.setEstado(Publicacion.OK);
+        // Las primeras cifras (casi siempre cero): vienen en la misma llamada.
+        if (detalle != null) detalle.copiarCifras(p, Instant.now());
 
         try {
             publicaciones.saveAndFlush(p);
@@ -474,7 +476,14 @@ public class WebSubService {
         boolean alAire = Publicacion.DIRECTO_EN_VIVO.equals(ahora);
         boolean faltaAvisar = alAire && !p.isDirectoAvisado();
 
-        if (ahora.equals(antes) && !faltaAvisar) return;
+        // Cuántos lo están viendo, y sus vistas: vienen en la misma llamada
+        // de cada dos minutos, así el panel los tiene casi al momento.
+        if (detalle != null) detalle.copiarCifras(p, Instant.now());
+
+        if (ahora.equals(antes) && !faltaAvisar) {
+            if (detalle != null) publicaciones.save(p);
+            return;
+        }
 
         p.setDirecto(ahora);
         p.setEnVivo(alAire);
