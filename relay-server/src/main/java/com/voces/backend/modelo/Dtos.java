@@ -305,7 +305,8 @@ public final class Dtos {
              */
             boolean compraDisponible,
             /**
-             * El equipo encendió la comprobación de suscripciones de YouTube.
+             * A esta cuenta se le ofrece la comprobación de suscripciones de
+             * YouTube: lo decide el alcance del panel (ver AjustesService).
              * Con esto en false la app no la ofrece ni la hace por su cuenta.
              */
             boolean youtube,
@@ -494,10 +495,18 @@ public final class Dtos {
      * @param recomendaciones quién puede recomendar canales: apagado | admins |
      *                        elegidos | todos. Ver AjustesService.
      */
-    public record AjustesDto(boolean cortos, boolean anuncios, boolean youtube, String recomendaciones) {}
+    /**
+     * @param youtube         lo de antes: true solo si es para todos. Lo lee un
+     *                        panel anterior.
+     * @param youtubeAlcance  a quién se ofrece "Conectar con YouTube": apagado
+     *                        | admins | elegidos | todos.
+     */
+    public record AjustesDto(boolean cortos, boolean anuncios, boolean youtube, String recomendaciones,
+                             String youtubeAlcance) {}
 
     /** Lo que se cambia de los ajustes. Lo que no viene no se toca. */
-    public record CambiarAjustes(Boolean cortos, Boolean anuncios, Boolean youtube, String recomendaciones) {}
+    public record CambiarAjustes(Boolean cortos, Boolean anuncios, Boolean youtube, String recomendaciones,
+                                 String youtubeAlcance) {}
 
     // -------------------------------------------------------------------------
     // Anuncios: quitarlos con una compra o con un folio de regalo
@@ -726,7 +735,9 @@ public final class Dtos {
             /** El equipo le activó el chat interno. */
             boolean chatHabilitado,
             /** El equipo la eligió para recomendar canales. */
-            boolean recomendarHabilitado
+            boolean recomendarHabilitado,
+            /** El equipo la eligió para ofrecerle "Conectar con YouTube". */
+            boolean youtubeHabilitado
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -736,7 +747,7 @@ public final class Dtos {
                     u.isPosibleBot(), u.getMotivoBot(),
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
                     u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
-                    u.isRecomendarHabilitado());
+                    u.isRecomendarHabilitado(), u.isYoutubeHabilitado());
         }
     }
 
