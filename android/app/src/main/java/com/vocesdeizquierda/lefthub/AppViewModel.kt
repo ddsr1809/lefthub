@@ -6,6 +6,7 @@ import android.content.IntentSender
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vocesdeizquierda.lefthub.chat.ChatAvisos
 import com.vocesdeizquierda.lefthub.data.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -337,6 +338,9 @@ class AppViewModel(
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
         directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+        // El aviso del chat: con el chat activado, el topic de esta cuenta;
+        // si se lo quitan o entra otra cuenta, ninguno.
+        ChatAvisos.sincronizar(p.chatAviso)
     }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */

@@ -19,6 +19,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.IOException
+import java.net.URLEncoder
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -58,6 +59,14 @@ object ApiRelay {
     private val cliente = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .build()
+
+    /**
+     * Para el chat: el servidor tiene la consulta abierta hasta 25 segundos
+     * esperando un mensaje. Con el cliente normal se cortaría justo al borde.
+     */
+    private val clienteDeEspera = cliente.newBuilder()
+        .readTimeout(45, TimeUnit.SECONDS)
         .build()
 
     private val JSON = "application/json; charset=utf-8".toMediaType()
@@ -438,6 +447,36 @@ object ApiRelay {
             .delete())
     }
 
+    // -------------------------------------------------------------------------
+    // Chat con el equipo
+    // -------------------------------------------------------------------------
+    // Solo transporte: llaves públicas y mensajes ya cifrados. Ver chat/.
+
+    /** Al entrar: la conexión con la que seguir y la llave del equipo, si ya está. */
+    data class EntradaChat(val conexion: String, val claveDelEquipo: String?)
+
+    suspend fun entrarAlChat(clavePublica: String): EntradaChat {
+        val r = post("/api/chat/entrar", JSONObject().put("clave", clavePublica))
+        return EntradaChat(r.getString("conexion"), r.optStringONull("claveDelOtro"))
+    }
+
+    /** Espera hasta 25 segundos a que llegue algo. Vacía si no llegó nada. */
+    suspend fun eventosDelChat(conexion: String): JSONArray =
+        JSONArray(ejecutar(
+            Request.Builder()
+                .url(BuildConfig.API_BASE + "/api/chat/eventos?conexion=" + URLEncoder.encode(conexion, "UTF-8"))
+                .get(),
+            espera = true
+        ))
+
+    suspend fun enviarAlChat(conexion: String, iv: String, cifrado: String) {
+        post("/api/chat/mensajes", JSONObject().put("conexion", conexion).put("iv", iv).put("cifrado", cifrado))
+    }
+
+    suspend fun salirDelChat(conexion: String) {
+        post("/api/chat/salir", JSONObject().put("conexion", conexion))
+    }
+
     // El paso del JSON del servidor a los modelos de la app está en Mapeo.kt.
 
     // -------------------------------------------------------------------------
@@ -461,7 +500,11 @@ object ApiRelay {
 
     private fun vacio(): RequestBody = ByteArray(0).toRequestBody(JSON)
 
-    private suspend fun ejecutar(peticion: Request.Builder, conToken: Boolean = true): String =
+    private suspend fun ejecutar(
+        peticion: Request.Builder,
+        conToken: Boolean = true,
+        espera: Boolean = false
+    ): String =
         withContext(Dispatchers.IO) {
             // Qué app es esta. El servidor lo usa para dejar de atender a las
             // versiones anteriores a la mínima: responde 426 y su mensaje,
@@ -474,7 +517,7 @@ object ApiRelay {
                 peticion.header("Authorization", "Bearer $actual")
             }
 
-            cliente.newCall(peticion.build()).execute().use { respuesta ->
+            (if (espera) clienteDeEspera else cliente).newCall(peticion.build()).execute().use { respuesta ->
                 val cuerpo = respuesta.body?.string().orEmpty()
 
                 if (!respuesta.isSuccessful) {

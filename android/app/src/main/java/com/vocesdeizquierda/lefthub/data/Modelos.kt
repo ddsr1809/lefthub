@@ -395,7 +395,14 @@ data class Perfil(
      * El equipo encendió desde el panel la comprobación de suscripciones de
      * YouTube. Un servidor anterior no lo manda, y entonces es que no.
      */
-    val youtube: Boolean = false
+    val youtube: Boolean = false,
+    /**
+     * El equipo le activó el chat a esta cuenta: Ajustes enseña "Hablar con
+     * el equipo". Un servidor anterior no lo manda, y entonces es que no.
+     */
+    val chat: Boolean = false,
+    /** El topic de FCM del aviso del chat. Solo viene con el chat activado. */
+    val chatAviso: String? = null
 ) {
     /**
      * La app ofrece y hace la comprobación de YouTube: esta compilación la
