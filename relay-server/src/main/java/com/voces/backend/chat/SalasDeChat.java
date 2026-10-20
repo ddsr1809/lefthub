@@ -3,6 +3,7 @@ package com.voces.backend.chat;
 import jakarta.annotation.PreDestroy;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -142,6 +143,8 @@ public class SalasDeChat {
     private final SecureRandom azar = new SecureRandom();
     private final Clock reloj;
 
+    /** El que usa Spring; el otro es para las pruebas, con un reloj propio. */
+    @Autowired
     public SalasDeChat() {
         this(Clock.systemUTC());
     }

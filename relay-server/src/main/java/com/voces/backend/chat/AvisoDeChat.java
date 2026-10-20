@@ -2,6 +2,7 @@ package com.voces.backend.chat;
 
 import com.voces.backend.config.RelayProperties;
 import com.voces.backend.push.PushService;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.crypto.Mac;
@@ -37,6 +38,12 @@ public class AvisoDeChat {
     private final Clock reloj;
     private final Map<UUID, Instant> ultimos = new ConcurrentHashMap<>();
 
+    /**
+     * El que usa Spring. @Autowired hace falta porque hay otro constructor,
+     * el de las pruebas: con dos y sin marca, Spring busca uno sin
+     * argumentos, no lo encuentra y el servidor no arranca.
+     */
+    @Autowired
     public AvisoDeChat(PushService push, RelayProperties config) {
         this(push, config.jwt().secreto(), Clock.systemUTC());
     }
