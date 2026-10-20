@@ -4,7 +4,15 @@
 # Las imágenes base salen de la copia de Amazon (ECR Public) de las imágenes
 # oficiales de Docker Hub: son las mismas, pero sin el límite de descargas
 # anónimas de Docker Hub, que tumbaba el pipeline con "429 Too Many Requests".
-FROM public.ecr.aws/docker/library/eclipse-temurin:21-jdk-alpine AS construccion
+#
+# ECR Public también tiene límite para descargas anónimas, y los runners de
+# GitHub comparten IP con muchos proyectos: a veces falla con "toomanyrequests:
+# Data limit exceeded". Por eso el pipeline usa una copia propia en GHCR y la
+# pasa con --build-arg. Sin argumentos (en local) se usa ECR Public.
+ARG IMAGEN_JDK=public.ecr.aws/docker/library/eclipse-temurin:21-jdk-alpine
+ARG IMAGEN_JRE=public.ecr.aws/docker/library/eclipse-temurin:21-jre-alpine
+
+FROM ${IMAGEN_JDK} AS construccion
 WORKDIR /obra
 
 # Copiamos primero lo que cambia poco, para que Docker reutilice la capa de
@@ -16,7 +24,7 @@ RUN chmod +x gradlew && ./gradlew dependencies --no-daemon
 COPY src src
 RUN ./gradlew bootJar --no-daemon -x test
 
-FROM public.ecr.aws/docker/library/eclipse-temurin:21-jre-alpine
+FROM ${IMAGEN_JRE}
 WORKDIR /app
 
 # wget para el healthcheck de docker-compose.
