@@ -114,6 +114,68 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Copiar imagenes base a GHCR
+        # Las imágenes base (Temurin 21) se descargan de ECR Public, que limita
+        # las descargas anónimas por IP. Los runners de GitHub comparten IP y
+        # el build fallaba a ratos con "toomanyrequests: Data limit exceeded".
+        # Aquí se copian una vez a GHCR, junto a la imagen del servidor, y el
+        # build las toma de ahí, donde el pipeline entra con su propio token.
+        # Solo se vuelve a copiar cuando Temurin publica una versión nueva; si
+        # ECR no deja en ese momento, se usa la copia anterior.
+        id: base
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="${REGISTRY}/${{ github.repository_owner }}/vocesleft-base"
+
+          # $1: imagen en ECR Public; $2: su copia en GHCR (solo linux/amd64,
+          # que es lo que corre en el runner y en el VPS).
+          espejar() {
+            local origen="$1" destino="$2" raw="" digest_origen="" digest_copia="" intentos i
+
+            digest_copia="$(docker buildx imagetools inspect "$destino" 2>/dev/null \
+              | awk '/^Digest:/{print $2; exit}')" || true
+            if raw="$(docker buildx imagetools inspect --raw "$origen" 2>/dev/null)"; then
+              digest_origen="$(jq -r '[.manifests[]? | select(.platform.os == "linux" and .platform.architecture == "amd64")][0].digest // empty' <<<"$raw")"
+            fi
+
+            if [[ -n "$digest_copia" && ( -z "$digest_origen" || "$digest_origen" == "$digest_copia" ) ]]; then
+              echo "$destino está al día ($digest_copia)."
+              return 0
+            fi
+            if [[ -z "$digest_origen" ]]; then
+              echo "::error::No se pudo leer $origen en ECR Public y todavía no hay copia en GHCR. Vuelve a lanzar el job en unos minutos."
+              return 1
+            fi
+
+            # Sin copia previa hay que insistir; con copia, un intento basta.
+            intentos=1
+            if [[ -z "$digest_copia" ]]; then intentos=4; fi
+            for (( i = 1; i <= intentos; i++ )); do
+              if docker buildx imagetools create --tag "$destino" "${origen%:*}@${digest_origen}"; then
+                echo "Copiada $origen a $destino ($digest_origen)."
+                return 0
+              fi
+              if (( i < intentos )); then sleep $(( i * 30 )); fi
+            done
+
+            if [[ -n "$digest_copia" ]]; then
+              echo "::warning::ECR Public no dejó actualizar $destino (límite de descargas). Se usa la copia anterior; se reintenta en el siguiente build."
+              return 0
+            fi
+            echo "::error::No se pudo copiar $origen a GHCR tras $intentos intentos. Vuelve a lanzar el job en unos minutos."
+            return 1
+          }
+
+          espejar public.ecr.aws/docker/library/eclipse-temurin:21-jdk-alpine "${base}:temurin-21-jdk-alpine"
+          espejar public.ecr.aws/docker/library/eclipse-temurin:21-jre-alpine "${base}:temurin-21-jre-alpine"
+
+          {
+            echo "jdk=${base}:temurin-21-jdk-alpine"
+            echo "jre=${base}:temurin-21-jre-alpine"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Definir nombre inmutable de imagen
         id: imagen
         shell: bash
@@ -166,8 +228,11 @@ jobs:
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.imagen.outputs.etiquetas }}
           # El servidor ensena este commit en GET /api/servidor.
+          # En un pull request no hay sesión en GHCR: ahí se usa ECR Public.
           build-args: |
             COMMIT=${{ github.sha }}
+            IMAGEN_JDK=${{ steps.base.outputs.jdk || 'public.ecr.aws/docker/library/eclipse-temurin:21-jdk-alpine' }}
+            IMAGEN_JRE=${{ steps.base.outputs.jre || 'public.ecr.aws/docker/library/eclipse-temurin:21-jre-alpine' }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
