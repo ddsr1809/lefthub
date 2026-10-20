@@ -442,6 +442,23 @@ redes y sus medios. Los dos apartados de videos salen de
 `GET /api/creadores/{id}/publicaciones?parte=propios` y `?parte=compartidos`;
 si uno está vacío, no se enseña.
 
+## Invitación a unirse con Google
+
+Al abrir la app, después de aceptar las condiciones, quien la usa sin cuenta
+(como invitado) ve una pantalla: *Únete con tu cuenta de Google*. Explica lo
+que gana (no perder a quién sigue si cambia de teléfono, usarla en otro
+aparato y, con el interruptor de YouTube encendido, saber en qué canales ya
+está suscrito) y tiene dos botones: *Unirme con mi cuenta de Google* y *Ahora
+no*.
+
+- Sale **cada vez que se abre la app** mientras no tenga cuenta. *Ahora no* la
+  cierra hasta la siguiente vez; girar la pantalla no la vuelve a abrir.
+- No sale si la app se abrió tocando una notificación: esa vez la persona
+  viene a ver un video.
+- Usa el mismo inicio de sesión que el botón de Ajustes, con su manejo del
+  correo que ya tiene cuenta. **No pide el permiso de YouTube**: ese tiene un
+  cupo de cuentas mientras Google no apruebe la verificación, y se pide aparte.
+
 ## Volver a la lista correcta del Directorio
 
 El Directorio recuerda en qué lista se estaba (*Creadores*, *Canales de

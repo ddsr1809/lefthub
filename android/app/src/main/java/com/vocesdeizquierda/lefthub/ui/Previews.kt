@@ -350,6 +350,21 @@ private fun PreviaFichaDeVideo() {
     }
 }
 
+/** La invitación a unirse con Google, al abrir la app sin cuenta. */
+@VistaPreviaAccesible
+@Composable
+private fun PreviaUnirseConGoogle() {
+    Marco {
+        ContenidoUnirseConGoogle(
+            ocupado = false,
+            noSeConecto = false,
+            conYouTube = false,
+            onUnirse = {},
+            onAhoraNo = {}
+        )
+    }
+}
+
 /** Antes de seguir a alguien con varios canales. */
 @VistaPreviaAccesible
 @Composable

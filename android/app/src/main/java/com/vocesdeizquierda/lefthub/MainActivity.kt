@@ -285,9 +285,18 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // antes que esta pantalla (la app estaba cerrada): queda guardado en
     // AvisoTocado hasta aquí.
     val avisoPendiente by AvisoTocado.pendiente.collectAsState()
+    // La invitación a unirse con Google: sale cada vez que se abre la app
+    // mientras se use sin cuenta, y "Ahora no" la cierra hasta la siguiente.
+    // Guardada para que girar la pantalla no la vuelva a abrir.
+    var invitacionCerrada by rememberSaveable { mutableStateOf(false) }
+    var intentoConGoogle by rememberSaveable { mutableStateOf(false) }
+
     LaunchedEffect(avisoPendiente) {
         val aviso = avisoPendiente ?: return@LaunchedEffect
         AvisoTocado.pendiente.value = null
+        // Quien llega tocando un aviso viene a ver ese video: la invitación
+        // se queda para la próxima vez que abra la app.
+        invitacionCerrada = true
         modelo.abrirFichaDeVideo(aviso)
         nav.navigate(FICHA_DE_VIDEO + aviso.videoId) { launchSingleTop = true }
     }
@@ -721,6 +730,21 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // Colisión de cuentas: en vez de un código de error, explicamos qué botón
     // tocar. Este diálogo es el que evita que alguien se quede fuera de su
     // propia cuenta al cambiar de teléfono.
+    // Encima de todo lo demás, salvo de la ventana de un correo que ya tiene
+    // cuenta, que es la respuesta a esta misma invitación.
+    if (estado.esAnonimo && !invitacionCerrada && estado.conflicto == null) {
+        UnirseConGoogle(
+            ocupado = estado.ocupado,
+            noSeConecto = intentoConGoogle,
+            conYouTube = estado.perfil.youtubeActivo,
+            onUnirse = {
+                intentoConGoogle = true
+                modelo.vincularConGoogle(contexto)
+            },
+            onAhoraNo = { invitacionCerrada = true }
+        )
+    }
+
     estado.conflicto?.let { conflicto ->
         AlertDialog(
             onDismissRequest = { modelo.descartarConflicto() },
