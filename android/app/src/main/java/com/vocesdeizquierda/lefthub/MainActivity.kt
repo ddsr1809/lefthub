@@ -431,9 +431,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onQuitarAnuncios = irAAjustes,
                     ayudaTele = AyudaTele.pendiente,
                     onAyudaTeleEntendida = { AyudaTele.entendida(contexto) },
-                    onIrAlDirectorio = { nav.navigate("directorio") },
-                    // El canal propio de una productora no tiene creador.
-                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
+                    onIrAlDirectorio = { nav.navigate("directorio") }
                 )
             }
 

@@ -268,7 +268,6 @@ private fun PreviaNovedades() {
             hayFavoritos = true,
             cuantosFavoritos = 2,
             onIrAlDirectorio = {},
-            onReportar = {},
             // El primero ya se abrió: se ven las dos tarjetas, la nueva y la vista.
             abiertos = setOf("v1"),
             // Y arriba, la explicación de la tele, como la primera vez.
@@ -287,7 +286,6 @@ private fun PreviaNovedadesConCortos() {
             hayFavoritos = true,
             cuantosFavoritos = 2,
             onIrAlDirectorio = {},
-            onReportar = {},
             cortos = publicaciones.take(1).map { it.copy(tipo = "short") },
             verCortos = true
         )
@@ -303,8 +301,7 @@ private fun PreviaNovedadesVacio() {
             publicaciones = emptyList(),
             hayFavoritos = false,
             cuantosFavoritos = 0,
-            onIrAlDirectorio = {},
-            onReportar = {}
+            onIrAlDirectorio = {}
         )
     }
 }
@@ -525,7 +522,7 @@ private fun PreviaAjustesConSesion() {
 private fun PreviaTarjetaDeAnuncio() {
     Marco {
         Column(Modifier.padding(Espacio.md)) {
-            TarjetaPublicacion(publicacion = publicaciones.first(), onAbrir = {}, onReportar = {})
+            TarjetaPublicacion(publicacion = publicaciones.first(), onAbrir = {})
             MarcoDeAnuncio(onQuitar = {}) {
                 Box(
                     contentAlignment = Alignment.Center,
