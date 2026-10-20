@@ -197,6 +197,33 @@ class MainActivity : ComponentActivity() {
      */
     private fun procesarIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
+
+        // Un aviso del equipo: con enlace, se abre el enlace; si no, la ficha
+        // de quien habla (el creador, el medio o el canal). Un mensaje sin
+        // nada más solo abre la app.
+        val tipo = extras.getString("tipo")
+        if (tipo != null && tipo in TIPOS_DEL_EQUIPO) {
+            val enlace = extras.getString("url")
+            if (!enlace.isNullOrBlank()) {
+                Enrutador.abrirVideo(
+                    contexto = this,
+                    plataforma = extras.getString("platform") ?: "web",
+                    videoId = null,
+                    url = enlace,
+                    campana = "aviso_equipo"
+                )
+            } else {
+                rutaDeAviso(
+                    tipo,
+                    creador = extras.getString("creatorId"),
+                    productora = extras.getString("productoraId"),
+                    canal = extras.getString("canalId")
+                )?.let { AvisoTocado.ficha.value = it }
+            }
+            intent.replaceExtras(Bundle())
+            return
+        }
+
         val plataforma = extras.getString("platform") ?: return
 
         val videoId = extras.getString("videoId")
@@ -224,6 +251,23 @@ class MainActivity : ComponentActivity() {
 
         // Consumido: que no se repita al recrear la Activity.
         intent.replaceExtras(Bundle())
+    }
+
+    /**
+     * Qué ficha abre un aviso del equipo. Uno de creador, medio o canal nuevo
+     * abre la suya; uno sobre alguien (video retirado, cuenta bloqueada,
+     * mensaje a sus seguidores) abre la de ese alguien.
+     */
+    private fun rutaDeAviso(tipo: String?, creador: String?, productora: String?, canal: String?): String? {
+        fun vale(id: String?) = !id.isNullOrBlank()
+        return when {
+            tipo == "canal" && vale(canal) -> "canal/$canal"
+            tipo == "productora" && vale(productora) -> "productora/$productora"
+            vale(creador) -> "creador/$creador"
+            vale(productora) -> "productora/$productora"
+            vale(canal) -> "canal/$canal"
+            else -> null
+        }
     }
 
     private fun solicitarPermisoDeAvisos() {
@@ -269,6 +313,13 @@ private val FICHAS = listOf("creador/", "productora/", "canal/", "elegir/")
 // La ficha de un video se abre desde una notificación: es parte de Novedades.
 private const val FICHA_DE_VIDEO = "video/"
 
+/**
+ * Los avisos que manda el equipo desde el panel, por el valor de "tipo" que
+ * pone el servidor (AvisosService). Los de videos ("publicacion", "movido")
+ * van por otro camino.
+ */
+private val TIPOS_DEL_EQUIPO = setOf("creador", "productora", "canal", "retirado", "bloqueado", "mensaje")
+
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
@@ -290,6 +341,16 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         AvisoTocado.pendiente.value = null
         modelo.abrirFichaDeVideo(aviso)
         nav.navigate(FICHA_DE_VIDEO + aviso.videoId) { launchSingleTop = true }
+    }
+
+    // Un aviso del equipo abre una ficha. Lo que anuncia puede ser nuevo y la
+    // app no conocerlo todavía: antes de abrirla se vuelve a pedir el directorio.
+    val fichaPendiente by AvisoTocado.ficha.collectAsState()
+    LaunchedEffect(fichaPendiente) {
+        val ruta = fichaPendiente ?: return@LaunchedEffect
+        AvisoTocado.ficha.value = null
+        modelo.refrescarDirectorio()
+        nav.navigate(ruta) { launchSingleTop = true }
     }
 
     // Todos los canales de YouTube del directorio, con lo que pinta su fila.

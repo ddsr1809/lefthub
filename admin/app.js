@@ -274,6 +274,8 @@
     usuarios: null,         // la página que está en pantalla
     migracion: null,        // la revisión de una migración que está en pantalla
     servidor: null,         // versión y commit del servidor; null si no los dice
+    aviso: null,            // lo que se está redactando en Avisos
+    avisoPreset: null,      // con qué abrir Avisos (desde la ficha de un video)
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
   };
 
@@ -286,6 +288,7 @@
     versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
+    avisos: vistaAvisos,
     anuncios: vistaAnuncios,
     apps: vistaApps,
     usuarios: vistaUsuarios,
@@ -1105,6 +1108,14 @@
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
         </fieldset>
+        ${!c.anunciadoEn ? `<fieldset><legend>Aviso a todos</legend>
+          <label class="check"><input type="checkbox" id="fAvisar" ${!c.id ? 'checked' : ''}> Avisar a todos que llegó al directorio</label>
+          <div class="form" id="fAvisoTextos" style="margin-top:12px" ${!c.id ? '' : 'hidden'}>
+            <label class="f full">Título<input class="input" id="fAvTitulo" maxlength="${MAX_TITULO_AVISO}" value="${esc(c.nombre ? textoCreadorNuevo(c.nombre).titulo : '')}"></label>
+            <label class="f full">Texto<textarea class="input" id="fAvCuerpo" rows="2" maxlength="${MAX_CUERPO_AVISO}">${esc(c.nombre ? textoCreadorNuevo(c.nombre).cuerpo : '')}</textarea></label>
+          </div>
+          <p class="hint" style="margin:10px 0 0">Les llega a todas las personas con la app, sigan a quien sigan; al tocarlo se abre su ficha. Se manda una sola vez, al guardar, y solo si queda visible.</p>
+        </fieldset>` : ''}
         ${seccionFoto('Foto de perfil', c.fotoUrl)}
         ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
           <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
@@ -1136,12 +1147,35 @@
           canales, conexiones: conexionesDe(canales)
         };
         if (!estado.sinProductoras) cuerpo.productoras = marcadas('productoras');
+
+        // El aviso a todos se lee antes de guardar: si le falta texto, no se guarda nada.
+        const avisar = $('#fAvisar') && $('#fAvisar').checked;
+        if (avisar) textosDeAvisoDeCreador();
+        const aviso = avisar ? { titulo: $('#fAvTitulo').value.trim(), cuerpo: $('#fAvCuerpo').value.trim() } : null;
+        if (aviso && (!aviso.titulo || !aviso.cuerpo)) { toast('El aviso a todos necesita título y texto, o desmarca la casilla.', true); return false; }
+
         const r = await api('/api/admin/creadores', { metodo: 'POST', cuerpo });
         await guardarEtiquetasDe('creador', r.id, c ? etiquetasDe('creador', c.id) : []);
-        if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
-        else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica, true);
-        else toast(c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
-          ? 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.' : 'Creador creado.'));
+
+        let sobreAviso = '';
+        let avisoFallo = false;
+        if (aviso && !cuerpo.activo) {
+          sobreAviso = ' No se avisó a todos: quedó oculto.';
+        } else if (aviso) {
+          try {
+            const a = await api('/api/admin/avisos', { metodo: 'POST', cuerpo: { tipo: 'nuevo_creador', id: r.id, titulo: aviso.titulo, cuerpo: aviso.cuerpo } });
+            sobreAviso = a.enviado ? ' Se avisó a todos.' : ' El aviso a todos no salió: ' + (a.error || 'motivo desconocido');
+            avisoFallo = !a.enviado;
+          } catch (e) {
+            sobreAviso = ' El aviso a todos no salió: ' + avisoDeRuta(e, 'mandar avisos');
+            avisoFallo = true;
+          }
+        }
+
+        if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion + sobreAviso, true);
+        else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica + sobreAviso, true);
+        else toast((c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
+          ? 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.' : 'Creador creado.')) + sobreAviso, avisoFallo);
         estado.creadores = null;
         estado.productoras = null;
         if (estado.vista === 'creadores') vistaCreadores();
@@ -1158,7 +1192,35 @@
       });
       prepararFoto(editor);
       prepararLlenado(editor, !c);
+      prepararAvisoDeCreador();
     });
+  }
+
+  /** La casilla de aviso a todos: enseña el texto y lo sigue al nombre. */
+  function prepararAvisoDeCreador() {
+    const casilla = $('#fAvisar');
+    if (!casilla) return;
+    const titulo = $('#fAvTitulo');
+    const cuerpo = $('#fAvCuerpo');
+    // Lo que la persona escribe a mano se respeta; lo demás sigue al nombre.
+    titulo.addEventListener('input', () => { titulo.dataset.tocado = '1'; });
+    cuerpo.addEventListener('input', () => { cuerpo.dataset.tocado = '1'; });
+    casilla.addEventListener('change', () => { $('#fAvisoTextos').hidden = !casilla.checked; });
+    $('#fNombre').addEventListener('input', textosDeAvisoDeCreador);
+    // Buscar un canal llena el nombre sin que se teclee: al volver a la casilla se pone al día.
+    casilla.closest('fieldset').addEventListener('focusin', textosDeAvisoDeCreador);
+    casilla.addEventListener('change', textosDeAvisoDeCreador);
+  }
+
+  /** Pone el texto del aviso al día con el nombre, salvo lo que se escribió a mano. */
+  function textosDeAvisoDeCreador() {
+    const nombre = $('#fNombre') ? $('#fNombre').value.trim() : '';
+    const titulo = $('#fAvTitulo');
+    const cuerpo = $('#fAvCuerpo');
+    if (!nombre || !titulo) return;
+    const t = textoCreadorNuevo(nombre);
+    if (!titulo.dataset.tocado) titulo.value = t.titulo.slice(0, MAX_TITULO_AVISO);
+    if (!cuerpo.dataset.tocado) cuerpo.value = t.cuerpo.slice(0, MAX_CUERPO_AVISO);
   }
 
   // ---------------------------------------------------------------------------
@@ -1720,6 +1782,7 @@
         ${p.descripcion ? `<details class="descripcion"><summary>Descripción en YouTube</summary><p>${esc(p.descripcion)}</p></details>` : ''}
       </div>`, [
       { texto: 'Mover', alPulsar: () => { setTimeout(() => abrirMover(videoId), 0); } },
+      { texto: 'Avisar que se retiró', alPulsar: () => { estado.avisoPreset = { tipo: 'video_retirado', videoId }; setTimeout(() => ir('avisos'), 0); } },
       ...(enlace ? [{ texto: 'Abrir en ' + (p.estado === 'moved' ? 'su enlace nuevo' : 'YouTube'), alPulsar: () => { window.open(enlace, '_blank', 'noopener'); return false; } }] : []),
       { texto: 'Cerrar', tipo: 'primary' }
     ]);
@@ -1774,6 +1837,283 @@
         </tr>`;
       }).join('') : '<tr><td colspan="5"><div class="empty">No hay reportes pendientes.</div></td></tr>'}
       </tbody></table></div></section>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Avisos del equipo
+  // ---------------------------------------------------------------------------
+  // Lo que el equipo manda a mano: un medio o un canal nuevo, un video
+  // retirado, una cuenta bloqueada o un mensaje. El de un creador nuevo no
+  // está aquí: se manda desde su ficha, al crearlo.
+  const TIPOS_AVISO = {
+    nuevo_medio: 'Medio nuevo',
+    nuevo_canal: 'Canal nuevo',
+    video_retirado: 'Video retirado',
+    cuenta_bloqueada: 'Cuenta bloqueada',
+    mensaje: 'Mensaje'
+  };
+  // Para el historial, que también enseña los de creador nuevo.
+  const NOMBRES_AVISO = Object.assign({ nuevo_creador: 'Creador nuevo' }, TIPOS_AVISO);
+  const PARA_AVISO = { todos: 'Todos', creador: 'Seguidores de un creador', productora: 'Seguidores de un medio', canal: 'Seguidores de un canal' };
+  const MAX_TITULO_AVISO = 80;
+  const MAX_CUERPO_AVISO = 300;
+
+  // Lo que escribe el panel para un creador nuevo. También lo usa su ficha.
+  const textoCreadorNuevo = (nombre) => ({
+    titulo: 'Creador nuevo: ' + nombre,
+    cuerpo: nombre + ' ya está en el directorio. Toca para conocerlo y seguirlo.'
+  });
+
+  const nombreDeCanal = (k) => k.titulo || k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal');
+
+  async function vistaAvisos() {
+    const [historial, creadores, productoras, pubs] = await Promise.all([
+      api('/api/admin/avisos?limite=100'),
+      cargarCreadores(true),
+      cargarProductoras(true),
+      api('/api/admin/publicaciones?limite=200').catch(() => [])
+    ]);
+    estado.publicaciones = pubs;
+
+    // Si se llegó desde la ficha de un video, el formulario ya viene armado.
+    const previo = estado.avisoPreset || {};
+    estado.avisoPreset = null;
+    estado.aviso = {
+      tipo: previo.tipo || 'mensaje',
+      para: previo.para || 'todos',
+      id: previo.id || '',
+      videoId: previo.videoId || '',
+      plataforma: 'youtube',
+      tocado: { titulo: false, cuerpo: false }
+    };
+
+    const sinAnunciar = creadores.filter((c) => c.activo && !c.anunciadoEn).length;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Avisos</h1><p class="sub">Notificaciones que manda el equipo a mano. Los videos nuevos, los directos y los cortos se avisan solos; esto es para todo lo demás. Al tocar el aviso, la app abre la ficha de quien se habla, o el enlace si le pones uno.</p></div></div>
+      <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Mandar un aviso</h2></div><div class="panel-body">
+          <div class="push">
+            <div class="stack" style="gap:14px">
+              <div class="form">
+                <label class="f">Qué avisas<select class="input" id="avTipo">${Object.entries(TIPOS_AVISO).map(([k, v]) => `<option value="${k}" ${estado.aviso.tipo === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+                <div class="f" id="avParaCaja"></div>
+                <div class="full" id="avCampos"></div>
+                <label class="f full">Título <span class="opcional" id="avCuentaTitulo"></span><input class="input" id="avTitulo" maxlength="${MAX_TITULO_AVISO}"></label>
+                <label class="f full">Texto <span class="opcional" id="avCuentaCuerpo"></span><textarea class="input" id="avCuerpo" rows="3" maxlength="${MAX_CUERPO_AVISO}"></textarea></label>
+                <label class="f full" id="avEnlaceCaja">Enlace <span class="opcional">opcional: tocar el aviso lo abre</span><input class="input" id="avEnlace" placeholder="https://"></label>
+                <label class="check full" id="avRetirarCaja" hidden><input type="checkbox" id="avRetirar" checked> Quitarlo también de la app</label>
+              </div>
+              <div class="alcance" id="avAlcance"></div>
+              <p class="hint" style="margin:0">Los avisos para todos solo les llegan a quienes tengan la versión de la app que trae esta función; las anteriores no los reciben. Los de seguidores llegan a todas.</p>
+              <div><button class="btn primary" data-accion="mandar-aviso">Mandar aviso</button></div>
+              <p class="hint" style="margin:0">¿Un creador nuevo? Se avisa desde su ficha al crearlo.${sinAnunciar ? ' Hay ' + esc(plural(sinAnunciar, 'creador visible', 'creadores visibles')) + ' de los que nunca se avisó: abre su ficha en <button class="link" data-ir="creadores">Creadores</button> y marca «Avisar a todos».' : ''}</p>
+            </div>
+            <div class="telefono" aria-hidden="true"><div class="pantalla">
+              <div class="reloj">${esc(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false }))}</div>
+              <div class="fecha">${esc(new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }))}</div>
+              <div class="notif"><div class="top"><span class="ico">V</span>Voces Izquierda · ahora</div><div class="t" id="avPrevTitulo"></div><div class="b" id="avPrevCuerpo"></div></div>
+            </div></div>
+          </div>
+        </div></section>
+        <section class="panel"><div class="panel-head"><h2>Historial</h2></div>
+          <div class="tablewrap"><table><thead><tr><th>Cuándo</th><th>Tipo</th><th>Aviso</th><th>A quién</th><th>Estado</th></tr></thead><tbody>
+          ${historial.length ? historial.map((a) => `<tr>
+            <td class="num" title="${esc(fmtFecha(a.creadoEn))}">${esc(relativo(a.creadoEn))}${a.autor ? `<div class="muted" style="font-size:12.5px">${esc(a.autor)}</div>` : ''}</td>
+            <td><span class="badge b-mute">${esc(NOMBRES_AVISO[a.tipo] || a.tipo)}</span></td>
+            <td><div class="clip" style="max-width:360px"><b>${esc(a.titulo)}</b></div><div class="muted clip" style="max-width:360px;font-size:13px" title="${esc(a.cuerpo)}">${esc(a.cuerpo)}</div>${a.enlace ? `<a class="mono" style="font-size:12.5px" href="${esc(a.enlace)}" target="_blank" rel="noopener">${esc(a.enlace)}</a>` : ''}</td>
+            <td>${esc(a.destino)}</td>
+            <td>${a.enviado ? '<span class="badge b-ok">Enviado</span>' : `<span class="badge b-bad" title="${esc(a.error || '')}">No salió</span><div class="muted clip" style="max-width:220px;font-size:12.5px" title="${esc(a.error || '')}">${esc(a.error || '')}</div>`}</td>
+          </tr>`).join('') : '<tr><td colspan="5"><div class="empty">Todavía no se ha mandado ningún aviso.</div></td></tr>'}
+          </tbody></table></div>
+        </section>
+      </div>`;
+
+    $('#avTipo').addEventListener('change', (e) => {
+      estado.aviso.tipo = e.target.value;
+      estado.aviso.id = '';
+      estado.aviso.videoId = '';
+      estado.aviso.para = e.target.value === 'cuenta_bloqueada' ? 'creador' : 'todos';
+      estado.aviso.tocado = { titulo: false, cuerpo: false };
+      pintarCamposDeAviso();
+    });
+    $('#avTitulo').addEventListener('input', () => { estado.aviso.tocado.titulo = true; previaDeAviso(); });
+    $('#avCuerpo').addEventListener('input', () => { estado.aviso.tocado.cuerpo = true; previaDeAviso(); });
+    pintarCamposDeAviso();
+  }
+
+  /** Las opciones de "a quién" o "de quién", según lo que se elija. */
+  function opcionesDeAviso(para) {
+    if (para === 'creador') {
+      return (estado.creadores || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        .map((c) => ({ id: c.id, texto: c.nombre + (c.activo ? '' : ' (oculto)') }));
+    }
+    if (para === 'productora') {
+      return (estado.productoras || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        .map((p) => ({ id: p.id, texto: p.nombre + (p.activo ? '' : ' (oculto)') }));
+    }
+    if (para === 'canal') {
+      return vigilados().filter((v) => v.canal.id)
+        .map((v) => ({ id: v.canal.id, texto: nombreDeCanal(v.canal) + ' · ' + v.dueno.nombre + (v.dueno.activo ? '' : ' (oculto)') }))
+        .sort((a, b) => a.texto.localeCompare(b.texto, 'es'));
+    }
+    return [];
+  }
+
+  const selectorDeAviso = (id, opciones, elegido, vacio) => `<select class="input" id="${id}">
+      <option value="">${esc(vacio)}</option>
+      ${opciones.map((o) => `<option value="${esc(o.id)}" ${o.id === elegido ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}
+    </select>`;
+
+  /** Pinta los campos que dependen del tipo y vuelve a enganchar sus eventos. */
+  function pintarCamposDeAviso() {
+    const a = estado.aviso;
+    const paraCaja = $('#avParaCaja');
+    const campos = $('#avCampos');
+    let paraHtml = '';
+    let camposHtml = '';
+
+    if (a.tipo === 'nuevo_medio') {
+      camposHtml = `<label class="f">Medio${selectorDeAviso('avId', opcionesDeAviso('productora'), a.id, 'Elige el medio')}</label>`;
+    } else if (a.tipo === 'nuevo_canal') {
+      camposHtml = `<label class="f">Canal${selectorDeAviso('avId', opcionesDeAviso('canal'), a.id, 'Elige el canal')}</label>`;
+    } else if (a.tipo === 'video_retirado') {
+      const lista = (estado.publicaciones || []).filter((p) => p.estado !== 'removed' || p.videoId === a.videoId);
+      if (a.videoId && !lista.some((p) => p.videoId === a.videoId)) lista.unshift({ videoId: a.videoId, titulo: a.videoId });
+      camposHtml = `<label class="f full">Video<select class="input" id="avVideo">
+          <option value="">Elige el video</option>
+          ${lista.map((p) => `<option value="${esc(p.videoId)}" ${p.videoId === a.videoId ? 'selected' : ''}>${esc((p.titulo || p.videoId) + (p.creadorNombre ? ' · ' + p.creadorNombre : ''))}</option>`).join('')}
+        </select></label>`;
+    } else {
+      // Cuenta bloqueada o mensaje: de quién se habla, o para quién es.
+      const paras = a.tipo === 'cuenta_bloqueada' ? ['creador', 'productora', 'canal'] : ['todos', 'creador', 'productora', 'canal'];
+      paraHtml = `<label class="f" style="margin:0">${a.tipo === 'cuenta_bloqueada' ? 'De quién es la cuenta' : 'Para quién'}<select class="input" id="avPara">${paras.map((k) => `<option value="${k}" ${a.para === k ? 'selected' : ''}>${esc(a.tipo === 'cuenta_bloqueada' ? { creador: 'Un creador', productora: 'Un medio', canal: 'Un canal' }[k] : PARA_AVISO[k])}</option>`).join('')}</select></label>`;
+      const quien = a.para !== 'todos'
+        ? `<label class="f">${{ creador: 'Creador', productora: 'Medio', canal: 'Canal' }[a.para]}${selectorDeAviso('avId', opcionesDeAviso(a.para), a.id, 'Elige uno')}</label>` : '';
+      const plataforma = a.tipo === 'cuenta_bloqueada'
+        ? `<label class="f">Dónde la bloquearon<select class="input" id="avPlat">${Object.entries(PLATAFORMAS).filter(([k]) => k !== 'web').map(([k, v]) => `<option value="${k}" ${a.plataforma === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>` : '';
+      camposHtml = quien || plataforma ? `<div class="form">${quien}${plataforma}</div>` : '';
+    }
+
+    paraCaja.innerHTML = paraHtml;
+    campos.innerHTML = camposHtml;
+    $('#avEnlaceCaja').hidden = !(a.tipo === 'cuenta_bloqueada' || a.tipo === 'mensaje');
+    $('#avRetirarCaja').hidden = a.tipo !== 'video_retirado';
+
+    const al = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('change', fn); };
+    al('#avPara', (e) => { a.para = e.target.value; a.id = ''; pintarCamposDeAviso(); });
+    al('#avId', (e) => { a.id = e.target.value; rellenarAviso(); });
+    al('#avVideo', (e) => { a.videoId = e.target.value; rellenarAviso(); });
+    al('#avPlat', (e) => { a.plataforma = e.target.value; rellenarAviso(); });
+    rellenarAviso();
+  }
+
+  /** El nombre de quien se eligió, o null. */
+  function elegidoDeAviso() {
+    const a = estado.aviso;
+    const para = a.tipo === 'nuevo_medio' ? 'productora' : a.tipo === 'nuevo_canal' ? 'canal' : a.para;
+    if (!a.id) return null;
+    if (para === 'creador') return (estado.creadores || []).find((c) => c.id === a.id) || null;
+    if (para === 'productora') return (estado.productoras || []).find((p) => p.id === a.id) || null;
+    if (para === 'canal') {
+      const v = vigilados().find((x) => x.canal.id === a.id);
+      return v ? { nombre: nombreDeCanal(v.canal), dueno: v.dueno } : null;
+    }
+    return null;
+  }
+
+  /** El texto que propone el panel. Lo que la persona ya escribió no se toca. */
+  function rellenarAviso() {
+    const a = estado.aviso;
+    const quien = elegidoDeAviso();
+    const video = a.videoId ? (estado.publicaciones || []).find((p) => p.videoId === a.videoId) : null;
+    let titulo = '';
+    let cuerpo = '';
+
+    if (a.tipo === 'nuevo_medio' && quien) {
+      titulo = 'Medio nuevo: ' + quien.nombre;
+      cuerpo = quien.nombre + ' ya está en el directorio. Toca para conocerlo y seguirlo.';
+    } else if (a.tipo === 'nuevo_canal' && quien) {
+      titulo = 'Canal nuevo: ' + quien.nombre;
+      cuerpo = quien.dueno.nombre + ' suma un canal al directorio. Toca para verlo y seguirlo.';
+    } else if (a.tipo === 'video_retirado' && video) {
+      titulo = 'Se retiró un video' + (video.creadorNombre ? ' de ' + video.creadorNombre : '');
+      cuerpo = '«' + (video.titulo || 'El video') + '» ya no está disponible.';
+    } else if (a.tipo === 'cuenta_bloqueada' && quien) {
+      titulo = PLATAFORMAS[a.plataforma] + ' bloqueó la cuenta de ' + quien.nombre;
+      cuerpo = 'Sigues pudiendo encontrar a ' + quien.nombre + ' aquí. Te avisaremos de dónde publica ahora.';
+    }
+
+    if (!a.tocado.titulo) $('#avTitulo').value = titulo.slice(0, MAX_TITULO_AVISO);
+    if (!a.tocado.cuerpo) $('#avCuerpo').value = cuerpo.slice(0, MAX_CUERPO_AVISO);
+    alcanceDeAviso();
+    previaDeAviso();
+  }
+
+  function alcanceDeAviso() {
+    const a = estado.aviso;
+    const quien = elegidoDeAviso();
+    const video = a.videoId ? (estado.publicaciones || []).find((p) => p.videoId === a.videoId) : null;
+    let texto = '';
+
+    if (a.tipo === 'nuevo_medio' || a.tipo === 'nuevo_canal' || (a.tipo === 'mensaje' && a.para === 'todos')) {
+      texto = 'Le llega a todas las personas con la app.';
+    } else if (a.tipo === 'video_retirado') {
+      texto = video ? 'Le llega a quienes siguen a ' + (video.creadorNombre || 'su creador') + ' o su canal.' : 'Elige el video.';
+    } else if (!quien) {
+      texto = 'Elige ' + ({ creador: 'el creador', productora: 'el medio', canal: 'el canal' }[a.para] || 'a quién') + '.';
+    } else if (a.para === 'canal') {
+      texto = 'Le llega a quienes siguen el canal ' + quien.nombre + ' o a ' + quien.dueno.nombre + '.';
+    } else {
+      const n = typeof quien.seguidores === 'number' ? ' (' + plural(quien.seguidores, 'cuenta', 'cuentas') + ', más quienes siguen solo alguno de sus canales)' : '';
+      texto = 'Le llega a quienes siguen a ' + quien.nombre + n + '.';
+    }
+    $('#avAlcance').textContent = texto;
+  }
+
+  function previaDeAviso() {
+    const titulo = $('#avTitulo').value.trim();
+    const cuerpo = $('#avCuerpo').value.trim();
+    $('#avPrevTitulo').textContent = titulo || 'Título del aviso';
+    $('#avPrevCuerpo').textContent = cuerpo || 'Lo que dice el aviso.';
+    $('#avCuentaTitulo').textContent = $('#avTitulo').value.length + ' de ' + MAX_TITULO_AVISO;
+    $('#avCuentaCuerpo').textContent = $('#avCuerpo').value.length + ' de ' + MAX_CUERPO_AVISO;
+  }
+
+  async function mandarAviso(boton) {
+    const a = estado.aviso;
+    if (!a) return;
+    const titulo = $('#avTitulo').value.trim();
+    const cuerpo = $('#avCuerpo').value.trim();
+    const enlace = $('#avEnlaceCaja').hidden ? '' : $('#avEnlace').value.trim();
+    const necesitaId = a.tipo === 'nuevo_medio' || a.tipo === 'nuevo_canal'
+      || ((a.tipo === 'cuenta_bloqueada' || a.tipo === 'mensaje') && a.para !== 'todos');
+
+    if (a.tipo === 'video_retirado' && !a.videoId) { toast('Elige el video.', true); return; }
+    if (necesitaId && !a.id) { toast('Elige de quién es el aviso.', true); return; }
+    if (!titulo) { toast('El aviso necesita un título.', true); return; }
+    if (!cuerpo) { toast('El aviso necesita un texto.', true); return; }
+    if (enlace && !/^https:\/\//i.test(enlace)) { toast('El enlace debe empezar por https://', true); return; }
+
+    const ok = await confirmar('¿Mandar este aviso?', $('#avAlcance').textContent + ' «' + titulo + '». Una vez enviado no se puede retirar de los teléfonos.', 'Mandar aviso');
+    if (!ok) return;
+
+    const para = a.tipo === 'nuevo_medio' ? 'productora' : a.tipo === 'nuevo_canal' ? 'canal' : a.tipo === 'video_retirado' ? null : a.para;
+    boton.disabled = true;
+    try {
+      const r = await api('/api/admin/avisos', { metodo: 'POST', cuerpo: {
+        tipo: a.tipo, para, id: a.id || null, videoId: a.videoId || null,
+        titulo, cuerpo, enlace: enlace || null,
+        retirarVideo: a.tipo === 'video_retirado' ? $('#avRetirar').checked : null
+      } });
+      if (r.enviado) toast('Aviso enviado.');
+      else toast('El aviso no salió: ' + (r.error || 'motivo desconocido'), true);
+      await vistaAvisos();
+    } catch (e) {
+      toast(avisoDeRuta(e, 'mandar avisos'), true);
+    } finally {
+      boton.disabled = false;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -2581,6 +2921,8 @@
     try {
       switch (accion) {
         case 'recargar': ir(estado.vista); break;
+
+        case 'mandar-aviso': await mandarAviso(b); break;
 
         case 'crear-version': crearVersion(); break;
         case 'comparar-version': await compararVersion(Number(id)); break;

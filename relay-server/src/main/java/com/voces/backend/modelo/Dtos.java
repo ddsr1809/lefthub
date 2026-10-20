@@ -642,7 +642,9 @@ public final class Dtos {
             List<CanalAdminDto> canales,
             List<UUID> productoras,
             /** Canales de otros (de una productora, de otro creador) en los que aparece. */
-            List<CanalAdminDto> canalesCompartidos
+            List<CanalAdminDto> canalesCompartidos,
+            /** Cuándo se avisó a todos de que llegó. Null: nunca. */
+            Instant anunciadoEn
     ) {}
 
     public record ProductoraAdminDto(

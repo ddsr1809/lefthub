@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class EstadoApp(
     val listo: Boolean = false,
@@ -181,6 +182,21 @@ class AppViewModel(
     fun creador(id: String) = _estado.value.creadores.firstOrNull { it.id == id }
 
     fun productora(id: String) = _estado.value.productoras.firstOrNull { it.id == id }
+
+    /**
+     * Vuelve a pedir el directorio en el acto, sin esperar a la siguiente
+     * vuelta de cinco minutos. Lo usa el toque en un aviso de "creador nuevo"
+     * (o medio, o canal): si la app llevaba un rato abierta, todavía no lo
+     * conoce y su ficha diría que ya no está. Sin red, se queda lo que había.
+     */
+    suspend fun refrescarDirectorio() {
+        withTimeoutOrNull(8_000L) {
+            val creadores = async { runCatching { ApiRelay.creadores() }.getOrNull() }
+            val productoras = async { runCatching { ApiRelay.productoras() }.getOrNull() }
+            creadores.await()?.let { lista -> _estado.update { it.copy(creadores = lista) } }
+            productoras.await()?.let { lista -> _estado.update { it.copy(productoras = lista) } }
+        }
+    }
 
     /**
      * Abre la ficha del video de una notificación. Si ya está en Novedades se

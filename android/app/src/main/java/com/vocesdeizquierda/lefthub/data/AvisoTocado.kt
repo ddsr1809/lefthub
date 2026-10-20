@@ -9,4 +9,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
  */
 object AvisoTocado {
     val pendiente = MutableStateFlow<VideoDeAviso?>(null)
+
+    /**
+     * Un aviso del equipo que abre una ficha: la ruta de la navegación
+     * ("creador/<id>", "productora/<id>" o "canal/<id>"). Igual que el de
+     * arriba, puede llegar antes de que exista la pantalla.
+     */
+    val ficha = MutableStateFlow<String?>(null)
 }
