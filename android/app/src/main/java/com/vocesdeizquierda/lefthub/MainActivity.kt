@@ -29,6 +29,7 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
+import com.vocesdeizquierda.lefthub.chat.ChatViewModel
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.ApiRelay
@@ -197,6 +198,15 @@ class MainActivity : ComponentActivity() {
      */
     private fun procesarIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
+
+        // El equipo quiere hablar: al chat. Solo abre la pantalla; la
+        // conversación misma no viaja en el aviso.
+        if (extras.getString("tipo") == "chat") {
+            AvisoTocado.chat.value = true
+            intent.replaceExtras(Bundle())
+            return
+        }
+
         val plataforma = extras.getString("platform") ?: return
 
         val videoId = extras.getString("videoId")
@@ -290,6 +300,14 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // Guardada para que girar la pantalla no la vuelva a abrir.
     var invitacionCerrada by rememberSaveable { mutableStateOf(false) }
     var intentoConGoogle by rememberSaveable { mutableStateOf(false) }
+
+    val chatPendiente by AvisoTocado.chat.collectAsState()
+    LaunchedEffect(chatPendiente) {
+        if (!chatPendiente) return@LaunchedEffect
+        AvisoTocado.chat.value = false
+        invitacionCerrada = true
+        nav.navigate("chat") { launchSingleTop = true }
+    }
 
     LaunchedEffect(avisoPendiente) {
         val aviso = avisoPendiente ?: return@LaunchedEffect
@@ -387,7 +405,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             val actual by nav.currentBackStackEntryAsState()
             val ruta = actual?.destination?.route
 
-            NavigationBar(
+            // En el chat, las pestañas sobran: la pantalla es para escribir.
+            if (ruta != "chat") NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.heightIn(min = Tactil.principal + 28.dp)
             ) {
@@ -651,9 +670,22 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 )
             }
 
+            composable("chat") {
+                // Del chat solo hay uno a la vez, y vive lo que vive esta
+                // pantalla: al salir de ella se borra todo.
+                val modeloChat: ChatViewModel = viewModel()
+                ChatPantalla(
+                    modelo = modeloChat,
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
             composable("ajustes") {
                 AjustesPantalla(
                     estado = estado,
+                    onAbrirChat = { nav.navigate("chat") { launchSingleTop = true } },
                     onGuardarPreferencia = modelo::guardarPreferencia,
                     onVincularGoogle = { modelo.vincularConGoogle(contexto) },
                     onCerrarSesion = { modelo.cerrarSesion(contexto) },

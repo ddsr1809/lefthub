@@ -125,7 +125,9 @@ internal fun perfilDe(json: JSONObject): Perfil {
         anuncios = json.optBoolean("anuncios", false),
         sinAnuncios = json.optBoolean("sinAnuncios", false),
         compraDisponible = json.optBoolean("compraDisponible", false),
-        youtube = json.optBoolean("youtube", false)
+        youtube = json.optBoolean("youtube", false),
+        chat = json.optBoolean("chat", false),
+        chatAviso = json.optStringONull("chatAviso")
     )
 }
 
