@@ -926,7 +926,7 @@ activó.
 - **Sin cambios en el VPS.** Va por HTTPS normal, con consultas que esperan
   hasta 25 segundos a que llegue un mensaje; no hace falta tocar Apache.
 
-Lo único que guarda la base es el permiso: `usuarios.chat_habilitado` (V18).
+Lo único que guarda la base es el permiso: `usuarios.chat_habilitado` (V19).
 La app de iPhone todavía no tiene el chat.
 
 En la API: `POST /api/chat/entrar` (`{clave}`), `GET
