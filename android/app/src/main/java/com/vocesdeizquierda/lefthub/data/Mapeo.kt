@@ -125,9 +125,28 @@ internal fun perfilDe(json: JSONObject): Perfil {
         anuncios = json.optBoolean("anuncios", false),
         sinAnuncios = json.optBoolean("sinAnuncios", false),
         compraDisponible = json.optBoolean("compraDisponible", false),
-        youtube = json.optBoolean("youtube", false)
+        youtube = json.optBoolean("youtube", false),
+        chat = json.optBoolean("chat", false),
+        chatAviso = json.optStringONull("chatAviso"),
+        recomendar = json.optBoolean("recomendar", false)
     )
 }
+
+internal fun recomendacionDe(json: JSONObject) = Recomendacion(
+    id = json.optLong("id"),
+    texto = json.optString("texto"),
+    motivo = json.optStringONull("motivo"),
+    titulo = json.optStringONull("titulo"),
+    fotoUrl = json.optStringONull("fotoUrl"),
+    estado = json.optString("estado", Recomendacion.PENDIENTE),
+    enDirectorio = json.optBoolean("enDirectorio", false),
+    creadoEn = json.optStringONull("creadoEn")?.let { runCatching { Instant.parse(it) }.getOrNull() }
+)
+
+internal fun misRecomendacionesDe(json: JSONObject) = MisRecomendaciones(
+    recomendaciones = json.optJSONArray("recomendaciones")?.mapJson(::recomendacionDe) ?: emptyList(),
+    quedanHoy = json.optInt("quedanHoy", 0)
+)
 
 internal fun suscripcionesDe(json: JSONObject) = SuscripcionesYouTube(
     suscritos = json.optJSONArray("suscritos").mapJsonStrings().toSet(),

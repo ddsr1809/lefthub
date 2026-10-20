@@ -4,6 +4,7 @@ import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
+import com.vocesdeizquierda.lefthub.chat.ChatAvisos
 import com.vocesdeizquierda.lefthub.data.ApiRelay
 
 
@@ -27,6 +28,7 @@ class LeftVocesApp : Application() {
     override fun onCreate() {
         super.onCreate()
         ApiRelay.inicializar(this)
+        ChatAvisos.inicializar(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             crearCanales()

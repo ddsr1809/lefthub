@@ -115,6 +115,8 @@
   }
 
   function salir(motivo) {
+    // El chat se va con la sesión: sin token ya no se puede ni despedir.
+    if (chat) olvidarChat();
     guardarSesion(null);
     $('#app').hidden = true;
     $('#puerta').hidden = false;
@@ -274,7 +276,10 @@
     usuarios: null,         // la página que está en pantalla
     migracion: null,        // la revisión de una migración que está en pantalla
     servidor: null,         // versión y commit del servidor; null si no los dice
-    filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
+    aviso: null,            // lo que se está redactando en Avisos
+    avisoPreset: null,      // con qué abrir Avisos (desde la ficha de un video)
+    filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 },
+    filtroRecs: 'pendientes' // pendientes | revisadas | todas
   };
 
   const VISTAS = {
@@ -286,9 +291,12 @@
     versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
+    recomendaciones: vistaRecomendaciones,
+    avisos: vistaAvisos,
     anuncios: vistaAnuncios,
     apps: vistaApps,
     usuarios: vistaUsuarios,
+    chat: vistaChat,
     administradores: vistaAdministradores
   };
 
@@ -361,8 +369,20 @@
       const ns = $('#n-susc'), nr = $('#n-rep');
       ns.textContent = problemas; ns.hidden = !problemas;
       nr.textContent = reportes.length; nr.hidden = !reportes.length;
+      contarRecomendaciones();
       return { creadores, productoras, reportes };
     } catch (e) { return null; }
+  }
+
+  // Aparte: un servidor anterior a las recomendaciones no tiene la ruta, y
+  // eso no debe tumbar los demás contadores.
+  async function contarRecomendaciones() {
+    const n = $('#n-recs');
+    if (!n) return;
+    try {
+      const r = await api('/api/admin/recomendaciones/cuantas');
+      n.textContent = r.pendientes; n.hidden = !r.pendientes;
+    } catch (e) { n.hidden = true; }
   }
 
   // Los canales de un creador. Un servidor anterior solo manda `conexiones`
@@ -1105,6 +1125,14 @@
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
         </fieldset>
+        ${!c.anunciadoEn ? `<fieldset><legend>Aviso a todos</legend>
+          <label class="check"><input type="checkbox" id="fAvisar" ${!c.id ? 'checked' : ''}> Avisar a todos que llegó al directorio</label>
+          <div class="form" id="fAvisoTextos" style="margin-top:12px" ${!c.id ? '' : 'hidden'}>
+            <label class="f full">Título<input class="input" id="fAvTitulo" maxlength="${MAX_TITULO_AVISO}" value="${esc(c.nombre ? textoCreadorNuevo(c.nombre).titulo : '')}"></label>
+            <label class="f full">Texto<textarea class="input" id="fAvCuerpo" rows="2" maxlength="${MAX_CUERPO_AVISO}">${esc(c.nombre ? textoCreadorNuevo(c.nombre).cuerpo : '')}</textarea></label>
+          </div>
+          <p class="hint" style="margin:10px 0 0">Les llega a todas las personas con la app, sigan a quien sigan; al tocarlo se abre su ficha. Se manda una sola vez, al guardar, y solo si queda visible.</p>
+        </fieldset>` : ''}
         ${seccionFoto('Foto de perfil', c.fotoUrl)}
         ${compartidos.length ? `<fieldset><legend>Canales de otros en los que aparece</legend>
           <div class="chips">${compartidos.map(chipCompartido).join('')}</div>
@@ -1136,12 +1164,35 @@
           canales, conexiones: conexionesDe(canales)
         };
         if (!estado.sinProductoras) cuerpo.productoras = marcadas('productoras');
+
+        // El aviso a todos se lee antes de guardar: si le falta texto, no se guarda nada.
+        const avisar = $('#fAvisar') && $('#fAvisar').checked;
+        if (avisar) textosDeAvisoDeCreador();
+        const aviso = avisar ? { titulo: $('#fAvTitulo').value.trim(), cuerpo: $('#fAvCuerpo').value.trim() } : null;
+        if (aviso && (!aviso.titulo || !aviso.cuerpo)) { toast('El aviso a todos necesita título y texto, o desmarca la casilla.', true); return false; }
+
         const r = await api('/api/admin/creadores', { metodo: 'POST', cuerpo });
         await guardarEtiquetasDe('creador', r.id, c ? etiquetasDe('creador', c.id) : []);
-        if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion, true);
-        else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica, true);
-        else toast(c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
-          ? 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.' : 'Creador creado.'));
+
+        let sobreAviso = '';
+        let avisoFallo = false;
+        if (aviso && !cuerpo.activo) {
+          sobreAviso = ' No se avisó a todos: quedó oculto.';
+        } else if (aviso) {
+          try {
+            const a = await api('/api/admin/avisos', { metodo: 'POST', cuerpo: { tipo: 'nuevo_creador', id: r.id, titulo: aviso.titulo, cuerpo: aviso.cuerpo } });
+            sobreAviso = a.enviado ? ' Se avisó a todos.' : ' El aviso a todos no salió: ' + (a.error || 'motivo desconocido');
+            avisoFallo = !a.enviado;
+          } catch (e) {
+            sobreAviso = ' El aviso a todos no salió: ' + avisoDeRuta(e, 'mandar avisos');
+            avisoFallo = true;
+          }
+        }
+
+        if (r.avisoSuscripcion) toast('Creador guardado, pero el hub de YouTube respondió: ' + r.avisoSuscripcion + sobreAviso, true);
+        else if (r.avisoReplica) toast('Creador guardado, pero no se copió a testing: ' + r.avisoReplica + sobreAviso, true);
+        else toast((c ? 'Cambios guardados.' : (canales.some((k) => k.plataforma === 'youtube')
+          ? 'Creador creado. La suscripción a YouTube queda pendiente hasta que el hub la verifique.' : 'Creador creado.')) + sobreAviso, avisoFallo);
         estado.creadores = null;
         estado.productoras = null;
         if (estado.vista === 'creadores') vistaCreadores();
@@ -1158,7 +1209,35 @@
       });
       prepararFoto(editor);
       prepararLlenado(editor, !c);
+      prepararAvisoDeCreador();
     });
+  }
+
+  /** La casilla de aviso a todos: enseña el texto y lo sigue al nombre. */
+  function prepararAvisoDeCreador() {
+    const casilla = $('#fAvisar');
+    if (!casilla) return;
+    const titulo = $('#fAvTitulo');
+    const cuerpo = $('#fAvCuerpo');
+    // Lo que la persona escribe a mano se respeta; lo demás sigue al nombre.
+    titulo.addEventListener('input', () => { titulo.dataset.tocado = '1'; });
+    cuerpo.addEventListener('input', () => { cuerpo.dataset.tocado = '1'; });
+    casilla.addEventListener('change', () => { $('#fAvisoTextos').hidden = !casilla.checked; });
+    $('#fNombre').addEventListener('input', textosDeAvisoDeCreador);
+    // Buscar un canal llena el nombre sin que se teclee: al volver a la casilla se pone al día.
+    casilla.closest('fieldset').addEventListener('focusin', textosDeAvisoDeCreador);
+    casilla.addEventListener('change', textosDeAvisoDeCreador);
+  }
+
+  /** Pone el texto del aviso al día con el nombre, salvo lo que se escribió a mano. */
+  function textosDeAvisoDeCreador() {
+    const nombre = $('#fNombre') ? $('#fNombre').value.trim() : '';
+    const titulo = $('#fAvTitulo');
+    const cuerpo = $('#fAvCuerpo');
+    if (!nombre || !titulo) return;
+    const t = textoCreadorNuevo(nombre);
+    if (!titulo.dataset.tocado) titulo.value = t.titulo.slice(0, MAX_TITULO_AVISO);
+    if (!cuerpo.dataset.tocado) cuerpo.value = t.cuerpo.slice(0, MAX_CUERPO_AVISO);
   }
 
   // ---------------------------------------------------------------------------
@@ -1433,7 +1512,11 @@
       </div>`;
   }
 
-  async function abrirCanal(id) {
+  /**
+   * @param opciones.buscar   con qué llenar y lanzar la búsqueda del canal al abrir
+   * @param opciones.alGuardar qué hacer además cuando el canal quede guardado
+   */
+  async function abrirCanal(id, opciones = {}) {
     await Promise.all([cargarCreadores(false), cargarProductoras(false), cargarEtiquetas(false)]);
     const v = id ? vigilados().find((x) => x.canal.id === id) : null;
     if (id && !v) return;
@@ -1476,6 +1559,7 @@
         estado.productoras = null;
         if (estado.vista === 'canales') vistaCanales();
         refrescarContadores();
+        if (opciones.alGuardar) await opciones.alGuardar(r);
       } }
     ], () => {
       $('#fKCreador').addEventListener('change', alCambiarDueno);
@@ -1488,6 +1572,10 @@
         $('#fKActual').innerHTML = tarjetaCanal({ handle, channelId: d.channelId }, d.titulo);
         $('#btnBuscarCanal').textContent = 'Cambiar';
       });
+      if (opciones.buscar) {
+        $('#fBuscarCanal').value = opciones.buscar;
+        $('#btnBuscarCanal').click();
+      }
     });
   }
 
@@ -1720,6 +1808,7 @@
         ${p.descripcion ? `<details class="descripcion"><summary>Descripción en YouTube</summary><p>${esc(p.descripcion)}</p></details>` : ''}
       </div>`, [
       { texto: 'Mover', alPulsar: () => { setTimeout(() => abrirMover(videoId), 0); } },
+      { texto: 'Avisar que se retiró', alPulsar: () => { estado.avisoPreset = { tipo: 'video_retirado', videoId }; setTimeout(() => ir('avisos'), 0); } },
       ...(enlace ? [{ texto: 'Abrir en ' + (p.estado === 'moved' ? 'su enlace nuevo' : 'YouTube'), alPulsar: () => { window.open(enlace, '_blank', 'noopener'); return false; } }] : []),
       { texto: 'Cerrar', tipo: 'primary' }
     ]);
@@ -1777,6 +1866,445 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Recomendaciones de canales
+  // ---------------------------------------------------------------------------
+  // Canales de YouTube que la gente propone para el directorio. Empieza
+  // apagado para todos, administradores incluidos: aquí se decide quién
+  // puede recomendar y se revisa lo que llega. Las del mismo canal (o con el
+  // mismo texto, si no se supo el canal) se ven juntas y se revisan juntas.
+  const ALCANCES = {
+    apagado: ['Nadie', 'La app no enseña la sección a nadie, tampoco a los administradores.'],
+    admins: ['Solo administradores', 'Para probarlo antes de abrirlo: lo ven las cuentas con acceso a este panel.'],
+    elegidos: ['Administradores y cuentas elegidas', 'Además de los administradores, las cuentas que elijas una por una desde su ficha en Usuarios.'],
+    todos: ['Todos', 'Cualquier persona que use la app, también las cuentas de invitado.']
+  };
+  const ESTADOS_REC = {
+    pendiente: ['Pendiente', 'b-warn'],
+    agregado: ['Agregado', 'b-ok'],
+    descartado: ['Descartado', 'b-mute']
+  };
+  const FILTROS_REC = { pendientes: 'Pendientes', revisadas: 'Revisadas', todas: 'Todas' };
+
+  const quienRecomienda = (r) => r.email || (r.proveedor === 'anonimo' || !r.proveedor ? 'Invitado ' + String(r.usuarioId).slice(0, 8) : 'Cuenta ' + String(r.usuarioId).slice(0, 8));
+
+  /** Junta las del mismo canal; si no se supo el canal, las del mismo texto. */
+  function agruparRecs(lista) {
+    const grupos = new Map();
+    lista.forEach((r) => {
+      const clave = r.channelId ? 'c:' + r.channelId : 't:' + String(r.texto || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^@/, '');
+      if (!grupos.has(clave)) grupos.set(clave, { clave, items: [] });
+      grupos.get(clave).items.push(r);
+    });
+    return Array.from(grupos.values()).map((g) => {
+      const conDatos = g.items.find((r) => r.titulo) || g.items[0];
+      const pendientes = g.items.filter((r) => r.estado === 'pendiente');
+      return Object.assign(g, {
+        channelId: conDatos.channelId, titulo: conDatos.titulo, handle: conDatos.handle,
+        fotoUrl: conDatos.fotoUrl, texto: conDatos.texto,
+        enDirectorio: g.items.some((r) => r.enDirectorio),
+        estado: pendientes.length ? 'pendiente' : g.items[0].estado,
+        pendientes,
+        ultima: g.items[0].creadoEn
+      });
+    });
+  }
+
+  function enlaceDeRec(g) {
+    if (g.handle) return 'https://www.youtube.com/@' + g.handle.replace(/^@/, '');
+    if (g.channelId) return 'https://www.youtube.com/channel/' + g.channelId;
+    if (/^https?:\/\//i.test(g.texto || '')) return g.texto;
+    return null;
+  }
+
+  function filaRec(g) {
+    const enlace = enlaceDeRec(g);
+    const [et, ec] = ESTADOS_REC[g.estado] || [g.estado, 'b-mute'];
+    const ids = esc(g.items.map((r) => r.id).join(','));
+    const nombre = g.titulo || g.texto;
+    const quienes = Array.from(new Set(g.items.map(quienRecomienda)));
+    const motivos = g.items.filter((r) => r.motivo);
+    const MAX_MOTIVOS = 3;
+
+    let acciones = '';
+    if (g.estado === 'pendiente') {
+      if (g.channelId && !g.enDirectorio) acciones += `<button class="btn sm primary" data-accion="rec-agregar" data-ids="${ids}" data-canal="${esc(g.channelId)}">Agregar al directorio</button>`;
+      acciones += `<button class="btn sm" data-accion="rec-estado" data-ids="${ids}" data-valor="agregado" title="Ya lo agregaste por tu cuenta o ya estaba">Ya está</button>`;
+      acciones += `<button class="btn sm" data-accion="rec-estado" data-ids="${ids}" data-valor="descartado">Descartar</button>`;
+    } else {
+      acciones += `<button class="btn sm" data-accion="rec-estado" data-ids="${ids}" data-valor="pendiente">Volver a pendiente</button>`;
+    }
+    acciones += `<button class="btn sm danger" data-accion="rec-borrar" data-ids="${ids}" data-nombre="${esc(nombre)}">Borrar</button>`;
+
+    return `<tr>
+      <td><div class="rec-canal">
+        ${g.fotoUrl ? `<img src="${esc(g.fotoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="rec-sin-foto" aria-hidden="true">?</span>'}
+        <div style="min-width:0">
+          <div class="clip"><b>${esc(nombre)}</b></div>
+          ${g.titulo && g.texto !== g.titulo ? `<div class="muted clip" style="font-size:12.5px" title="${esc(g.texto)}">Escribió: ${esc(g.texto)}</div>` : ''}
+          ${g.channelId ? `<div class="mono muted" style="font-size:12px">${esc(g.handle ? '@' + g.handle : g.channelId)}</div>` : '<div class="hint">No se identificó el canal: búscalo a mano.</div>'}
+          ${enlace ? `<a href="${esc(enlace)}" target="_blank" rel="noopener" style="font-size:13px">Abrir en YouTube</a>` : ''}
+        </div></div></td>
+      <td>
+        <div class="rec-estado"><span class="badge ${ec}">${esc(et)}</span>${g.enDirectorio ? '<span class="badge b-info">Ya en el directorio</span>' : ''}</div>
+        <div><b>${esc(plural(g.items.length, 'vez', 'veces'))}</b> <span class="muted" style="font-size:12.5px" title="${esc(fmtFecha(g.ultima))}">· la última ${esc(relativo(g.ultima))}</span></div>
+        <div class="muted clip rec-quien" style="font-size:12.5px" title="${esc(quienes.join(', '))}">${esc(quienes.slice(0, 2).join(', ') + (quienes.length > 2 ? ' y ' + (quienes.length - 2) + ' más' : ''))}</div>
+      </td>
+      <td>${motivos.length ? '<ul class="rec-motivos">' + motivos.slice(0, MAX_MOTIVOS).map((r) => `<li>«${esc(r.motivo)}» <span class="muted">— ${esc(quienRecomienda(r))}</span></li>`).join('') + (motivos.length > MAX_MOTIVOS ? `<li class="muted">y ${num(motivos.length - MAX_MOTIVOS)} más</li>` : '') + '</ul>' : '<span class="muted">—</span>'}</td>
+      <td class="acciones"><div class="rec-acciones">${acciones}</div></td>
+    </tr>`;
+  }
+
+  function tarjetaAlcance(alcance) {
+    const encendido = alcance && alcance !== 'apagado';
+    return `<section class="panel"><div class="panel-head"><h2>Quién puede recomendar</h2>
+        <span class="badge ${encendido ? 'b-ok' : 'b-mute'}">${encendido ? 'Encendido' : 'Apagado'}</span></div>
+      <div class="panel-body"><div class="opciones-alcance" role="radiogroup" aria-label="Quién puede recomendar canales">
+        ${Object.entries(ALCANCES).map(([k, [t, d]]) => `<label class="check"><input type="radio" name="alcanceRec" data-accion="alcance-recs" data-valor="${k}" ${alcance === k ? 'checked' : ''}><span><b>${esc(t)}</b><span class="hint" style="display:block">${esc(d)}</span></span></label>`).join('')}
+      </div>
+      <p class="hint" style="margin:12px 0 0;font-size:13.5px">La app enseña «Recomendar un canal» en Ajustes a quien pueda recomendar. El cambio vale la próxima vez que cada persona abra la app. Solo funciona en las versiones de la app que traen la sección.</p>
+      </div></section>`;
+  }
+
+  function tarjetaElegidas(d) {
+    const cuenta = (u) => u.email || 'Invitado ' + String(u.id).slice(0, 8);
+    const nota = d.alcance === 'elegidos' ? ''
+      : `<p class="hint" style="margin:0 0 10px">Ahora mismo estas cuentas ${d.alcance === 'todos' ? 'pueden recomendar como todas las demás' : 'no pueden recomendar'}: la elección solo cuenta con «Administradores y cuentas elegidas».</p>`;
+    return `<section class="panel"><div class="panel-head"><h2>Cuentas elegidas</h2><span class="muted" style="font-size:13px">${plural(d.elegidas.length, 'cuenta', 'cuentas')}</span></div>
+      <div class="panel-body">${nota}
+        ${d.elegidas.length ? '<ul class="lista-simple">' + d.elegidas.map((u) => `<li><span class="clip"><b>${esc(cuenta(u))}</b>${u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : ''} <span class="muted" style="font-size:12.5px">· abrió la app ${esc(relativo(u.vistoEn))}</span></span><button class="btn sm danger" data-accion="recomendar-usuario" data-desde="lista" data-id="${esc(u.id)}" data-valor="false" data-nombre="${esc(cuenta(u))}">Quitar</button></li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Ninguna todavía.</p>'}
+        <p class="hint" style="margin:10px 0 0">Para elegir una cuenta, búscala en <button class="link" data-ir="usuarios">Usuarios</button>, ábrela con «Ver» y pulsa «Dejar que recomiende canales».</p>
+      </div></section>`;
+  }
+
+  async function vistaRecomendaciones() {
+    let d;
+    try {
+      d = await api('/api/admin/recomendaciones');
+    } catch (e) {
+      if (e.estado === 404) {
+        main.innerHTML = '<div class="head"><div><h1>Recomendaciones</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene las recomendaciones de canales. Actualízalo para usarlas.</div></div>';
+        return;
+      }
+      throw e;
+    }
+    if (estado.vista !== 'recomendaciones') return;
+
+    const filtro = estado.filtroRecs;
+    const grupos = agruparRecs(d.recomendaciones);
+    const visibles = grupos.filter((g) => filtro === 'todas' || (filtro === 'pendientes' ? g.estado === 'pendiente' : g.estado !== 'pendiente'))
+      // Primero lo que más gente pidió; a igualdad, lo más reciente.
+      .sort((a, b) => (b.items.length - a.items.length) || (new Date(b.ultima) - new Date(a.ultima)));
+    const VACIO = {
+      pendientes: d.alcance === 'apagado' ? 'No hay nada pendiente. Mientras esté apagado no llegan recomendaciones.' : 'No hay recomendaciones pendientes.',
+      revisadas: 'Todavía no has revisado ninguna.',
+      todas: 'Todavía no ha llegado ninguna recomendación.'
+    };
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Recomendaciones</h1><p class="sub">Canales de YouTube que la gente propone para el directorio. Empieza apagado para todos: elige aquí quién puede recomendar. Cada persona puede mandar 5 al día.</p></div></div>
+      <div class="stack">
+        <div class="dos">
+          ${tarjetaAlcance(d.alcance)}
+          ${tarjetaElegidas(d)}
+        </div>
+        <section class="panel">
+          <div class="panel-head"><div class="toolbar">${Object.entries(FILTROS_REC).map(([k, v]) => `<button class="btn sm ${k === filtro ? 'primary' : ''}" data-accion="filtro-recs" data-valor="${k}" aria-pressed="${k === filtro}">${v}${k === 'pendientes' && d.pendientes ? ' · ' + num(grupos.filter((g) => g.estado === 'pendiente').length) : ''}</button>`).join('')}</div>
+            <span class="muted" style="font-size:13px">${plural(d.recomendaciones.length, 'recomendación', 'recomendaciones')} en total</span></div>
+          <div class="tablewrap"><table><thead><tr><th>Canal</th><th>Recomendado</th><th>Por qué</th><th></th></tr></thead><tbody>
+          ${visibles.length ? visibles.map(filaRec).join('') : `<tr><td colspan="4"><div class="empty">${esc(VACIO[filtro])}</div></td></tr>`}
+          </tbody></table></div>
+        </section>
+      </div>`;
+  }
+
+  /** Bloque de la ficha de una cuenta: elegirla o quitarla para recomendar. */
+  function fichaRecomendar(u) {
+    const nombre = esc(u.email || 'esta cuenta de invitado');
+    return u.recomendarHabilitado
+      ? `<div><button class="btn danger" data-accion="recomendar-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Ya no dejar que recomiende canales</button>
+          <p class="hint" style="margin:6px 0 0">Está entre las cuentas elegidas de <button class="link" data-ir="recomendaciones">Recomendaciones</button>.</p></div>`
+      : `<div><button class="btn" data-accion="recomendar-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Dejar que recomiende canales</button>
+          <p class="hint" style="margin:6px 0 0">Verá «Recomendar un canal» en Ajustes de la app mientras en Recomendaciones esté elegido «Administradores y cuentas elegidas».</p></div>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Avisos del equipo
+  // ---------------------------------------------------------------------------
+  // Lo que el equipo manda a mano: un medio o un canal nuevo, un video
+  // retirado, una cuenta bloqueada o un mensaje. El de un creador nuevo no
+  // está aquí: se manda desde su ficha, al crearlo.
+  const TIPOS_AVISO = {
+    nuevo_medio: 'Medio nuevo',
+    nuevo_canal: 'Canal nuevo',
+    video_retirado: 'Video retirado',
+    cuenta_bloqueada: 'Cuenta bloqueada',
+    mensaje: 'Mensaje'
+  };
+  // Para el historial, que también enseña los de creador nuevo.
+  const NOMBRES_AVISO = Object.assign({ nuevo_creador: 'Creador nuevo' }, TIPOS_AVISO);
+  const PARA_AVISO = { todos: 'Todos', creador: 'Seguidores de un creador', productora: 'Seguidores de un medio', canal: 'Seguidores de un canal' };
+  const MAX_TITULO_AVISO = 80;
+  const MAX_CUERPO_AVISO = 300;
+
+  // Lo que escribe el panel para un creador nuevo. También lo usa su ficha.
+  const textoCreadorNuevo = (nombre) => ({
+    titulo: 'Creador nuevo: ' + nombre,
+    cuerpo: nombre + ' ya está en el directorio. Toca para conocerlo y seguirlo.'
+  });
+
+  const nombreDeCanal = (k) => k.titulo || k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal');
+
+  async function vistaAvisos() {
+    const [historial, creadores, productoras, pubs] = await Promise.all([
+      api('/api/admin/avisos?limite=100'),
+      cargarCreadores(true),
+      cargarProductoras(true),
+      api('/api/admin/publicaciones?limite=200').catch(() => [])
+    ]);
+    estado.publicaciones = pubs;
+
+    // Si se llegó desde la ficha de un video, el formulario ya viene armado.
+    const previo = estado.avisoPreset || {};
+    estado.avisoPreset = null;
+    estado.aviso = {
+      tipo: previo.tipo || 'mensaje',
+      para: previo.para || 'todos',
+      id: previo.id || '',
+      videoId: previo.videoId || '',
+      plataforma: 'youtube',
+      tocado: { titulo: false, cuerpo: false }
+    };
+
+    const sinAnunciar = creadores.filter((c) => c.activo && !c.anunciadoEn).length;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Avisos</h1><p class="sub">Notificaciones que manda el equipo a mano. Los videos nuevos, los directos y los cortos se avisan solos; esto es para todo lo demás. Al tocar el aviso, la app abre la ficha de quien se habla, o el enlace si le pones uno.</p></div></div>
+      <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Mandar un aviso</h2></div><div class="panel-body">
+          <div class="push">
+            <div class="stack" style="gap:14px">
+              <div class="form">
+                <label class="f">Qué avisas<select class="input" id="avTipo">${Object.entries(TIPOS_AVISO).map(([k, v]) => `<option value="${k}" ${estado.aviso.tipo === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>
+                <div class="f" id="avParaCaja"></div>
+                <div class="full" id="avCampos"></div>
+                <label class="f full">Título <span class="opcional" id="avCuentaTitulo"></span><input class="input" id="avTitulo" maxlength="${MAX_TITULO_AVISO}"></label>
+                <label class="f full">Texto <span class="opcional" id="avCuentaCuerpo"></span><textarea class="input" id="avCuerpo" rows="3" maxlength="${MAX_CUERPO_AVISO}"></textarea></label>
+                <label class="f full" id="avEnlaceCaja">Enlace <span class="opcional">opcional: tocar el aviso lo abre</span><input class="input" id="avEnlace" placeholder="https://"></label>
+                <label class="check full" id="avRetirarCaja" hidden><input type="checkbox" id="avRetirar" checked> Quitarlo también de la app</label>
+              </div>
+              <div class="alcance" id="avAlcance"></div>
+              <p class="hint" style="margin:0">Los avisos para todos solo les llegan a quienes tengan la versión de la app que trae esta función; las anteriores no los reciben. Los de seguidores llegan a todas.</p>
+              <div><button class="btn primary" data-accion="mandar-aviso">Mandar aviso</button></div>
+              <p class="hint" style="margin:0">¿Un creador nuevo? Se avisa desde su ficha al crearlo.${sinAnunciar ? ' Hay ' + esc(plural(sinAnunciar, 'creador visible', 'creadores visibles')) + ' de los que nunca se avisó: abre su ficha en <button class="link" data-ir="creadores">Creadores</button> y marca «Avisar a todos».' : ''}</p>
+            </div>
+            <div class="telefono" aria-hidden="true"><div class="pantalla">
+              <div class="reloj">${esc(new Date().toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false }))}</div>
+              <div class="fecha">${esc(new Date().toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long' }))}</div>
+              <div class="notif"><div class="top"><span class="ico">V</span>Voces Izquierda · ahora</div><div class="t" id="avPrevTitulo"></div><div class="b" id="avPrevCuerpo"></div></div>
+            </div></div>
+          </div>
+        </div></section>
+        <section class="panel"><div class="panel-head"><h2>Historial</h2></div>
+          <div class="tablewrap"><table><thead><tr><th>Cuándo</th><th>Tipo</th><th>Aviso</th><th>A quién</th><th>Estado</th></tr></thead><tbody>
+          ${historial.length ? historial.map((a) => `<tr>
+            <td class="num" title="${esc(fmtFecha(a.creadoEn))}">${esc(relativo(a.creadoEn))}${a.autor ? `<div class="muted" style="font-size:12.5px">${esc(a.autor)}</div>` : ''}</td>
+            <td><span class="badge b-mute">${esc(NOMBRES_AVISO[a.tipo] || a.tipo)}</span></td>
+            <td><div class="clip" style="max-width:360px"><b>${esc(a.titulo)}</b></div><div class="muted clip" style="max-width:360px;font-size:13px" title="${esc(a.cuerpo)}">${esc(a.cuerpo)}</div>${a.enlace ? `<a class="mono" style="font-size:12.5px" href="${esc(a.enlace)}" target="_blank" rel="noopener">${esc(a.enlace)}</a>` : ''}</td>
+            <td>${esc(a.destino)}</td>
+            <td>${a.enviado ? '<span class="badge b-ok">Enviado</span>' : `<span class="badge b-bad" title="${esc(a.error || '')}">No salió</span><div class="muted clip" style="max-width:220px;font-size:12.5px" title="${esc(a.error || '')}">${esc(a.error || '')}</div>`}</td>
+          </tr>`).join('') : '<tr><td colspan="5"><div class="empty">Todavía no se ha mandado ningún aviso.</div></td></tr>'}
+          </tbody></table></div>
+        </section>
+      </div>`;
+
+    $('#avTipo').addEventListener('change', (e) => {
+      estado.aviso.tipo = e.target.value;
+      estado.aviso.id = '';
+      estado.aviso.videoId = '';
+      estado.aviso.para = e.target.value === 'cuenta_bloqueada' ? 'creador' : 'todos';
+      estado.aviso.tocado = { titulo: false, cuerpo: false };
+      pintarCamposDeAviso();
+    });
+    $('#avTitulo').addEventListener('input', () => { estado.aviso.tocado.titulo = true; previaDeAviso(); });
+    $('#avCuerpo').addEventListener('input', () => { estado.aviso.tocado.cuerpo = true; previaDeAviso(); });
+    pintarCamposDeAviso();
+  }
+
+  /** Las opciones de "a quién" o "de quién", según lo que se elija. */
+  function opcionesDeAviso(para) {
+    if (para === 'creador') {
+      return (estado.creadores || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        .map((c) => ({ id: c.id, texto: c.nombre + (c.activo ? '' : ' (oculto)') }));
+    }
+    if (para === 'productora') {
+      return (estado.productoras || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'))
+        .map((p) => ({ id: p.id, texto: p.nombre + (p.activo ? '' : ' (oculto)') }));
+    }
+    if (para === 'canal') {
+      return vigilados().filter((v) => v.canal.id)
+        .map((v) => ({ id: v.canal.id, texto: nombreDeCanal(v.canal) + ' · ' + v.dueno.nombre + (v.dueno.activo ? '' : ' (oculto)') }))
+        .sort((a, b) => a.texto.localeCompare(b.texto, 'es'));
+    }
+    return [];
+  }
+
+  const selectorDeAviso = (id, opciones, elegido, vacio) => `<select class="input" id="${id}">
+      <option value="">${esc(vacio)}</option>
+      ${opciones.map((o) => `<option value="${esc(o.id)}" ${o.id === elegido ? 'selected' : ''}>${esc(o.texto)}</option>`).join('')}
+    </select>`;
+
+  /** Pinta los campos que dependen del tipo y vuelve a enganchar sus eventos. */
+  function pintarCamposDeAviso() {
+    const a = estado.aviso;
+    const paraCaja = $('#avParaCaja');
+    const campos = $('#avCampos');
+    let paraHtml = '';
+    let camposHtml = '';
+
+    if (a.tipo === 'nuevo_medio') {
+      camposHtml = `<label class="f">Medio${selectorDeAviso('avId', opcionesDeAviso('productora'), a.id, 'Elige el medio')}</label>`;
+    } else if (a.tipo === 'nuevo_canal') {
+      camposHtml = `<label class="f">Canal${selectorDeAviso('avId', opcionesDeAviso('canal'), a.id, 'Elige el canal')}</label>`;
+    } else if (a.tipo === 'video_retirado') {
+      const lista = (estado.publicaciones || []).filter((p) => p.estado !== 'removed' || p.videoId === a.videoId);
+      if (a.videoId && !lista.some((p) => p.videoId === a.videoId)) lista.unshift({ videoId: a.videoId, titulo: a.videoId });
+      camposHtml = `<label class="f full">Video<select class="input" id="avVideo">
+          <option value="">Elige el video</option>
+          ${lista.map((p) => `<option value="${esc(p.videoId)}" ${p.videoId === a.videoId ? 'selected' : ''}>${esc((p.titulo || p.videoId) + (p.creadorNombre ? ' · ' + p.creadorNombre : ''))}</option>`).join('')}
+        </select></label>`;
+    } else {
+      // Cuenta bloqueada o mensaje: de quién se habla, o para quién es.
+      const paras = a.tipo === 'cuenta_bloqueada' ? ['creador', 'productora', 'canal'] : ['todos', 'creador', 'productora', 'canal'];
+      paraHtml = `<label class="f" style="margin:0">${a.tipo === 'cuenta_bloqueada' ? 'De quién es la cuenta' : 'Para quién'}<select class="input" id="avPara">${paras.map((k) => `<option value="${k}" ${a.para === k ? 'selected' : ''}>${esc(a.tipo === 'cuenta_bloqueada' ? { creador: 'Un creador', productora: 'Un medio', canal: 'Un canal' }[k] : PARA_AVISO[k])}</option>`).join('')}</select></label>`;
+      const quien = a.para !== 'todos'
+        ? `<label class="f">${{ creador: 'Creador', productora: 'Medio', canal: 'Canal' }[a.para]}${selectorDeAviso('avId', opcionesDeAviso(a.para), a.id, 'Elige uno')}</label>` : '';
+      const plataforma = a.tipo === 'cuenta_bloqueada'
+        ? `<label class="f">Dónde la bloquearon<select class="input" id="avPlat">${Object.entries(PLATAFORMAS).filter(([k]) => k !== 'web').map(([k, v]) => `<option value="${k}" ${a.plataforma === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>` : '';
+      camposHtml = quien || plataforma ? `<div class="form">${quien}${plataforma}</div>` : '';
+    }
+
+    paraCaja.innerHTML = paraHtml;
+    campos.innerHTML = camposHtml;
+    $('#avEnlaceCaja').hidden = !(a.tipo === 'cuenta_bloqueada' || a.tipo === 'mensaje');
+    $('#avRetirarCaja').hidden = a.tipo !== 'video_retirado';
+
+    const al = (sel, fn) => { const el = $(sel); if (el) el.addEventListener('change', fn); };
+    al('#avPara', (e) => { a.para = e.target.value; a.id = ''; pintarCamposDeAviso(); });
+    al('#avId', (e) => { a.id = e.target.value; rellenarAviso(); });
+    al('#avVideo', (e) => { a.videoId = e.target.value; rellenarAviso(); });
+    al('#avPlat', (e) => { a.plataforma = e.target.value; rellenarAviso(); });
+    rellenarAviso();
+  }
+
+  /** El nombre de quien se eligió, o null. */
+  function elegidoDeAviso() {
+    const a = estado.aviso;
+    const para = a.tipo === 'nuevo_medio' ? 'productora' : a.tipo === 'nuevo_canal' ? 'canal' : a.para;
+    if (!a.id) return null;
+    if (para === 'creador') return (estado.creadores || []).find((c) => c.id === a.id) || null;
+    if (para === 'productora') return (estado.productoras || []).find((p) => p.id === a.id) || null;
+    if (para === 'canal') {
+      const v = vigilados().find((x) => x.canal.id === a.id);
+      return v ? { nombre: nombreDeCanal(v.canal), dueno: v.dueno } : null;
+    }
+    return null;
+  }
+
+  /** El texto que propone el panel. Lo que la persona ya escribió no se toca. */
+  function rellenarAviso() {
+    const a = estado.aviso;
+    const quien = elegidoDeAviso();
+    const video = a.videoId ? (estado.publicaciones || []).find((p) => p.videoId === a.videoId) : null;
+    let titulo = '';
+    let cuerpo = '';
+
+    if (a.tipo === 'nuevo_medio' && quien) {
+      titulo = 'Medio nuevo: ' + quien.nombre;
+      cuerpo = quien.nombre + ' ya está en el directorio. Toca para conocerlo y seguirlo.';
+    } else if (a.tipo === 'nuevo_canal' && quien) {
+      titulo = 'Canal nuevo: ' + quien.nombre;
+      cuerpo = quien.dueno.nombre + ' suma un canal al directorio. Toca para verlo y seguirlo.';
+    } else if (a.tipo === 'video_retirado' && video) {
+      titulo = 'Se retiró un video' + (video.creadorNombre ? ' de ' + video.creadorNombre : '');
+      cuerpo = '«' + (video.titulo || 'El video') + '» ya no está disponible.';
+    } else if (a.tipo === 'cuenta_bloqueada' && quien) {
+      titulo = PLATAFORMAS[a.plataforma] + ' bloqueó la cuenta de ' + quien.nombre;
+      cuerpo = 'Sigues pudiendo encontrar a ' + quien.nombre + ' aquí. Te avisaremos de dónde publica ahora.';
+    }
+
+    if (!a.tocado.titulo) $('#avTitulo').value = titulo.slice(0, MAX_TITULO_AVISO);
+    if (!a.tocado.cuerpo) $('#avCuerpo').value = cuerpo.slice(0, MAX_CUERPO_AVISO);
+    alcanceDeAviso();
+    previaDeAviso();
+  }
+
+  function alcanceDeAviso() {
+    const a = estado.aviso;
+    const quien = elegidoDeAviso();
+    const video = a.videoId ? (estado.publicaciones || []).find((p) => p.videoId === a.videoId) : null;
+    let texto = '';
+
+    if (a.tipo === 'nuevo_medio' || a.tipo === 'nuevo_canal' || (a.tipo === 'mensaje' && a.para === 'todos')) {
+      texto = 'Le llega a todas las personas con la app.';
+    } else if (a.tipo === 'video_retirado') {
+      texto = video ? 'Le llega a quienes siguen a ' + (video.creadorNombre || 'su creador') + ' o su canal.' : 'Elige el video.';
+    } else if (!quien) {
+      texto = 'Elige ' + ({ creador: 'el creador', productora: 'el medio', canal: 'el canal' }[a.para] || 'a quién') + '.';
+    } else if (a.para === 'canal') {
+      texto = 'Le llega a quienes siguen el canal ' + quien.nombre + ' o a ' + quien.dueno.nombre + '.';
+    } else {
+      const n = typeof quien.seguidores === 'number' ? ' (' + plural(quien.seguidores, 'cuenta', 'cuentas') + ', más quienes siguen solo alguno de sus canales)' : '';
+      texto = 'Le llega a quienes siguen a ' + quien.nombre + n + '.';
+    }
+    $('#avAlcance').textContent = texto;
+  }
+
+  function previaDeAviso() {
+    const titulo = $('#avTitulo').value.trim();
+    const cuerpo = $('#avCuerpo').value.trim();
+    $('#avPrevTitulo').textContent = titulo || 'Título del aviso';
+    $('#avPrevCuerpo').textContent = cuerpo || 'Lo que dice el aviso.';
+    $('#avCuentaTitulo').textContent = $('#avTitulo').value.length + ' de ' + MAX_TITULO_AVISO;
+    $('#avCuentaCuerpo').textContent = $('#avCuerpo').value.length + ' de ' + MAX_CUERPO_AVISO;
+  }
+
+  async function mandarAviso(boton) {
+    const a = estado.aviso;
+    if (!a) return;
+    const titulo = $('#avTitulo').value.trim();
+    const cuerpo = $('#avCuerpo').value.trim();
+    const enlace = $('#avEnlaceCaja').hidden ? '' : $('#avEnlace').value.trim();
+    const necesitaId = a.tipo === 'nuevo_medio' || a.tipo === 'nuevo_canal'
+      || ((a.tipo === 'cuenta_bloqueada' || a.tipo === 'mensaje') && a.para !== 'todos');
+
+    if (a.tipo === 'video_retirado' && !a.videoId) { toast('Elige el video.', true); return; }
+    if (necesitaId && !a.id) { toast('Elige de quién es el aviso.', true); return; }
+    if (!titulo) { toast('El aviso necesita un título.', true); return; }
+    if (!cuerpo) { toast('El aviso necesita un texto.', true); return; }
+    if (enlace && !/^https:\/\//i.test(enlace)) { toast('El enlace debe empezar por https://', true); return; }
+
+    const ok = await confirmar('¿Mandar este aviso?', $('#avAlcance').textContent + ' «' + titulo + '». Una vez enviado no se puede retirar de los teléfonos.', 'Mandar aviso');
+    if (!ok) return;
+
+    const para = a.tipo === 'nuevo_medio' ? 'productora' : a.tipo === 'nuevo_canal' ? 'canal' : a.tipo === 'video_retirado' ? null : a.para;
+    boton.disabled = true;
+    try {
+      const r = await api('/api/admin/avisos', { metodo: 'POST', cuerpo: {
+        tipo: a.tipo, para, id: a.id || null, videoId: a.videoId || null,
+        titulo, cuerpo, enlace: enlace || null,
+        retirarVideo: a.tipo === 'video_retirado' ? $('#avRetirar').checked : null
+      } });
+      if (r.enviado) toast('Aviso enviado.');
+      else toast('El aviso no salió: ' + (r.error || 'motivo desconocido'), true);
+      await vistaAvisos();
+    } catch (e) {
+      toast(avisoDeRuta(e, 'mandar avisos'), true);
+    } finally {
+      boton.disabled = false;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Usuarios
   // ---------------------------------------------------------------------------
   // Esta vista solo lee. Las fechas, los seguimientos y las preferencias los
@@ -1803,7 +2331,9 @@
     const [t, c] = PROVEEDORES[u.proveedor] || [u.proveedor, 'b-mute'];
     return `<span class="badge ${c}">${esc(t)}</span>`
       + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '')
-      + (u.posibleBot ? ' <span class="badge b-bad">Posible bot</span>' : '');
+      + (u.posibleBot ? ' <span class="badge b-bad">Posible bot</span>' : '')
+      + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '')
+      + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '');
   };
 
   // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
@@ -2026,6 +2556,8 @@
           ${d.sigue.length ? '<ul class="lista-simple">' + d.sigue.map((c) => `<li><span><b>${esc(c.nombre)}</b> <span class="muted">· ${esc(CATEGORIAS[c.categoria] || c.categoria)}</span></span>${c.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Todavía no sigue a nadie, así que no recibe avisos.</p>'}
         </div>
         ${rol ? '<div>' + rol + '</div>' : ''}
+        ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
+        ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
   }
@@ -2565,11 +3097,335 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Chat con una cuenta
+  // ---------------------------------------------------------------------------
+  // Cifrado de extremo a extremo con chat-cifrado.js: el servidor solo pasa
+  // llaves públicas y mensajes que no puede leer, y no guarda nada. Aquí
+  // tampoco: la conversación vive en `chat` mientras la ventana está abierta y
+  // al cerrarla se borra. Una conversación a la vez.
+  const CC = window.ChatCifrado;
+  const MAX_TEXTO_CHAT = 2000;
+  let chat = null;
+
+  const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+  const rutaChat = (c, final) => '/api/admin/chat/' + encodeURIComponent(c.usuarioId) + '/' + final;
+  const nombreEnChat = (u) => u.email || 'Invitado ' + String(u.id).slice(0, 8);
+
+  /** El bloque de la ficha de una cuenta: activar, quitar o abrir el chat. */
+  function fichaChat(u) {
+    const nombre = esc(nombreEnChat(u));
+    if (!u.chatHabilitado) {
+      return `<div><button class="btn" data-accion="chat-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Activar el chat con esta cuenta</button>
+        <p class="hint" style="margin:6px 0 0">Verá «Hablar con el equipo» en Ajustes de la app. Solo los administradores pueden escribirle.</p></div>`;
+    }
+    return `<div class="toolbar">
+        <button class="btn primary" data-accion="abrir-chat" data-id="${esc(u.id)}" data-nombre="${nombre}">Abrir chat</button>
+        <button class="btn danger" data-accion="chat-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Quitar el chat</button>
+      </div>`;
+  }
+
+  async function vistaChat() {
+    const lista = await api('/api/admin/chat');
+    if (estado.vista !== 'chat') return;
+
+    const estadoDe = (c) => {
+      if (c.conmigo) return '<span class="badge b-ok">Contigo</span>' + (c.enElChat ? ' <span class="badge b-ok">En el chat</span>' : '');
+      if (c.conAdmin) return '<span class="badge b-warn">Con otro administrador</span>';
+      if (c.enElChat) return '<span class="badge b-ok">Esperando en el chat</span>';
+      return '<span class="badge b-mute">No está en el chat</span>';
+    };
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Chat</h1><p class="sub">Habla por escrito con una persona que usa la app. Solo puedes escribir a las cuentas a las que les activaste el chat: búscalas en <button class="link" data-ir="usuarios">Usuarios</button>, ábrelas con «Ver» y pulsa «Activar el chat».</p></div></div>
+      <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Cuentas con chat</h2><span class="muted" style="font-size:13px">${plural(lista.length, 'cuenta', 'cuentas')}</span></div>
+          <div class="tablewrap"><table><thead><tr><th>Cuenta</th><th>Ahora</th><th>App</th><th>Abrió la app</th><th></th></tr></thead><tbody>
+          ${lista.length ? lista.map((c) => `<tr>
+            <td><div class="clip"><b>${esc(nombreEnChat(c))}</b></div><span class="mono muted">${esc(c.id)}</span></td>
+            <td>${estadoDe(c)}</td>
+            <td>${c.appVersion ? esc(nombrePlataforma(c.appPlataforma) + ' ' + c.appVersion) : '<span class="muted">—</span>'}</td>
+            <td class="num" title="${esc(fmtFecha(c.vistoEn))}">${esc(relativo(c.vistoEn))}</td>
+            <td class="acciones">
+              <button class="btn sm primary" data-accion="abrir-chat" data-id="${esc(c.id)}" data-nombre="${esc(nombreEnChat(c))}">Abrir chat</button>
+              <button class="btn sm danger" data-accion="chat-usuario" data-desde="lista" data-id="${esc(c.id)}" data-valor="false" data-nombre="${esc(nombreEnChat(c))}">Quitar</button>
+            </td></tr>`).join('') : '<tr><td colspan="5"><div class="empty">Ninguna cuenta tiene el chat activado todavía.</div></td></tr>'}
+          </tbody></table></div>
+        </section>
+        <section class="panel"><div class="panel-head"><h2>Cómo funciona</h2></div><div class="panel-body stack" style="gap:10px">
+          <p style="margin:0"><b>Cifrado de extremo a extremo.</b> Tu navegador y el teléfono de la persona acuerdan una clave que solo conocen ellos dos. El servidor pasa los mensajes sin poder leerlos.</p>
+          <p style="margin:0"><b>No se guarda nada.</b> Ni en la base de datos, ni en el servidor, ni en el teléfono. Al cerrar la ventana del chat, o cuando la persona sale, la conversación desaparece de los dos lados.</p>
+          <p style="margin:0"><b>Código de seguridad.</b> Los dos ven las mismas 8 cifras. Si quieres estar seguro de que hablas con esa persona y nadie se metió en medio, pídele que te las lea.</p>
+          <p class="hint" style="margin:0">Si la persona no tiene la app abierta, al abrir el chat le llega un aviso al teléfono que solo dice que el equipo quiere hablar con ella, sin nada de lo que escribas. Necesita la versión de la app que trae el chat.</p>
+        </div></section>
+      </div>`;
+
+    // Quién está dentro cambia solo: se refresca mientras se mira.
+    clearTimeout(vistaChat.reloj);
+    vistaChat.reloj = setTimeout(() => { if (estado.vista === 'chat' && !modal.open) vistaChat().catch(() => {}); }, 15000);
+  }
+
+  async function abrirChat(usuarioId, nombre) {
+    if (chat && chat.usuarioId === usuarioId && chat.vivo) {
+      $('#chatVentana').classList.remove('plegada');
+      $('#chatTexto').focus();
+      return;
+    }
+    if (!CC || !window.isSecureContext || !(window.crypto && crypto.subtle)) {
+      toast('El chat cifrado necesita abrir el panel por HTTPS.', true);
+      return;
+    }
+    if (chat) await cerrarChat();
+
+    const c = {
+      usuarioId, nombre, par: await CC.nuevoPar(), conexion: null,
+      clave: null, codigo: null, enviados: 0, ultimoN: 0, enviando: false,
+      mensajes: [], vivo: true, fase: 'entrando'
+    };
+    chat = c;
+    pintarChat();
+
+    let r;
+    try {
+      r = await api(rutaChat(c, 'entrar'), { metodo: 'POST', cuerpo: { clave: c.par.publicaBase64 } });
+    } catch (e) {
+      if (chat === c) terminarChat(c, e.message);
+      return;
+    }
+    if (chat !== c || !c.vivo) return;
+
+    c.conexion = r.conexion;
+    if (r.claveDelOtro) {
+      await llaveDelOtro(c, r.claveDelOtro);
+    } else {
+      c.fase = 'esperando';
+      nota(c, r.avisado
+        ? 'Le mandamos un aviso a su teléfono. En cuanto abra el chat, podrán escribirse.'
+        : 'Todavía no tiene el chat abierto. En cuanto entre, podrán escribirse.');
+    }
+    pintarChat();
+    escucharChat(c);
+  }
+
+  /** Recoge lo que llega, sin parar, mientras la conversación sigue viva. */
+  async function escucharChat(c) {
+    let fallos = 0;
+    while (c.vivo) {
+      let eventos;
+      try {
+        eventos = await api(rutaChat(c, 'eventos') + '?conexion=' + encodeURIComponent(c.conexion));
+        fallos = 0;
+      } catch (e) {
+        if (!c.vivo) return;
+        if ([401, 403, 404, 409, 410].includes(e.estado)) { terminarChat(c, e.message); return; }
+        // Sin red o el servidor reiniciando: se reintenta cada vez más despacio.
+        fallos++;
+        if (fallos === 3) nota(c, 'Se perdió la conexión. Reintentando…');
+        await pausa(Math.min(30000, 2000 * fallos));
+        continue;
+      }
+      for (const ev of eventos || []) {
+        if (!c.vivo) return;
+        await procesarEvento(c, ev);
+      }
+      pintarChat();
+    }
+  }
+
+  async function procesarEvento(c, ev) {
+    switch (ev.tipo) {
+      case 'llave':
+        await llaveDelOtro(c, ev.clave);
+        break;
+      case 'mensaje': {
+        if (!c.clave) return;
+        const m = await CC.descifrar(c.clave, 'usuario', ev.iv, ev.cifrado);
+        if (!m) { nota(c, 'Llegó un mensaje que no se pudo descifrar y se descartó.'); return; }
+        if (m.n <= c.ultimoN) return; // repetido: alguien lo reenvió
+        c.ultimoN = m.n;
+        c.mensajes.push({ mio: false, texto: m.t, hora: new Date() });
+        break;
+      }
+      case 'salio':
+        c.clave = null;
+        c.fase = 'esperando';
+        nota(c, 'La persona cerró el chat en su teléfono. Si vuelve a entrar, pueden seguir.');
+        break;
+      case 'cerrada':
+        terminarChat(c, ev.motivo || 'La conversación terminó.');
+        break;
+    }
+  }
+
+  async function llaveDelOtro(c, claveBase64) {
+    try {
+      const otra = CC.deBase64(claveBase64);
+      c.clave = await CC.clave(c.par.privada, claveBase64, c.par.publica, otra);
+      const codigo = await CC.codigo(c.par.publica, otra);
+      nota(c, c.codigo && c.codigo !== codigo
+        ? 'La persona volvió a entrar. El código de seguridad cambió: ' + codigo + '.'
+        : 'La persona está en el chat.');
+      c.codigo = codigo;
+      c.ultimoN = 0;
+      c.fase = 'conectado';
+    } catch (e) {
+      c.clave = null;
+      nota(c, 'La llave que mandó su teléfono no es válida. Pídele que cierre y vuelva a abrir el chat.');
+    }
+  }
+
+  async function enviarChat() {
+    const c = chat;
+    const caja = $('#chatTexto');
+    if (!c || !caja || c.enviando) return;
+    const texto = caja.value.trim();
+    if (!texto) return;
+    if (texto.length > MAX_TEXTO_CHAT) { toast('Máximo ' + num(MAX_TEXTO_CHAT) + ' caracteres por mensaje.', true); return; }
+    if (!c.clave) { toast('La persona todavía no está en el chat.', true); return; }
+
+    // De uno en uno: el contador de cada mensaje tiene que llegar en orden.
+    c.enviando = true;
+    pintarChat();
+    try {
+      const m = await CC.cifrar(c.clave, 'admin', ++c.enviados, texto);
+      await api(rutaChat(c, 'mensajes'), { metodo: 'POST', cuerpo: { conexion: c.conexion, iv: m.iv, cifrado: m.cifrado } });
+      if (chat !== c) return;
+      c.mensajes.push({ mio: true, texto, hora: new Date() });
+      caja.value = '';
+    } finally {
+      c.enviando = false;
+      if (chat === c) { pintarChat(); $('#chatTexto') && $('#chatTexto').focus(); }
+    }
+  }
+
+  function nota(c, texto) {
+    c.mensajes.push({ nota: true, texto, hora: new Date() });
+  }
+
+  function terminarChat(c, motivo) {
+    c.vivo = false;
+    c.fase = 'terminado';
+    c.clave = null;
+    c.par = null;
+    if (motivo) nota(c, motivo);
+    if (chat === c) pintarChat();
+  }
+
+  /** Avisa al servidor y borra la conversación de la pantalla y de la memoria. */
+  async function cerrarChat() {
+    const c = chat;
+    if (!c) return;
+    const despedirse = c.vivo && c.conexion;
+    olvidarChat();
+    if (despedirse) {
+      try { await api(rutaChat(c, 'salir'), { metodo: 'POST', cuerpo: { conexion: c.conexion } }); } catch (e) { /* ya se cerrará solo */ }
+    }
+  }
+
+  function olvidarChat() {
+    const c = chat;
+    chat = null;
+    if (c) {
+      c.vivo = false;
+      c.clave = null;
+      c.par = null;
+      c.mensajes.length = 0;
+    }
+    const v = $('#chatVentana');
+    if (v) v.remove();
+  }
+
+  // Al cerrar la pestaña o recargar, el teléfono se entera en vez de esperar
+  // dos minutos a que el servidor note que el panel se fue.
+  window.addEventListener('pagehide', () => {
+    const c = chat;
+    if (!c || !c.vivo || !c.conexion || !sesion || !sesion.token) return;
+    try {
+      fetch(BASE + rutaChat(c, 'salir'), {
+        method: 'POST', keepalive: true,
+        headers: { Authorization: 'Bearer ' + sesion.token, 'Content-Type': 'application/json', 'X-App-Plataforma': 'panel' },
+        body: JSON.stringify({ conexion: c.conexion })
+      });
+    } catch (e) { /* nada que hacer */ }
+  });
+
+  function pintarChat() {
+    const c = chat;
+    if (!c) return;
+    let v = $('#chatVentana');
+    if (!v) {
+      v = document.createElement('section');
+      v.id = 'chatVentana';
+      v.className = 'chat-ventana';
+      v.setAttribute('aria-label', 'Chat');
+      v.innerHTML = `
+        <div class="chat-cabeza">
+          <div class="chat-quien"><b id="chatNombre"></b><span id="chatEstado"></span></div>
+          <button class="btn sm" data-accion="chat-plegar" title="Plegar o desplegar">–</button>
+          <button class="btn sm" data-accion="chat-cerrar">Cerrar</button>
+        </div>
+        <div class="chat-codigo" id="chatCodigo"></div>
+        <div class="chat-lista" id="chatLista" aria-live="polite"></div>
+        <div class="chat-pie" id="chatPie"></div>`;
+      document.body.appendChild(v);
+    }
+
+    $('#chatNombre').textContent = c.nombre || 'Cuenta';
+    $('#chatEstado').textContent = {
+      entrando: 'Abriendo…',
+      esperando: 'Esperando a que entre',
+      conectado: 'Conectado · cifrado de extremo a extremo',
+      terminado: 'Conversación terminada'
+    }[c.fase] || '';
+
+    $('#chatCodigo').innerHTML = c.codigo && c.fase === 'conectado'
+      ? 'Código de seguridad <b class="mono">' + esc(c.codigo) + '</b> <span class="muted">· la persona ve el mismo en su teléfono</span>'
+      : '<span class="muted">Nada de esta conversación se guarda. Al cerrar, se borra.</span>';
+
+    const lista = $('#chatLista');
+    lista.innerHTML = '';
+    for (const m of c.mensajes) {
+      const fila = document.createElement('div');
+      fila.className = m.nota ? 'chat-nota' : 'chat-msj ' + (m.mio ? 'mio' : 'suyo');
+      const texto = document.createElement('div');
+      texto.textContent = m.texto; // nunca innerHTML: lo escribió otra persona
+      fila.appendChild(texto);
+      if (!m.nota) {
+        const hora = document.createElement('span');
+        hora.className = 'chat-hora';
+        hora.textContent = m.hora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
+        fila.appendChild(hora);
+      }
+      lista.appendChild(fila);
+    }
+    lista.scrollTop = lista.scrollHeight;
+
+    const pie = $('#chatPie');
+    if (c.fase === 'terminado') {
+      pie.innerHTML = '<button class="btn primary" data-accion="chat-reabrir">Volver a abrir</button><button class="btn" data-accion="chat-cerrar">Cerrar</button>';
+      return;
+    }
+    if (!$('#chatTexto')) {
+      pie.innerHTML = `<textarea class="input" id="chatTexto" rows="2" maxlength="${MAX_TEXTO_CHAT}" placeholder="Escribe un mensaje" aria-label="Mensaje"></textarea>
+        <button class="btn primary" id="chatEnviar" data-accion="chat-enviar">Enviar</button>`;
+      $('#chatTexto').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); enviarChat().catch((err) => toast(err.message, true)); }
+      });
+      setTimeout(() => $('#chatTexto') && $('#chatTexto').focus(), 30);
+    }
+    const listo = c.fase === 'conectado' && !!c.clave;
+    $('#chatEnviar').disabled = !listo || c.enviando;
+    $('#chatEnviar').textContent = c.enviando ? 'Enviando…' : 'Enviar';
+    $('#chatTexto').placeholder = listo ? 'Escribe un mensaje (Enter envía, Mayús+Enter salta de línea)' : 'Espera a que la persona entre';
+  }
+
+  // ---------------------------------------------------------------------------
   // Acciones
   // ---------------------------------------------------------------------------
   document.addEventListener('click', async (e) => {
     const destino = e.target.closest('[data-ir]');
     if (destino) {
+      // Desde la ficha de una cuenta: la ventana se cierra para ver la sección.
+      if (modal.open && modal.contains(destino)) cerrarModal();
       ir(destino.dataset.ir);
       return;
     }
@@ -2581,6 +3437,8 @@
     try {
       switch (accion) {
         case 'recargar': ir(estado.vista); break;
+
+        case 'mandar-aviso': await mandarAviso(b); break;
 
         case 'crear-version': crearVersion(); break;
         case 'comparar-version': await compararVersion(Number(id)); break;
@@ -2991,6 +3849,44 @@
           break;
         }
 
+        case 'chat-usuario': {
+          const activar = b.dataset.valor === 'true';
+          if (!activar) {
+            const ok = await confirmar('¿Quitarle el chat a ' + b.dataset.nombre + '?',
+              'Ya no verá el chat en la app y ningún administrador podrá escribirle. Si tiene una conversación abierta, se cierra en este momento.',
+              'Quitar el chat', false);
+            if (!ok) break;
+          }
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/chat?valor=' + activar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (!activar && chat && chat.usuarioId === id) olvidarChat();
+          if (b.dataset.desde === 'lista') await vistaChat();
+          else await abrirUsuario(id);
+          break;
+        }
+
+        case 'abrir-chat': {
+          cerrarModal();
+          await abrirChat(id, b.dataset.nombre);
+          break;
+        }
+
+        case 'chat-enviar': await enviarChat(); break;
+        case 'chat-cerrar': await cerrarChat(); break;
+        case 'chat-reabrir': {
+          const { usuarioId, nombre } = chat || {};
+          if (!usuarioId) break;
+          olvidarChat();
+          await abrirChat(usuarioId, nombre);
+          break;
+        }
+        case 'chat-plegar': {
+          const v = $('#chatVentana');
+          if (v) v.classList.toggle('plegada');
+          break;
+        }
+
         case 'ver-usuario': {
           b.disabled = true;
           await abrirUsuario(id);
@@ -3030,6 +3926,94 @@
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/admin?valor=' + dar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
           if (estado.vista === 'usuarios') repintarUsuarios();
+          break;
+        }
+
+        case 'filtro-recs': {
+          estado.filtroRecs = b.dataset.valor;
+          await vistaRecomendaciones();
+          break;
+        }
+
+        case 'alcance-recs': {
+          // El botón ya cambió al pulsarlo. Si algo falla o se cancela, se
+          // vuelve a pintar la sección con lo que diga el servidor.
+          const nuevo = b.dataset.valor;
+          const [titulo] = ALCANCES[nuevo] || [nuevo];
+          try {
+            const seguro = await confirmar(
+              nuevo === 'apagado' ? 'Apagar las recomendaciones' : 'Recomendar canales: ' + titulo.toLowerCase(),
+              nuevo === 'apagado'
+                ? 'Nadie verá «Recomendar un canal» en la app, tampoco los administradores. Lo que ya llegó no se borra y lo puedes seguir revisando aquí.'
+                : nuevo === 'todos'
+                  ? 'Cualquier persona que use la app verá «Recomendar un canal» en Ajustes y podrá mandar hasta 5 al día. Cada una cuesta 1 o 2 unidades de la cuota diaria de YouTube.'
+                  : ALCANCES[nuevo][1] + ' Verán «Recomendar un canal» en Ajustes de la app.',
+              nuevo === 'apagado' ? 'Apagar' : 'Cambiar', nuevo === 'apagado' || (nuevo === 'todos' && config.ambiente === 'produccion'));
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { recomendaciones: nuevo } });
+              toast(nuevo === 'apagado' ? 'Recomendaciones apagadas.' : 'Ahora pueden recomendar: ' + titulo.toLowerCase() + '.');
+            }
+          } finally {
+            if (estado.vista === 'recomendaciones') await vistaRecomendaciones();
+          }
+          break;
+        }
+
+        case 'rec-estado': {
+          const ids = b.dataset.ids.split(',').map(Number).filter(Boolean);
+          b.disabled = true;
+          const r = await api('/api/admin/recomendaciones/estado', { metodo: 'POST', cuerpo: { ids, estado: b.dataset.valor } });
+          toast(r.mensaje || 'Listo.');
+          await vistaRecomendaciones();
+          contarRecomendaciones();
+          break;
+        }
+
+        case 'rec-borrar': {
+          const ids = b.dataset.ids.split(',').map(Number).filter(Boolean);
+          const ok = await confirmar('¿Borrar ' + (ids.length === 1 ? 'esta recomendación' : 'estas ' + ids.length + ' recomendaciones') + '?',
+            'Desaparece' + (ids.length === 1 ? '' : 'n') + ' de aquí y de «Tus recomendaciones» en la app de quien la mandó. Úsalo para lo que no es un canal o es spam; para decir que no, mejor «Descartar». No se puede deshacer.',
+            'Borrar', true);
+          if (!ok) break;
+          const r = await api('/api/admin/recomendaciones/borrar', { metodo: 'POST', cuerpo: { ids } });
+          toast(r.mensaje || 'Listo.');
+          await vistaRecomendaciones();
+          contarRecomendaciones();
+          break;
+        }
+
+        case 'rec-agregar': {
+          // El formulario de siempre, con el canal ya buscado. Al guardarlo,
+          // las recomendaciones de ese canal quedan como agregadas.
+          const ids = b.dataset.ids.split(',').map(Number).filter(Boolean);
+          await abrirCanal(null, {
+            buscar: b.dataset.canal,
+            alGuardar: async () => {
+              try {
+                await api('/api/admin/recomendaciones/estado', { metodo: 'POST', cuerpo: { ids, estado: 'agregado' } });
+              } catch (e) {
+                toast('El canal quedó guardado, pero no se pudo marcar la recomendación: ' + e.message, true);
+              }
+              if (estado.vista === 'recomendaciones') await vistaRecomendaciones();
+              contarRecomendaciones();
+            }
+          });
+          break;
+        }
+
+        case 'recomendar-usuario': {
+          const dar = b.dataset.valor === 'true';
+          if (!dar) {
+            const ok = await confirmar('¿Quitar a ' + b.dataset.nombre + ' de las cuentas que recomiendan?',
+              'Si el alcance es «Administradores y cuentas elegidas», deja de ver «Recomendar un canal» en la app. Lo que ya recomendó se queda.',
+              'Quitar', false);
+            if (!ok) break;
+          }
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/recomendar?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (b.dataset.desde === 'lista') await vistaRecomendaciones();
+          else await abrirUsuario(id);
           break;
         }
 

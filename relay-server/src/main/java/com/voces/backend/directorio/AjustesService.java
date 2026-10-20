@@ -10,8 +10,9 @@ import java.time.Instant;
 /**
  * Los ajustes generales que el equipo cambia desde el panel.
  *
- * Son tres: si la app muestra los videos cortos (Shorts), si muestra
- * anuncios y si ofrece comprobar las suscripciones de YouTube. Se leen de la base cada vez, sin caché: es una consulta por clave
+ * Son cuatro: si la app muestra los videos cortos (Shorts), si muestra
+ * anuncios, si ofrece comprobar las suscripciones de YouTube y quién puede
+ * recomendar canales. Se leen de la base cada vez, sin caché: es una consulta por clave
  * primaria, y así un cambio en el panel vale desde la siguiente petición, sin
  * reiniciar nada.
  */
@@ -83,6 +84,51 @@ public class AjustesService {
     @Transactional
     public void ponerYoutube(boolean encendido) {
         poner(YOUTUBE, encendido);
+    }
+
+    // -------------------------------------------------------------------------
+    // Recomendaciones de canales
+    // -------------------------------------------------------------------------
+
+    /** Quién puede recomendar canales. Sin fila en la tabla, nadie. */
+    static final String RECOMENDACIONES = "recomendaciones";
+
+    /** Nadie, ni los administradores. Es como empieza. */
+    public static final String RECOMENDAR_APAGADO = "apagado";
+    /** Solo los administradores: para probarlo antes de abrirlo. */
+    public static final String RECOMENDAR_ADMINS = "admins";
+    /** Los administradores y las cuentas que el equipo eligió una por una. */
+    public static final String RECOMENDAR_ELEGIDOS = "elegidos";
+    /** Cualquier cuenta. */
+    public static final String RECOMENDAR_TODOS = "todos";
+
+    public static boolean alcanceValido(String alcance) {
+        return RECOMENDAR_APAGADO.equals(alcance) || RECOMENDAR_ADMINS.equals(alcance)
+                || RECOMENDAR_ELEGIDOS.equals(alcance) || RECOMENDAR_TODOS.equals(alcance);
+    }
+
+    /**
+     * Quién puede recomendar canales: apagado, admins, elegidos o todos.
+     *
+     * Apagado (lo normal mientras nadie lo encienda), la app no enseña la
+     * sección a nadie, tampoco a los administradores. Un valor que no se
+     * reconoce cuenta como apagado.
+     */
+    @Transactional(readOnly = true)
+    public String recomendaciones() {
+        String valor = ajustes.findById(RECOMENDACIONES).map(Ajuste::getValor).orElse(RECOMENDAR_APAGADO);
+        return alcanceValido(valor) ? valor : RECOMENDAR_APAGADO;
+    }
+
+    @Transactional
+    public void ponerRecomendaciones(String alcance) {
+        if (!alcanceValido(alcance)) {
+            throw new IllegalArgumentException("Alcance desconocido: " + alcance);
+        }
+        Ajuste ajuste = ajustes.findById(RECOMENDACIONES).orElseGet(() -> new Ajuste(RECOMENDACIONES));
+        ajuste.setValor(alcance);
+        ajuste.setActualizadoEn(Instant.now());
+        ajustes.save(ajuste);
     }
 
     private boolean encendido(String clave) {

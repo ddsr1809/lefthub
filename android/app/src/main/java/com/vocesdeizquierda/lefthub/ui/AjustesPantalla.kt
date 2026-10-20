@@ -36,7 +36,11 @@ fun AjustesPantalla(
     /** Se cerró la ventanita del folio sin canjear. */
     onFolioCerrado: () -> Unit = {},
     /** Abre el formulario de Google para cambiar la elección de privacidad. */
-    onPrivacidadDeAnuncios: () -> Unit = {}
+    onPrivacidadDeAnuncios: () -> Unit = {},
+    /** Abre el chat con el equipo. Solo sale si el equipo lo activó. */
+    onAbrirChat: () -> Unit = {},
+    /** Abre "Recomendar un canal". Solo sale si el equipo lo permite a esta cuenta. */
+    onAbrirRecomendar: () -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -159,6 +163,37 @@ fun AjustesPantalla(
         // para siempre, por si hace falta volver a leerla.
         Seccion("Ver los videos en la tele") {
             ComoVerEnLaTele()
+        }
+
+        // --- Chat con el equipo ----------------------------------------------
+        // Solo si el equipo se lo activó a esta cuenta desde el panel.
+        if (estado.perfil.chat) {
+            Seccion("Hablar con el equipo") {
+                Text(
+                    "Escríbele al equipo de Voces y te contestará aquí mismo. La " +
+                        "conversación va cifrada y no se guarda: al salir del chat, se borra.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                BotonGrande(titulo = "Abrir el chat", onClick = onAbrirChat)
+            }
+        }
+
+        // --- Recomendar un canal ---------------------------------------------
+        // Solo si el equipo se lo permite a esta cuenta: empieza apagado para
+        // todos y se enciende desde el panel.
+        if (estado.perfil.recomendar) {
+            Seccion("Recomendar un canal") {
+                Text(
+                    "¿Falta algún canal de YouTube en el directorio? Recomiéndalo y el " +
+                        "equipo lo revisará.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                BotonGrande(titulo = "Recomendar un canal", onClick = onAbrirRecomendar)
+            }
         }
 
         // --- Anuncios -------------------------------------------------------

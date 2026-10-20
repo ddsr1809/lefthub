@@ -124,7 +124,8 @@ public class AdminController {
                             suyos.stream().map(k -> canalAdmin(k, vista, estados)).toList(),
                             List.copyOf(c.getProductoras()),
                             vista.compartidosCon(c.getId()).stream()
-                                    .map(k -> canalAdmin(k, vista, estados)).toList());
+                                    .map(k -> canalAdmin(k, vista, estados)).toList(),
+                            c.getAnunciadoEn());
                 })
                 .toList();
     }
@@ -647,7 +648,8 @@ public class AdminController {
 
     @GetMapping("/ajustes")
     public Dtos.AjustesDto ajustes() {
-        return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios(), ajustes.youtube());
+        return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios(), ajustes.youtube(),
+                ajustes.recomendaciones());
     }
 
     /** Solo cambia lo que llega; lo demás se queda como estaba. */
@@ -656,6 +658,13 @@ public class AdminController {
         if (peticion.cortos() != null) ajustes.ponerCortos(peticion.cortos());
         if (peticion.anuncios() != null) ajustes.ponerAnuncios(peticion.anuncios());
         if (peticion.youtube() != null) ajustes.ponerYoutube(peticion.youtube());
+        if (peticion.recomendaciones() != null) {
+            if (!AjustesService.alcanceValido(peticion.recomendaciones())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Quién puede recomendar: apagado, admins, elegidos o todos.");
+            }
+            ajustes.ponerRecomendaciones(peticion.recomendaciones());
+        }
         return ajustes();
     }
 

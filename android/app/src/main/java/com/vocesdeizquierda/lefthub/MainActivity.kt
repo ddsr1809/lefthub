@@ -29,6 +29,8 @@ import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
+import com.vocesdeizquierda.lefthub.chat.ChatViewModel
+import com.vocesdeizquierda.lefthub.recomendar.RecomendarViewModel
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.ApiRelay
@@ -197,11 +199,45 @@ class MainActivity : ComponentActivity() {
      */
     private fun procesarIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
+
+        // El equipo quiere hablar: al chat. Solo abre la pantalla; la
+        // conversación misma no viaja en el aviso.
+        if (extras.getString("tipo") == "chat") {
+            AvisoTocado.chat.value = true
+            intent.replaceExtras(Bundle())
+            return
+        }
+
+        // Un aviso del equipo: con enlace, se abre el enlace; si no, la ficha
+        // de quien habla (el creador, el medio o el canal). Un mensaje sin
+        // nada más solo abre la app.
+        val tipo = extras.getString("tipo")
+        if (tipo != null && tipo in TIPOS_DEL_EQUIPO) {
+            val enlace = extras.getString("url")
+            if (!enlace.isNullOrBlank()) {
+                Enrutador.abrirVideo(
+                    contexto = this,
+                    plataforma = extras.getString("platform") ?: "web",
+                    videoId = null,
+                    url = enlace,
+                    campana = "aviso_equipo"
+                )
+            } else {
+                rutaDeAviso(
+                    tipo,
+                    creador = extras.getString("creatorId"),
+                    productora = extras.getString("productoraId"),
+                    canal = extras.getString("canalId")
+                )?.let { AvisoTocado.ficha.value = it }
+            }
+            intent.replaceExtras(Bundle())
+            return
+        }
+
         val plataforma = extras.getString("platform") ?: return
 
         val videoId = extras.getString("videoId")
         val url = extras.getString("url")
-        val tipo = extras.getString("tipo")
 
         // Con un video, a su ficha dentro de la app: ahí se ve de qué se trata
         // antes de ir a YouTube, y cabe un anuncio. La navegación lo recoge.
@@ -224,6 +260,23 @@ class MainActivity : ComponentActivity() {
 
         // Consumido: que no se repita al recrear la Activity.
         intent.replaceExtras(Bundle())
+    }
+
+    /**
+     * Qué ficha abre un aviso del equipo. Uno de creador, medio o canal nuevo
+     * abre la suya; uno sobre alguien (video retirado, cuenta bloqueada,
+     * mensaje a sus seguidores) abre la de ese alguien.
+     */
+    private fun rutaDeAviso(tipo: String?, creador: String?, productora: String?, canal: String?): String? {
+        fun vale(id: String?) = !id.isNullOrBlank()
+        return when {
+            tipo == "canal" && vale(canal) -> "canal/$canal"
+            tipo == "productora" && vale(productora) -> "productora/$productora"
+            vale(creador) -> "creador/$creador"
+            vale(productora) -> "productora/$productora"
+            vale(canal) -> "canal/$canal"
+            else -> null
+        }
     }
 
     private fun solicitarPermisoDeAvisos() {
@@ -269,6 +322,13 @@ private val FICHAS = listOf("creador/", "productora/", "canal/", "elegir/")
 // La ficha de un video se abre desde una notificación: es parte de Novedades.
 private const val FICHA_DE_VIDEO = "video/"
 
+/**
+ * Los avisos que manda el equipo desde el panel, por el valor de "tipo" que
+ * pone el servidor (AvisosService). Los de videos ("publicacion", "movido")
+ * van por otro camino.
+ */
+private val TIPOS_DEL_EQUIPO = setOf("creador", "productora", "canal", "retirado", "bloqueado", "mensaje")
+
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
@@ -285,11 +345,38 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // antes que esta pantalla (la app estaba cerrada): queda guardado en
     // AvisoTocado hasta aquí.
     val avisoPendiente by AvisoTocado.pendiente.collectAsState()
+    // La invitación a unirse con Google: sale cada vez que se abre la app
+    // mientras se use sin cuenta, y "Ahora no" la cierra hasta la siguiente.
+    // Guardada para que girar la pantalla no la vuelva a abrir.
+    var invitacionCerrada by rememberSaveable { mutableStateOf(false) }
+    var intentoConGoogle by rememberSaveable { mutableStateOf(false) }
+
+    val chatPendiente by AvisoTocado.chat.collectAsState()
+    LaunchedEffect(chatPendiente) {
+        if (!chatPendiente) return@LaunchedEffect
+        AvisoTocado.chat.value = false
+        invitacionCerrada = true
+        nav.navigate("chat") { launchSingleTop = true }
+    }
+
     LaunchedEffect(avisoPendiente) {
         val aviso = avisoPendiente ?: return@LaunchedEffect
         AvisoTocado.pendiente.value = null
+        // Quien llega tocando un aviso viene a ver ese video: la invitación
+        // se queda para la próxima vez que abra la app.
+        invitacionCerrada = true
         modelo.abrirFichaDeVideo(aviso)
         nav.navigate(FICHA_DE_VIDEO + aviso.videoId) { launchSingleTop = true }
+    }
+
+    // Un aviso del equipo abre una ficha. Lo que anuncia puede ser nuevo y la
+    // app no conocerlo todavía: antes de abrirla se vuelve a pedir el directorio.
+    val fichaPendiente by AvisoTocado.ficha.collectAsState()
+    LaunchedEffect(fichaPendiente) {
+        val ruta = fichaPendiente ?: return@LaunchedEffect
+        AvisoTocado.ficha.value = null
+        modelo.refrescarDirectorio()
+        nav.navigate(ruta) { launchSingleTop = true }
     }
 
     // Todos los canales de YouTube del directorio, con lo que pinta su fila.
@@ -378,7 +465,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             val actual by nav.currentBackStackEntryAsState()
             val ruta = actual?.destination?.route
 
-            NavigationBar(
+            // En el chat, las pestañas sobran: la pantalla es para escribir.
+            if (ruta != "chat") NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.heightIn(min = Tactil.principal + 28.dp)
             ) {
@@ -388,7 +476,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         // canal es parte del directorio: su pestaña sigue marcada.
                         selected = ruta == destino ||
                             (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }) ||
-                            (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)),
+                            (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)) ||
+                            // Se entra desde Ajustes: su pestaña sigue marcada.
+                            (destino == "ajustes" && ruta == "recomendar"),
                         onClick = {
                             // Cada pestaña abre siempre su pantalla principal.
                             // Antes se guardaba dónde se había quedado cada
@@ -431,9 +521,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     onQuitarAnuncios = irAAjustes,
                     ayudaTele = AyudaTele.pendiente,
                     onAyudaTeleEntendida = { AyudaTele.entendida(contexto) },
-                    onIrAlDirectorio = { nav.navigate("directorio") },
-                    // El canal propio de una productora no tiene creador.
-                    onReportar = { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
+                    onIrAlDirectorio = { nav.navigate("directorio") }
                 )
             }
 
@@ -644,9 +732,34 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 )
             }
 
+            composable("chat") {
+                // Del chat solo hay uno a la vez, y vive lo que vive esta
+                // pantalla: al salir de ella se borra todo.
+                val modeloChat: ChatViewModel = viewModel()
+                ChatPantalla(
+                    modelo = modeloChat,
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
+            composable("recomendar") {
+                // Vive lo que vive esta pantalla: al volver a entrar, carga de nuevo.
+                val modeloRecomendar: RecomendarViewModel = viewModel()
+                RecomendarPantalla(
+                    modelo = modeloRecomendar,
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
             composable("ajustes") {
                 AjustesPantalla(
                     estado = estado,
+                    onAbrirChat = { nav.navigate("chat") { launchSingleTop = true } },
+                    onAbrirRecomendar = { nav.navigate("recomendar") { launchSingleTop = true } },
                     onGuardarPreferencia = modelo::guardarPreferencia,
                     onVincularGoogle = { modelo.vincularConGoogle(contexto) },
                     onCerrarSesion = { modelo.cerrarSesion(contexto) },
@@ -723,6 +836,21 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // Colisión de cuentas: en vez de un código de error, explicamos qué botón
     // tocar. Este diálogo es el que evita que alguien se quede fuera de su
     // propia cuenta al cambiar de teléfono.
+    // Encima de todo lo demás, salvo de la ventana de un correo que ya tiene
+    // cuenta, que es la respuesta a esta misma invitación.
+    if (estado.esAnonimo && !invitacionCerrada && estado.conflicto == null) {
+        UnirseConGoogle(
+            ocupado = estado.ocupado,
+            noSeConecto = intentoConGoogle,
+            conYouTube = estado.perfil.youtubeActivo,
+            onUnirse = {
+                intentoConGoogle = true
+                modelo.vincularConGoogle(contexto)
+            },
+            onAhoraNo = { invitacionCerrada = true }
+        )
+    }
+
     estado.conflicto?.let { conflicto ->
         AlertDialog(
             onDismissRequest = { modelo.descartarConflicto() },

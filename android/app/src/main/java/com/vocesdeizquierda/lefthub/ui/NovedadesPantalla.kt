@@ -59,7 +59,6 @@ fun NovedadesPantalla(
     hayFavoritos: Boolean,
     cuantosFavoritos: Int,
     onIrAlDirectorio: () -> Unit,
-    onReportar: (Publicacion) -> Unit,
     cuantasProductoras: Int = 0,
     /** Canales de YouTube que sigue sueltos, sin seguir a su creador ni a su medio. */
     cuantosCanales: Int = 0,
@@ -167,8 +166,9 @@ fun NovedadesPantalla(
                             campana = "novedades"
                         )
                         Abiertos.marcar(contexto, publicacion.videoId)
-                    },
-                    onReportar = { onReportar(publicacion) }
+                    }
+                    // Sin "El enlace no funciona": en Novedades la tarjeta
+                    // queda solo con su botón de ver.
                 )
             }
 
@@ -229,7 +229,8 @@ private fun SelectorDeApartado(enCortos: Boolean, onElegir: (Boolean) -> Unit) {
 internal fun TarjetaPublicacion(
     publicacion: Publicacion,
     onAbrir: () -> Unit,
-    onReportar: () -> Unit,
+    /** "El enlace no funciona". null: la tarjeta no lo enseña (en Novedades). */
+    onReportar: (() -> Unit)? = null,
     abierto: Boolean = false
 ) {
     val esquema = MaterialTheme.colorScheme
@@ -310,17 +311,19 @@ internal fun TarjetaPublicacion(
                 onClick = onAbrir
             )
 
-            TextButton(
-                onClick = onReportar,
-                modifier = Modifier
-                    .align(Alignment.CenterHorizontally)
-                    .heightIn(min = Tactil.minimo)
-            ) {
-                Text(
-                    "El enlace no funciona",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = esquema.onSurfaceVariant
-                )
+            if (onReportar != null) {
+                TextButton(
+                    onClick = onReportar,
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .heightIn(min = Tactil.minimo)
+                ) {
+                    Text(
+                        "El enlace no funciona",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = esquema.onSurfaceVariant
+                    )
+                }
             }
         }
     }

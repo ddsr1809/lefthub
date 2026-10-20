@@ -185,6 +185,13 @@ class DirectorioRepo(
         val topics = favoritos.map { topicDe(it) } + productoras.map { topicDeProductora(it) } +
             canales.map { topicDeCanal(it) }
 
+        // El de toda la app, siga a quien siga: por ahí llegan los avisos del
+        // equipo para todos (un creador, medio o canal nuevo, un mensaje).
+        // Va aunque no siga a nadie todavía: justo a esa persona le sirve
+        // enterarse de quién llega.
+        runCatching { mensajeria.subscribeToTopic(TOPIC_TODOS).await() }
+            .onFailure { Log.w(TAG, "No se pudo suscribir a $TOPIC_TODOS", it) }
+
         topics.forEach { topic ->
             runCatching { mensajeria.subscribeToTopic(topic).await() }
                 // Sin este registro, un teléfono que no logra suscribirse
@@ -296,6 +303,9 @@ class DirectorioRepo(
 
         /** El de quien sigue un canal por sí solo. Lo mismo que PushService.topicDeCanal. */
         fun topicDeCanal(canalId: String) = "canal_$canalId"
+
+        /** El de toda la app. Lo mismo que PushService.TOPIC_TODOS en el servidor. */
+        const val TOPIC_TODOS = "todos"
 
         /**
          * Lo mismo que PushService.SUFIJO_CORTOS en el servidor. Cambió para

@@ -60,6 +60,8 @@ datos-restaurar:
 datos-test:
 	python3 -m unittest discover -s scripts/datos
 
-# Comparar versiones y migrar de pruebas a produccion: la logica del panel.
+# Comparar versiones y migrar de pruebas a produccion, y el cifrado del chat:
+# la logica del panel.
 panel-test:
 	node admin/versiones.test.js
+	node admin/chat-cifrado.test.js

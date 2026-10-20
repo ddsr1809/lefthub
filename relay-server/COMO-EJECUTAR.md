@@ -65,6 +65,8 @@ Authorization: Bearer <token>
 | `POST` | `/api/reportes` | Enlace roto |
 | `POST` | `/api/anuncios/folio` | Canjea un folio de regalo. Body: `{codigo}` |
 | `POST` | `/api/anuncios/compra` | Registra una compra de Google Play. Body: `{producto, token}` |
+| `GET` | `/api/recomendaciones` | Los canales que esta cuenta recomendó. 403 si no puede recomendar |
+| `POST` | `/api/recomendaciones` | Recomienda un canal. Body: `{texto, motivo}` |
 | `DELETE` | `/api/cuenta` | Borrado definitivo |
 
 ### Moderación
@@ -82,6 +84,11 @@ Authorization: Bearer <token>
 | `POST` | `/api/admin/folios` |
 | `DELETE` | `/api/admin/folios/{codigo}` |
 | `POST` | `/api/admin/usuarios/{id}/sin-anuncios?valor=` |
+| `GET` | `/api/admin/recomendaciones` |
+| `POST` | `/api/admin/recomendaciones/estado` |
+| `POST` | `/api/admin/recomendaciones/borrar` |
+| `POST` | `/api/admin/usuarios/{id}/recomendar?valor=` |
+| `PUT` | `/api/admin/ajustes` (`recomendaciones`: `apagado`, `admins`, `elegidos` o `todos`) |
 
 ### Sin token
 

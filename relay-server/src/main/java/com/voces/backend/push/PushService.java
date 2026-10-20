@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -128,6 +129,38 @@ public class PushService {
     public static final String SUFIJO_CORTOS = "_avisos_cortos";
 
     /**
+     * El topic al que se suscribe toda la app, siga a quien siga. Lo usan los
+     * avisos del equipo para todos: un creador, medio o canal nuevo, o un
+     * mensaje general. Las apps anteriores a esta función no lo conocen.
+     */
+    public static final String TOPIC_TODOS = "todos";
+
+    /**
+     * A quién se dirige cada mensaje: un topic suelto, o una condición de FCM
+     * ("sigue a este O a aquel") cuando hay varios. Con condición, quien está
+     * en dos de ellos recibe un solo aviso.
+     *
+     * Solo con más de cinco topics hay que partirlo, y entonces quien cae en
+     * dos trozos lo recibe dos veces; por eso esos mensajes llevan la misma
+     * etiqueta, para que el segundo sustituya al primero en la pantalla.
+     */
+    public static List<Destino> destinosPara(List<String> topics) {
+        List<String> todos = List.copyOf(new LinkedHashSet<>(topics));
+        if (todos.isEmpty()) return List.of();
+        if (todos.size() == 1) return List.of(new Destino(todos.get(0), null));
+
+        List<Destino> destinos = new ArrayList<>();
+        for (int i = 0; i < todos.size(); i += Emisor.TOPICS_POR_MENSAJE) {
+            List<String> trozo = todos.subList(i, Math.min(i + Emisor.TOPICS_POR_MENSAJE, todos.size()));
+            destinos.add(trozo.size() == 1
+                    ? new Destino(trozo.get(0), null)
+                    : new Destino(null, String.join(" || ",
+                            trozo.stream().map(t -> "'" + t + "' in topics").toList())));
+        }
+        return destinos;
+    }
+
+    /**
      * En nombre de quién sale un aviso y a quién le llega.
      *
      * Siempre hay creador, productora o los dos: es el dueño del canal. El
@@ -230,18 +263,7 @@ public class PushService {
 
         /** Lo mismo, para un video corto si {@code cortos}. */
         public List<Destino> destinos(boolean cortos) {
-            List<String> todos = cortos ? topicsDeCortos() : topics();
-            if (todos.size() == 1) return List.of(new Destino(todos.get(0), null));
-
-            List<Destino> destinos = new ArrayList<>();
-            for (int i = 0; i < todos.size(); i += TOPICS_POR_MENSAJE) {
-                List<String> trozo = todos.subList(i, Math.min(i + TOPICS_POR_MENSAJE, todos.size()));
-                destinos.add(trozo.size() == 1
-                        ? new Destino(trozo.get(0), null)
-                        : new Destino(null, String.join(" || ",
-                                trozo.stream().map(t -> "'" + t + "' in topics").toList())));
-            }
-            return destinos;
+            return destinosPara(cortos ? topicsDeCortos() : topics());
         }
 
         /**
@@ -436,6 +458,69 @@ public class PushService {
     }
 
     /**
+     * Un aviso del equipo: lo escribe una persona en el panel o sale al dar
+     * de alta un creador.
+     *
+     * @param imagen   https, o null
+     * @param datos    lo que la app necesita para abrir lo que toca al
+     *                 tocarlo. FCM solo admite cadenas: los null no se mandan.
+     * @param etiqueta agrupa en el teléfono: un aviso con la misma sustituye
+     *                 al anterior
+     */
+    public record AvisoDelEquipo(String titulo, String cuerpo, String imagen,
+                                 Map<String, String> datos, String etiqueta) {}
+
+    /**
+     * Manda un aviso del equipo a esos destinos.
+     *
+     * Va por el canal de Android "avisos", no el de publicaciones: quien
+     * silencie los videos nuevos sigue enterándose de estos, y al revés.
+     *
+     * @return null si FCM aceptó todos los mensajes, o el motivo del fallo.
+     */
+    public String enviarAviso(List<Destino> destinos, AvisoDelEquipo aviso) {
+        if (destinos.isEmpty()) return "No hay a quién mandarlo.";
+
+        String fallo = null;
+        for (Destino destino : destinos) {
+            ObjectNode mensaje = json.createObjectNode();
+            destino.dirigir(mensaje);
+
+            ObjectNode notificacion = mensaje.putObject("notification");
+            notificacion.put("title", aviso.titulo());
+            notificacion.put("body", aviso.cuerpo());
+            if (aviso.imagen() != null) notificacion.put("image", aviso.imagen());
+
+            ObjectNode datos = mensaje.putObject("data");
+            aviso.datos().forEach((clave, valor) -> {
+                if (valor != null) datos.put(clave, valor);
+            });
+
+            ObjectNode android = mensaje.putObject("android");
+            android.put("priority", "HIGH");
+            ObjectNode androidNotif = android.putObject("notification");
+            androidNotif.put("channel_id", CANAL_AVISOS);
+            androidNotif.put("tag", aviso.etiqueta());
+            if (aviso.imagen() != null) androidNotif.put("image", aviso.imagen());
+
+            ObjectNode apns = mensaje.putObject("apns");
+            ObjectNode cabeceras = apns.putObject("headers");
+            cabeceras.put("apns-priority", "10");
+            if (destinos.size() > 1) cabeceras.put("apns-collapse-id", aviso.etiqueta());
+            ObjectNode aps = apns.putObject("payload").putObject("aps");
+            aps.put("sound", "default");
+            if (aviso.imagen() != null) {
+                aps.put("mutable-content", 1);
+                apns.putObject("fcm_options").put("image", aviso.imagen());
+            }
+
+            String f = enviar(mensaje, "aviso del equipo «" + aviso.titulo() + "»");
+            if (f != null) fallo = f;
+        }
+        return fallo;
+    }
+
+    /**
      * Aviso de prueba al topic de un creador. Sirve para comprobar el tramo
      * servidor → FCM → teléfono sin esperar a que alguien publique un video.
      *
@@ -458,6 +543,38 @@ public class PushService {
         apns.putObject("payload").putObject("aps").put("sound", "default");
 
         return enviar(mensaje, "prueba de " + creador.getNombre());
+    }
+
+    /**
+     * Avisa a una cuenta de que el equipo le abrió el chat interno.
+     *
+     * El aviso no lleva nada de la conversación: ni texto, ni quién escribe.
+     * Pasa por Google, y lo que se dice en el chat no debe salir de los dos
+     * teléfonos o navegadores. Solo dice que hay alguien esperando y, al
+     * tocarlo, la app abre el chat ({@code tipo = chat}).
+     *
+     * Devuelve null si FCM aceptó el mensaje, o el motivo del fallo.
+     */
+    public String avisarChat(String topic) {
+        ObjectNode mensaje = json.createObjectNode();
+        mensaje.put("topic", topic);
+
+        ObjectNode notificacion = mensaje.putObject("notification");
+        notificacion.put("title", "El equipo de Voces quiere hablar contigo");
+        notificacion.put("body", "Toca para abrir el chat.");
+
+        mensaje.putObject("data").put("tipo", "chat");
+
+        ObjectNode android = mensaje.putObject("android");
+        android.put("priority", "HIGH");
+        // Si el equipo abre y cierra varias veces, un solo aviso en la bandeja.
+        android.putObject("notification").put("channel_id", CANAL_AVISOS).put("tag", "chat");
+
+        ObjectNode apns = mensaje.putObject("apns");
+        apns.putObject("headers").put("apns-priority", "10").put("apns-collapse-id", "chat");
+        apns.putObject("payload").putObject("aps").put("sound", "default");
+
+        return enviar(mensaje, "invitación al chat");
     }
 
     // -------------------------------------------------------------------------

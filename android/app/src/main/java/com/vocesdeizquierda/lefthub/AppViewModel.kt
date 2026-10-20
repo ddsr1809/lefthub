@@ -6,6 +6,7 @@ import android.content.IntentSender
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.vocesdeizquierda.lefthub.chat.ChatAvisos
 import com.vocesdeizquierda.lefthub.data.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -15,6 +16,7 @@ import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class EstadoApp(
     val listo: Boolean = false,
@@ -183,6 +185,21 @@ class AppViewModel(
     fun productora(id: String) = _estado.value.productoras.firstOrNull { it.id == id }
 
     /**
+     * Vuelve a pedir el directorio en el acto, sin esperar a la siguiente
+     * vuelta de cinco minutos. Lo usa el toque en un aviso de "creador nuevo"
+     * (o medio, o canal): si la app llevaba un rato abierta, todavía no lo
+     * conoce y su ficha diría que ya no está. Sin red, se queda lo que había.
+     */
+    suspend fun refrescarDirectorio() {
+        withTimeoutOrNull(8_000L) {
+            val creadores = async { runCatching { ApiRelay.creadores() }.getOrNull() }
+            val productoras = async { runCatching { ApiRelay.productoras() }.getOrNull() }
+            creadores.await()?.let { lista -> _estado.update { it.copy(creadores = lista) } }
+            productoras.await()?.let { lista -> _estado.update { it.copy(productoras = lista) } }
+        }
+    }
+
+    /**
      * Abre la ficha del video de una notificación. Si ya está en Novedades se
      * pinta en el acto; si no, con lo que traía el aviso hasta que contesta el
      * servidor. "Ver el video" funciona desde el primer momento.
@@ -321,6 +338,9 @@ class AppViewModel(
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
         directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+        // El aviso del chat: con el chat activado, el topic de esta cuenta;
+        // si se lo quitan o entra otra cuenta, ninguno.
+        ChatAvisos.sincronizar(p.chatAviso)
     }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
