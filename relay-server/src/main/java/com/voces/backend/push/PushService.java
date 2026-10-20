@@ -460,6 +460,38 @@ public class PushService {
         return enviar(mensaje, "prueba de " + creador.getNombre());
     }
 
+    /**
+     * Avisa a una cuenta de que el equipo le abrió el chat interno.
+     *
+     * El aviso no lleva nada de la conversación: ni texto, ni quién escribe.
+     * Pasa por Google, y lo que se dice en el chat no debe salir de los dos
+     * teléfonos o navegadores. Solo dice que hay alguien esperando y, al
+     * tocarlo, la app abre el chat ({@code tipo = chat}).
+     *
+     * Devuelve null si FCM aceptó el mensaje, o el motivo del fallo.
+     */
+    public String avisarChat(String topic) {
+        ObjectNode mensaje = json.createObjectNode();
+        mensaje.put("topic", topic);
+
+        ObjectNode notificacion = mensaje.putObject("notification");
+        notificacion.put("title", "El equipo de Voces quiere hablar contigo");
+        notificacion.put("body", "Toca para abrir el chat.");
+
+        mensaje.putObject("data").put("tipo", "chat");
+
+        ObjectNode android = mensaje.putObject("android");
+        android.put("priority", "HIGH");
+        // Si el equipo abre y cierra varias veces, un solo aviso en la bandeja.
+        android.putObject("notification").put("channel_id", CANAL_AVISOS).put("tag", "chat");
+
+        ObjectNode apns = mensaje.putObject("apns");
+        apns.putObject("headers").put("apns-priority", "10").put("apns-collapse-id", "chat");
+        apns.putObject("payload").putObject("aps").put("sound", "default");
+
+        return enviar(mensaje, "invitación al chat");
+    }
+
     // -------------------------------------------------------------------------
 
     private static String destinoDe(ObjectNode mensaje) {

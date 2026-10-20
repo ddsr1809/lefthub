@@ -1,6 +1,7 @@
 package com.voces.backend.directorio;
 
 import com.voces.backend.anuncios.TiendaGoogle;
+import com.voces.backend.chat.AvisoDeChat;
 import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.*;
 import com.voces.backend.push.PushService;
@@ -46,14 +47,17 @@ public class DirectorioController {
     private final AjustesService ajustes;
     private final TiendaGoogle tienda;
     private final UltimosVideos ultimosVideos;
+    private final AvisoDeChat avisoDeChat;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
                                 Repositorios.Publicaciones publicaciones,
                                 Repositorios.Usuarios usuarios,
                                 Catalogo catalogo, AjustesService ajustes,
-                                TiendaGoogle tienda, UltimosVideos ultimosVideos) {
+                                TiendaGoogle tienda, UltimosVideos ultimosVideos,
+                                AvisoDeChat avisoDeChat) {
         this.ultimosVideos = ultimosVideos;
+        this.avisoDeChat = avisoDeChat;
         this.creadores = creadores;
         this.productoras = productoras;
         this.publicaciones = publicaciones;
@@ -508,11 +512,12 @@ public class DirectorioController {
     /**
      * El perfil lleva también lo que decide el equipo: si hay videos cortos,
      * si hay anuncios y si se pueden comprar. Así la app se entera de todo
-     * con la misma lectura, la que ya hace al abrirse.
+     * con la misma lectura, la que ya hace al abrirse. También si tiene el
+     * chat con el equipo, que se enciende por cuenta.
      */
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
         return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
-                ajustes.youtube());
+                ajustes.youtube(), avisoDeChat.topicDe(usuario.getId()));
     }
 
     private Usuario usuarioActual() {

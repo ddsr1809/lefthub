@@ -313,7 +313,18 @@ public final class Dtos {
              * Quiere una notificación por cada video corto. Apagado de entrada;
              * solo cuenta si además ve los cortos y están disponibles.
              */
-            boolean avisosCortos
+            boolean avisosCortos,
+            /**
+             * El equipo le activó el chat interno: la app enseña la entrada
+             * al chat en Ajustes. Una app anterior lo ignora.
+             */
+            boolean chat,
+            /**
+             * El topic de FCM por el que llega el aviso de "el equipo quiere
+             * hablar contigo". Sale de un HMAC con el secreto del servidor,
+             * así que nadie puede adivinar el de otra cuenta. Null sin chat.
+             */
+            String chatAviso
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -324,7 +335,7 @@ public final class Dtos {
          */
         public static PerfilDto de(Usuario u, boolean cortosDisponibles,
                                    boolean anuncios, boolean compraDisponible,
-                                   boolean youtube) {
+                                   boolean youtube, String chatAviso) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
@@ -334,7 +345,8 @@ public final class Dtos {
                     List.copyOf(u.getCanalesSeguidos()),
                     u.isCortos(), cortosDisponibles,
                     anuncios, u.isSinAnuncios(), compraDisponible, youtube,
-                    u.isAvisosCortos());
+                    u.isAvisosCortos(),
+                    u.isChatHabilitado(), u.isChatHabilitado() ? chatAviso : null);
         }
     }
 
@@ -697,7 +709,9 @@ public final class Dtos {
             Instant sinAnunciosDesde,
             /** Con qué app entró la última vez; null si la app no lo dijo. */
             String appVersion,
-            String appPlataforma
+            String appPlataforma,
+            /** El equipo le activó el chat interno. */
+            boolean chatHabilitado
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -706,7 +720,7 @@ public final class Dtos {
                     u.getIp(), u.getPais(), u.getAsn(), u.getRed(), u.getAgente(),
                     u.isPosibleBot(), u.getMotivoBot(),
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
-                    u.getAppVersion(), u.getAppPlataforma());
+                    u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado());
         }
     }
 

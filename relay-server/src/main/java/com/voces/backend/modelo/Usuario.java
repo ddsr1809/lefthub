@@ -88,6 +88,14 @@ public class Usuario {
     private Instant sinAnunciosDesde;
 
     /**
+     * El equipo le activó el chat interno desde el panel. Solo con esto en
+     * true un administrador puede abrirle una conversación. Los mensajes no
+     * se guardan en ningún sitio: ver chat/SalasDeChat y V18.
+     */
+    @Column(name = "chat_habilitado", nullable = false)
+    private boolean chatHabilitado = false;
+
+    /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
      * 5.1.1(v).
@@ -211,6 +219,9 @@ public class Usuario {
         sinAnunciosOrigen = null;
         sinAnunciosDesde = null;
     }
+
+    public boolean isChatHabilitado() { return chatHabilitado; }
+    public void setChatHabilitado(boolean chatHabilitado) { this.chatHabilitado = chatHabilitado; }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

@@ -347,6 +347,9 @@ public final class Repositorios {
                 """)
         List<Object[]> sinAnunciosPorOrigen();
 
+        /** Las cuentas a las que el equipo les activó el chat interno. */
+        List<Usuario> findByChatHabilitadoTrueOrderByVistoEnDesc();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
