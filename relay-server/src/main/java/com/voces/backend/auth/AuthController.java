@@ -49,16 +49,19 @@ public class AuthController {
     private final AppleService apple;
     private final RegistroDeAcceso accesos;
     private final Repositorios.Compras compras;
+    private final Repositorios.Recomendaciones recomendaciones;
 
     public AuthController(Repositorios.Usuarios usuarios, ServicioJwt jwt,
                           VerificadorIdentidad verificador, AppleService apple,
-                          RegistroDeAcceso accesos, Repositorios.Compras compras) {
+                          RegistroDeAcceso accesos, Repositorios.Compras compras,
+                          Repositorios.Recomendaciones recomendaciones) {
         this.usuarios = usuarios;
         this.jwt = jwt;
         this.verificador = verificador;
         this.apple = apple;
         this.accesos = accesos;
         this.compras = compras;
+        this.recomendaciones = recomendaciones;
     }
 
     /** Sesión invisible. Se llama al abrir la app, sin interfaz de por medio. */
@@ -182,6 +185,10 @@ public class AuthController {
                             anonimo.get().getSinAnunciosDesde());
                 }
                 compras.pasar(anonimo.get().getId(), usuario.getId());
+                // Igual con los canales que recomendó como invitado, y con el
+                // permiso de recomendar si el equipo se lo había dado.
+                recomendaciones.pasar(anonimo.get().getId(), usuario.getId());
+                if (anonimo.get().isRecomendarHabilitado()) usuario.setRecomendarHabilitado(true);
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
                 //

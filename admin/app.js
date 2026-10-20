@@ -278,7 +278,8 @@
     servidor: null,         // versión y commit del servidor; null si no los dice
     aviso: null,            // lo que se está redactando en Avisos
     avisoPreset: null,      // con qué abrir Avisos (desde la ficha de un video)
-    filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 }
+    filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 },
+    filtroRecs: 'pendientes' // pendientes | revisadas | todas
   };
 
   const VISTAS = {
@@ -290,6 +291,7 @@
     versiones: vistaVersiones,
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
+    recomendaciones: vistaRecomendaciones,
     avisos: vistaAvisos,
     anuncios: vistaAnuncios,
     apps: vistaApps,
@@ -367,8 +369,20 @@
       const ns = $('#n-susc'), nr = $('#n-rep');
       ns.textContent = problemas; ns.hidden = !problemas;
       nr.textContent = reportes.length; nr.hidden = !reportes.length;
+      contarRecomendaciones();
       return { creadores, productoras, reportes };
     } catch (e) { return null; }
+  }
+
+  // Aparte: un servidor anterior a las recomendaciones no tiene la ruta, y
+  // eso no debe tumbar los demás contadores.
+  async function contarRecomendaciones() {
+    const n = $('#n-recs');
+    if (!n) return;
+    try {
+      const r = await api('/api/admin/recomendaciones/cuantas');
+      n.textContent = r.pendientes; n.hidden = !r.pendientes;
+    } catch (e) { n.hidden = true; }
   }
 
   // Los canales de un creador. Un servidor anterior solo manda `conexiones`
@@ -1498,7 +1512,11 @@
       </div>`;
   }
 
-  async function abrirCanal(id) {
+  /**
+   * @param opciones.buscar   con qué llenar y lanzar la búsqueda del canal al abrir
+   * @param opciones.alGuardar qué hacer además cuando el canal quede guardado
+   */
+  async function abrirCanal(id, opciones = {}) {
     await Promise.all([cargarCreadores(false), cargarProductoras(false), cargarEtiquetas(false)]);
     const v = id ? vigilados().find((x) => x.canal.id === id) : null;
     if (id && !v) return;
@@ -1541,6 +1559,7 @@
         estado.productoras = null;
         if (estado.vista === 'canales') vistaCanales();
         refrescarContadores();
+        if (opciones.alGuardar) await opciones.alGuardar(r);
       } }
     ], () => {
       $('#fKCreador').addEventListener('change', alCambiarDueno);
@@ -1553,6 +1572,10 @@
         $('#fKActual').innerHTML = tarjetaCanal({ handle, channelId: d.channelId }, d.titulo);
         $('#btnBuscarCanal').textContent = 'Cambiar';
       });
+      if (opciones.buscar) {
+        $('#fBuscarCanal').value = opciones.buscar;
+        $('#btnBuscarCanal').click();
+      }
     });
   }
 
@@ -1840,6 +1863,168 @@
         </tr>`;
       }).join('') : '<tr><td colspan="5"><div class="empty">No hay reportes pendientes.</div></td></tr>'}
       </tbody></table></div></section>`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Recomendaciones de canales
+  // ---------------------------------------------------------------------------
+  // Canales de YouTube que la gente propone para el directorio. Empieza
+  // apagado para todos, administradores incluidos: aquí se decide quién
+  // puede recomendar y se revisa lo que llega. Las del mismo canal (o con el
+  // mismo texto, si no se supo el canal) se ven juntas y se revisan juntas.
+  const ALCANCES = {
+    apagado: ['Nadie', 'La app no enseña la sección a nadie, tampoco a los administradores.'],
+    admins: ['Solo administradores', 'Para probarlo antes de abrirlo: lo ven las cuentas con acceso a este panel.'],
+    elegidos: ['Administradores y cuentas elegidas', 'Además de los administradores, las cuentas que elijas una por una desde su ficha en Usuarios.'],
+    todos: ['Todos', 'Cualquier persona que use la app, también las cuentas de invitado.']
+  };
+  const ESTADOS_REC = {
+    pendiente: ['Pendiente', 'b-warn'],
+    agregado: ['Agregado', 'b-ok'],
+    descartado: ['Descartado', 'b-mute']
+  };
+  const FILTROS_REC = { pendientes: 'Pendientes', revisadas: 'Revisadas', todas: 'Todas' };
+
+  const quienRecomienda = (r) => r.email || (r.proveedor === 'anonimo' || !r.proveedor ? 'Invitado ' + String(r.usuarioId).slice(0, 8) : 'Cuenta ' + String(r.usuarioId).slice(0, 8));
+
+  /** Junta las del mismo canal; si no se supo el canal, las del mismo texto. */
+  function agruparRecs(lista) {
+    const grupos = new Map();
+    lista.forEach((r) => {
+      const clave = r.channelId ? 'c:' + r.channelId : 't:' + String(r.texto || '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/^@/, '');
+      if (!grupos.has(clave)) grupos.set(clave, { clave, items: [] });
+      grupos.get(clave).items.push(r);
+    });
+    return Array.from(grupos.values()).map((g) => {
+      const conDatos = g.items.find((r) => r.titulo) || g.items[0];
+      const pendientes = g.items.filter((r) => r.estado === 'pendiente');
+      return Object.assign(g, {
+        channelId: conDatos.channelId, titulo: conDatos.titulo, handle: conDatos.handle,
+        fotoUrl: conDatos.fotoUrl, texto: conDatos.texto,
+        enDirectorio: g.items.some((r) => r.enDirectorio),
+        estado: pendientes.length ? 'pendiente' : g.items[0].estado,
+        pendientes,
+        ultima: g.items[0].creadoEn
+      });
+    });
+  }
+
+  function enlaceDeRec(g) {
+    if (g.handle) return 'https://www.youtube.com/@' + g.handle.replace(/^@/, '');
+    if (g.channelId) return 'https://www.youtube.com/channel/' + g.channelId;
+    if (/^https?:\/\//i.test(g.texto || '')) return g.texto;
+    return null;
+  }
+
+  function filaRec(g) {
+    const enlace = enlaceDeRec(g);
+    const [et, ec] = ESTADOS_REC[g.estado] || [g.estado, 'b-mute'];
+    const ids = esc(g.items.map((r) => r.id).join(','));
+    const nombre = g.titulo || g.texto;
+    const quienes = Array.from(new Set(g.items.map(quienRecomienda)));
+    const motivos = g.items.filter((r) => r.motivo);
+    const MAX_MOTIVOS = 3;
+
+    let acciones = '';
+    if (g.estado === 'pendiente') {
+      if (g.channelId && !g.enDirectorio) acciones += `<button class="btn sm primary" data-accion="rec-agregar" data-ids="${ids}" data-canal="${esc(g.channelId)}">Agregar al directorio</button>`;
+      acciones += `<button class="btn sm" data-accion="rec-estado" data-ids="${ids}" data-valor="agregado" title="Ya lo agregaste por tu cuenta o ya estaba">Ya está</button>`;
+      acciones += `<button class="btn sm" data-accion="rec-estado" data-ids="${ids}" data-valor="descartado">Descartar</button>`;
+    } else {
+      acciones += `<button class="btn sm" data-accion="rec-estado" data-ids="${ids}" data-valor="pendiente">Volver a pendiente</button>`;
+    }
+    acciones += `<button class="btn sm danger" data-accion="rec-borrar" data-ids="${ids}" data-nombre="${esc(nombre)}">Borrar</button>`;
+
+    return `<tr>
+      <td><div class="rec-canal">
+        ${g.fotoUrl ? `<img src="${esc(g.fotoUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="rec-sin-foto" aria-hidden="true">?</span>'}
+        <div style="min-width:0">
+          <div class="clip"><b>${esc(nombre)}</b></div>
+          ${g.titulo && g.texto !== g.titulo ? `<div class="muted clip" style="font-size:12.5px" title="${esc(g.texto)}">Escribió: ${esc(g.texto)}</div>` : ''}
+          ${g.channelId ? `<div class="mono muted" style="font-size:12px">${esc(g.handle ? '@' + g.handle : g.channelId)}</div>` : '<div class="hint">No se identificó el canal: búscalo a mano.</div>'}
+          ${enlace ? `<a href="${esc(enlace)}" target="_blank" rel="noopener" style="font-size:13px">Abrir en YouTube</a>` : ''}
+        </div></div></td>
+      <td>
+        <div class="rec-estado"><span class="badge ${ec}">${esc(et)}</span>${g.enDirectorio ? '<span class="badge b-info">Ya en el directorio</span>' : ''}</div>
+        <div><b>${esc(plural(g.items.length, 'vez', 'veces'))}</b> <span class="muted" style="font-size:12.5px" title="${esc(fmtFecha(g.ultima))}">· la última ${esc(relativo(g.ultima))}</span></div>
+        <div class="muted clip rec-quien" style="font-size:12.5px" title="${esc(quienes.join(', '))}">${esc(quienes.slice(0, 2).join(', ') + (quienes.length > 2 ? ' y ' + (quienes.length - 2) + ' más' : ''))}</div>
+      </td>
+      <td>${motivos.length ? '<ul class="rec-motivos">' + motivos.slice(0, MAX_MOTIVOS).map((r) => `<li>«${esc(r.motivo)}» <span class="muted">— ${esc(quienRecomienda(r))}</span></li>`).join('') + (motivos.length > MAX_MOTIVOS ? `<li class="muted">y ${num(motivos.length - MAX_MOTIVOS)} más</li>` : '') + '</ul>' : '<span class="muted">—</span>'}</td>
+      <td class="acciones"><div class="rec-acciones">${acciones}</div></td>
+    </tr>`;
+  }
+
+  function tarjetaAlcance(alcance) {
+    const encendido = alcance && alcance !== 'apagado';
+    return `<section class="panel"><div class="panel-head"><h2>Quién puede recomendar</h2>
+        <span class="badge ${encendido ? 'b-ok' : 'b-mute'}">${encendido ? 'Encendido' : 'Apagado'}</span></div>
+      <div class="panel-body"><div class="opciones-alcance" role="radiogroup" aria-label="Quién puede recomendar canales">
+        ${Object.entries(ALCANCES).map(([k, [t, d]]) => `<label class="check"><input type="radio" name="alcanceRec" data-accion="alcance-recs" data-valor="${k}" ${alcance === k ? 'checked' : ''}><span><b>${esc(t)}</b><span class="hint" style="display:block">${esc(d)}</span></span></label>`).join('')}
+      </div>
+      <p class="hint" style="margin:12px 0 0;font-size:13.5px">La app enseña «Recomendar un canal» en Ajustes a quien pueda recomendar. El cambio vale la próxima vez que cada persona abra la app. Solo funciona en las versiones de la app que traen la sección.</p>
+      </div></section>`;
+  }
+
+  function tarjetaElegidas(d) {
+    const cuenta = (u) => u.email || 'Invitado ' + String(u.id).slice(0, 8);
+    const nota = d.alcance === 'elegidos' ? ''
+      : `<p class="hint" style="margin:0 0 10px">Ahora mismo estas cuentas ${d.alcance === 'todos' ? 'pueden recomendar como todas las demás' : 'no pueden recomendar'}: la elección solo cuenta con «Administradores y cuentas elegidas».</p>`;
+    return `<section class="panel"><div class="panel-head"><h2>Cuentas elegidas</h2><span class="muted" style="font-size:13px">${plural(d.elegidas.length, 'cuenta', 'cuentas')}</span></div>
+      <div class="panel-body">${nota}
+        ${d.elegidas.length ? '<ul class="lista-simple">' + d.elegidas.map((u) => `<li><span class="clip"><b>${esc(cuenta(u))}</b>${u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : ''} <span class="muted" style="font-size:12.5px">· abrió la app ${esc(relativo(u.vistoEn))}</span></span><button class="btn sm danger" data-accion="recomendar-usuario" data-desde="lista" data-id="${esc(u.id)}" data-valor="false" data-nombre="${esc(cuenta(u))}">Quitar</button></li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Ninguna todavía.</p>'}
+        <p class="hint" style="margin:10px 0 0">Para elegir una cuenta, búscala en <button class="link" data-ir="usuarios">Usuarios</button>, ábrela con «Ver» y pulsa «Dejar que recomiende canales».</p>
+      </div></section>`;
+  }
+
+  async function vistaRecomendaciones() {
+    let d;
+    try {
+      d = await api('/api/admin/recomendaciones');
+    } catch (e) {
+      if (e.estado === 404) {
+        main.innerHTML = '<div class="head"><div><h1>Recomendaciones</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene las recomendaciones de canales. Actualízalo para usarlas.</div></div>';
+        return;
+      }
+      throw e;
+    }
+    if (estado.vista !== 'recomendaciones') return;
+
+    const filtro = estado.filtroRecs;
+    const grupos = agruparRecs(d.recomendaciones);
+    const visibles = grupos.filter((g) => filtro === 'todas' || (filtro === 'pendientes' ? g.estado === 'pendiente' : g.estado !== 'pendiente'))
+      // Primero lo que más gente pidió; a igualdad, lo más reciente.
+      .sort((a, b) => (b.items.length - a.items.length) || (new Date(b.ultima) - new Date(a.ultima)));
+    const VACIO = {
+      pendientes: d.alcance === 'apagado' ? 'No hay nada pendiente. Mientras esté apagado no llegan recomendaciones.' : 'No hay recomendaciones pendientes.',
+      revisadas: 'Todavía no has revisado ninguna.',
+      todas: 'Todavía no ha llegado ninguna recomendación.'
+    };
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Recomendaciones</h1><p class="sub">Canales de YouTube que la gente propone para el directorio. Empieza apagado para todos: elige aquí quién puede recomendar. Cada persona puede mandar 5 al día.</p></div></div>
+      <div class="stack">
+        <div class="dos">
+          ${tarjetaAlcance(d.alcance)}
+          ${tarjetaElegidas(d)}
+        </div>
+        <section class="panel">
+          <div class="panel-head"><div class="toolbar">${Object.entries(FILTROS_REC).map(([k, v]) => `<button class="btn sm ${k === filtro ? 'primary' : ''}" data-accion="filtro-recs" data-valor="${k}" aria-pressed="${k === filtro}">${v}${k === 'pendientes' && d.pendientes ? ' · ' + num(grupos.filter((g) => g.estado === 'pendiente').length) : ''}</button>`).join('')}</div>
+            <span class="muted" style="font-size:13px">${plural(d.recomendaciones.length, 'recomendación', 'recomendaciones')} en total</span></div>
+          <div class="tablewrap"><table><thead><tr><th>Canal</th><th>Recomendado</th><th>Por qué</th><th></th></tr></thead><tbody>
+          ${visibles.length ? visibles.map(filaRec).join('') : `<tr><td colspan="4"><div class="empty">${esc(VACIO[filtro])}</div></td></tr>`}
+          </tbody></table></div>
+        </section>
+      </div>`;
+  }
+
+  /** Bloque de la ficha de una cuenta: elegirla o quitarla para recomendar. */
+  function fichaRecomendar(u) {
+    const nombre = esc(u.email || 'esta cuenta de invitado');
+    return u.recomendarHabilitado
+      ? `<div><button class="btn danger" data-accion="recomendar-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Ya no dejar que recomiende canales</button>
+          <p class="hint" style="margin:6px 0 0">Está entre las cuentas elegidas de <button class="link" data-ir="recomendaciones">Recomendaciones</button>.</p></div>`
+      : `<div><button class="btn" data-accion="recomendar-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Dejar que recomiende canales</button>
+          <p class="hint" style="margin:6px 0 0">Verá «Recomendar un canal» en Ajustes de la app mientras en Recomendaciones esté elegido «Administradores y cuentas elegidas».</p></div>`;
   }
 
   // ---------------------------------------------------------------------------
@@ -2147,7 +2332,8 @@
     return `<span class="badge ${c}">${esc(t)}</span>`
       + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '')
       + (u.posibleBot ? ' <span class="badge b-bad">Posible bot</span>' : '')
-      + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '');
+      + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '')
+      + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '');
   };
 
   // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
@@ -2371,6 +2557,7 @@
         </div>
         ${rol ? '<div>' + rol + '</div>' : ''}
         ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
+        ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
   }
@@ -3237,6 +3424,8 @@
   document.addEventListener('click', async (e) => {
     const destino = e.target.closest('[data-ir]');
     if (destino) {
+      // Desde la ficha de una cuenta: la ventana se cierra para ver la sección.
+      if (modal.open && modal.contains(destino)) cerrarModal();
       ir(destino.dataset.ir);
       return;
     }
@@ -3737,6 +3926,94 @@
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/admin?valor=' + dar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
           if (estado.vista === 'usuarios') repintarUsuarios();
+          break;
+        }
+
+        case 'filtro-recs': {
+          estado.filtroRecs = b.dataset.valor;
+          await vistaRecomendaciones();
+          break;
+        }
+
+        case 'alcance-recs': {
+          // El botón ya cambió al pulsarlo. Si algo falla o se cancela, se
+          // vuelve a pintar la sección con lo que diga el servidor.
+          const nuevo = b.dataset.valor;
+          const [titulo] = ALCANCES[nuevo] || [nuevo];
+          try {
+            const seguro = await confirmar(
+              nuevo === 'apagado' ? 'Apagar las recomendaciones' : 'Recomendar canales: ' + titulo.toLowerCase(),
+              nuevo === 'apagado'
+                ? 'Nadie verá «Recomendar un canal» en la app, tampoco los administradores. Lo que ya llegó no se borra y lo puedes seguir revisando aquí.'
+                : nuevo === 'todos'
+                  ? 'Cualquier persona que use la app verá «Recomendar un canal» en Ajustes y podrá mandar hasta 5 al día. Cada una cuesta 1 o 2 unidades de la cuota diaria de YouTube.'
+                  : ALCANCES[nuevo][1] + ' Verán «Recomendar un canal» en Ajustes de la app.',
+              nuevo === 'apagado' ? 'Apagar' : 'Cambiar', nuevo === 'apagado' || (nuevo === 'todos' && config.ambiente === 'produccion'));
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { recomendaciones: nuevo } });
+              toast(nuevo === 'apagado' ? 'Recomendaciones apagadas.' : 'Ahora pueden recomendar: ' + titulo.toLowerCase() + '.');
+            }
+          } finally {
+            if (estado.vista === 'recomendaciones') await vistaRecomendaciones();
+          }
+          break;
+        }
+
+        case 'rec-estado': {
+          const ids = b.dataset.ids.split(',').map(Number).filter(Boolean);
+          b.disabled = true;
+          const r = await api('/api/admin/recomendaciones/estado', { metodo: 'POST', cuerpo: { ids, estado: b.dataset.valor } });
+          toast(r.mensaje || 'Listo.');
+          await vistaRecomendaciones();
+          contarRecomendaciones();
+          break;
+        }
+
+        case 'rec-borrar': {
+          const ids = b.dataset.ids.split(',').map(Number).filter(Boolean);
+          const ok = await confirmar('¿Borrar ' + (ids.length === 1 ? 'esta recomendación' : 'estas ' + ids.length + ' recomendaciones') + '?',
+            'Desaparece' + (ids.length === 1 ? '' : 'n') + ' de aquí y de «Tus recomendaciones» en la app de quien la mandó. Úsalo para lo que no es un canal o es spam; para decir que no, mejor «Descartar». No se puede deshacer.',
+            'Borrar', true);
+          if (!ok) break;
+          const r = await api('/api/admin/recomendaciones/borrar', { metodo: 'POST', cuerpo: { ids } });
+          toast(r.mensaje || 'Listo.');
+          await vistaRecomendaciones();
+          contarRecomendaciones();
+          break;
+        }
+
+        case 'rec-agregar': {
+          // El formulario de siempre, con el canal ya buscado. Al guardarlo,
+          // las recomendaciones de ese canal quedan como agregadas.
+          const ids = b.dataset.ids.split(',').map(Number).filter(Boolean);
+          await abrirCanal(null, {
+            buscar: b.dataset.canal,
+            alGuardar: async () => {
+              try {
+                await api('/api/admin/recomendaciones/estado', { metodo: 'POST', cuerpo: { ids, estado: 'agregado' } });
+              } catch (e) {
+                toast('El canal quedó guardado, pero no se pudo marcar la recomendación: ' + e.message, true);
+              }
+              if (estado.vista === 'recomendaciones') await vistaRecomendaciones();
+              contarRecomendaciones();
+            }
+          });
+          break;
+        }
+
+        case 'recomendar-usuario': {
+          const dar = b.dataset.valor === 'true';
+          if (!dar) {
+            const ok = await confirmar('¿Quitar a ' + b.dataset.nombre + ' de las cuentas que recomiendan?',
+              'Si el alcance es «Administradores y cuentas elegidas», deja de ver «Recomendar un canal» en la app. Lo que ya recomendó se queda.',
+              'Quitar', false);
+            if (!ok) break;
+          }
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/recomendar?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (b.dataset.desde === 'lista') await vistaRecomendaciones();
+          else await abrirUsuario(id);
           break;
         }
 

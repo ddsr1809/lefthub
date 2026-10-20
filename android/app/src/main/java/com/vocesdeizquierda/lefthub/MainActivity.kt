@@ -30,6 +30,7 @@ import androidx.navigation.navArgument
 import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.chat.ChatViewModel
+import com.vocesdeizquierda.lefthub.recomendar.RecomendarViewModel
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.ApiRelay
@@ -475,7 +476,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         // canal es parte del directorio: su pestaña sigue marcada.
                         selected = ruta == destino ||
                             (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }) ||
-                            (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)),
+                            (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)) ||
+                            // Se entra desde Ajustes: su pestaña sigue marcada.
+                            (destino == "ajustes" && ruta == "recomendar"),
                         onClick = {
                             // Cada pestaña abre siempre su pantalla principal.
                             // Antes se guardaba dónde se había quedado cada
@@ -741,10 +744,22 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 )
             }
 
+            composable("recomendar") {
+                // Vive lo que vive esta pantalla: al volver a entrar, carga de nuevo.
+                val modeloRecomendar: RecomendarViewModel = viewModel()
+                RecomendarPantalla(
+                    modelo = modeloRecomendar,
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
             composable("ajustes") {
                 AjustesPantalla(
                     estado = estado,
                     onAbrirChat = { nav.navigate("chat") { launchSingleTop = true } },
+                    onAbrirRecomendar = { nav.navigate("recomendar") { launchSingleTop = true } },
                     onGuardarPreferencia = modelo::guardarPreferencia,
                     onVincularGoogle = { modelo.vincularConGoogle(contexto) },
                     onCerrarSesion = { modelo.cerrarSesion(contexto) },

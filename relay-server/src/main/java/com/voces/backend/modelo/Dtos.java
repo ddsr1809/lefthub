@@ -324,7 +324,13 @@ public final class Dtos {
              * hablar contigo". Sale de un HMAC con el secreto del servidor,
              * así que nadie puede adivinar el de otra cuenta. Null sin chat.
              */
-            String chatAviso
+            String chatAviso,
+            /**
+             * Esta cuenta puede recomendar canales: la app enseña "Recomendar
+             * un canal". Lo decide el equipo desde el panel (ver
+             * RecomendacionesService). Una app anterior lo ignora.
+             */
+            boolean recomendar
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -335,7 +341,7 @@ public final class Dtos {
          */
         public static PerfilDto de(Usuario u, boolean cortosDisponibles,
                                    boolean anuncios, boolean compraDisponible,
-                                   boolean youtube, String chatAviso) {
+                                   boolean youtube, String chatAviso, boolean recomendar) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
@@ -346,7 +352,8 @@ public final class Dtos {
                     u.isCortos(), cortosDisponibles,
                     anuncios, u.isSinAnuncios(), compraDisponible, youtube,
                     u.isAvisosCortos(),
-                    u.isChatHabilitado(), u.isChatHabilitado() ? chatAviso : null);
+                    u.isChatHabilitado(), u.isChatHabilitado() ? chatAviso : null,
+                    recomendar);
         }
     }
 
@@ -483,10 +490,14 @@ public final class Dtos {
      * Los ajustes generales del panel: si la app muestra los videos cortos, si
      * muestra anuncios y si ofrece comprobar las suscripciones de YouTube.
      */
-    public record AjustesDto(boolean cortos, boolean anuncios, boolean youtube) {}
+    /**
+     * @param recomendaciones quién puede recomendar canales: apagado | admins |
+     *                        elegidos | todos. Ver AjustesService.
+     */
+    public record AjustesDto(boolean cortos, boolean anuncios, boolean youtube, String recomendaciones) {}
 
     /** Lo que se cambia de los ajustes. Lo que no viene no se toca. */
-    public record CambiarAjustes(Boolean cortos, Boolean anuncios, Boolean youtube) {}
+    public record CambiarAjustes(Boolean cortos, Boolean anuncios, Boolean youtube, String recomendaciones) {}
 
     // -------------------------------------------------------------------------
     // Anuncios: quitarlos con una compra o con un folio de regalo
@@ -713,7 +724,9 @@ public final class Dtos {
             String appVersion,
             String appPlataforma,
             /** El equipo le activó el chat interno. */
-            boolean chatHabilitado
+            boolean chatHabilitado,
+            /** El equipo la eligió para recomendar canales. */
+            boolean recomendarHabilitado
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -722,7 +735,8 @@ public final class Dtos {
                     u.getIp(), u.getPais(), u.getAsn(), u.getRed(), u.getAgente(),
                     u.isPosibleBot(), u.getMotivoBot(),
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
-                    u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado());
+                    u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
+                    u.isRecomendarHabilitado());
         }
     }
 
