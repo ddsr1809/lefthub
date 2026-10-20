@@ -892,6 +892,51 @@ nota}`), `DELETE /api/admin/folios/{codigo}`, `POST
 Canjear folios tiene un límite por cuenta: cinco equivocados seguidos y luego
 uno cada tres minutos.
 
+## Chat con el equipo
+
+Un chat por escrito entre un administrador y una persona que usa la app de
+Android. Solo lo abre el equipo, y solo con las cuentas a las que antes se lo
+activó.
+
+- **Activarlo.** Panel → Usuarios → *Ver* en la cuenta → *Activar el chat con
+  esta cuenta*. En un minuto como mucho, la app enseña *Hablar con el equipo*
+  en Ajustes. Las cuentas con chat salen en la sección **Chat** del panel, con
+  quién está dentro ahora mismo. *Quitar el chat* cierra en el acto la
+  conversación que hubiera.
+- **Hablar.** *Abrir chat* abre una ventana abajo a la derecha que sigue ahí
+  aunque cambies de sección. Si la persona no tiene la app abierta, le llega un
+  aviso que solo dice *El equipo de Voces quiere hablar contigo*; al tocarlo
+  entra al chat. Una conversación a la vez por cuenta: si otro administrador
+  la abre, la toma.
+- **Cifrado de extremo a extremo.** El navegador y el teléfono hacen cada uno
+  un par de llaves ECDH P-256 al entrar, que nunca salen de la memoria. Con
+  ellas acuerdan una clave AES-256-GCM que el servidor no conoce: por el
+  servidor pasan las llaves públicas y mensajes que no puede leer. Los dos
+  lados ven el mismo **código de seguridad** de 8 cifras; si coinciden, nadie
+  cambió las llaves por el camino. El esquema está en `admin/chat-cifrado.js`
+  y `android/.../chat/CifradoChat.kt`, y tienen que ser idénticos
+  (`make panel-test` lo comprueba con un mensaje cifrado en Java).
+- **No se guarda nada.** Ni en la base de datos, ni en disco, ni en los
+  registros, ni en el teléfono. El servidor tiene cada mensaje cifrado en
+  memoria solo hasta que el otro lado lo recoge, segundos después
+  (`chat/SalasDeChat.java`). Al cerrar el chat, al salir de la pantalla, a los
+  30 minutos sin mensajes o al reiniciar el servidor, la conversación
+  desaparece de los dos lados. La pantalla del chat en Android no deja hacer
+  capturas ni sale en apps recientes.
+- **Sin cambios en el VPS.** Va por HTTPS normal, con consultas que esperan
+  hasta 25 segundos a que llegue un mensaje; no hace falta tocar Apache.
+
+Lo único que guarda la base es el permiso: `usuarios.chat_habilitado` (V18).
+La app de iPhone todavía no tiene el chat.
+
+En la API: `POST /api/chat/entrar` (`{clave}`), `GET
+/api/chat/eventos?conexion=`, `POST /api/chat/mensajes` (`{conexion, iv,
+cifrado}`) y `POST /api/chat/salir`; del panel, `POST
+/api/admin/usuarios/{id}/chat?valor=`, `GET /api/admin/chat` y las mismas
+cuatro bajo `/api/admin/chat/{id}/`. `GET /api/perfil` dice `chat` y
+`chatAviso` (el topic de FCM del aviso, sacado con un HMAC del secreto del
+servidor para que nadie pueda suscribirse al de otra cuenta).
+
 ---
 
 ## Cosas que se rompen y cómo notarlo
