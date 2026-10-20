@@ -437,6 +437,11 @@ public final class Repositorios {
         List<Suscripcion> findByEstado(String estado);
     }
 
+    public interface Avisos extends JpaRepository<Aviso, Long> {
+
+        List<Aviso> findAllByOrderByCreadoEnDesc(Pageable pagina);
+    }
+
     public interface Reportes extends JpaRepository<Reporte, Long> {
 
         List<Reporte> findByResueltoFalseOrderByCreadoEnDesc(Pageable pagina);

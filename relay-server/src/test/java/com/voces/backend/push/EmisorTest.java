@@ -196,6 +196,24 @@ class EmisorTest {
     }
 
     @Test
+    @DisplayName("Un aviso para todos va al topic general, en un solo mensaje")
+    void aTodos() {
+        List<Destino> destinos = PushService.destinosPara(List.of(PushService.TOPIC_TODOS));
+        assertEquals(List.of(new Destino("todos", null)), destinos);
+    }
+
+    @Test
+    @DisplayName("Los avisos del equipo se reparten igual: sin repetir y de cinco en cinco")
+    void avisoDelEquipoPartido() {
+        List<String> topics = List.of("a", "b", "a", "c", "d", "e", "f");
+        List<Destino> destinos = PushService.destinosPara(topics);
+        assertEquals(2, destinos.size());
+        assertEquals(o("a", "b", "c", "d", "e"), destinos.get(0).condicion());
+        assertEquals(new Destino("f", null), destinos.get(1));
+        assertTrue(PushService.destinosPara(List.of()).isEmpty());
+    }
+
+    @Test
     @DisplayName("Sin creador ni productora no hay aviso que mandar")
     void nadie() {
         assertThrows(IllegalArgumentException.class, () -> Emisor.de(null, null));

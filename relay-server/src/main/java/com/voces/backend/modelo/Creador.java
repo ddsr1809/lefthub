@@ -60,6 +60,10 @@ public class Creador {
      * Solo en testing: id que tiene este creador en produccion, cuando llego
      * copiado desde alla. Ver V5__origen_de_replica.sql.
      */
+    /** Cuándo se avisó a todos de que llegó al directorio. Null: nunca. */
+    @Column(name = "anunciado_en")
+    private Instant anunciadoEn;
+
     @Column(name = "origen_id")
     private UUID origenId;
 
@@ -90,6 +94,9 @@ public class Creador {
     public void setCreadoEn(Instant creadoEn) { this.creadoEn = creadoEn; }
 
     public Instant getActualizadoEn() { return actualizadoEn; }
+
+    public Instant getAnunciadoEn() { return anunciadoEn; }
+    public void setAnunciadoEn(Instant anunciadoEn) { this.anunciadoEn = anunciadoEn; }
     public void setActualizadoEn(Instant actualizadoEn) { this.actualizadoEn = actualizadoEn; }
 
     public UUID getOrigenId() { return origenId; }

@@ -124,7 +124,8 @@ public class AdminController {
                             suyos.stream().map(k -> canalAdmin(k, vista, estados)).toList(),
                             List.copyOf(c.getProductoras()),
                             vista.compartidosCon(c.getId()).stream()
-                                    .map(k -> canalAdmin(k, vista, estados)).toList());
+                                    .map(k -> canalAdmin(k, vista, estados)).toList(),
+                            c.getAnunciadoEn());
                 })
                 .toList();
     }
