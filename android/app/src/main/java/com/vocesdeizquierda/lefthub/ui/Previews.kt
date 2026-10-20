@@ -32,6 +32,8 @@ import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.data.VideoDeAviso
 import com.vocesdeizquierda.lefthub.data.FichaDeVideo
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
+import com.vocesdeizquierda.lefthub.data.Recomendacion
+import com.vocesdeizquierda.lefthub.recomendar.EstadoRecomendar
 
 
 // Previews.
@@ -583,6 +585,47 @@ private fun PreviaAjustesSinAnuncios() {
                 perfil = perfilConFavoritos.copy(anuncios = true, sinAnuncios = true),
                 esAnonimo = true
             ),
+            onGuardarPreferencia = { _, _ -> },
+            onVincularGoogle = {},
+            onCerrarSesion = {},
+            onBorrarCuenta = {}
+        )
+    }
+}
+
+/** Recomendar un canal, con las que ya mandó en sus tres estados. */
+@VistaPreviaAccesible
+@Composable
+private fun PreviaRecomendar() {
+    Marco {
+        RecomendarContenido(
+            estado = EstadoRecomendar(
+                cargando = false,
+                quedanHoy = 3,
+                gracias = "Gracias. Le pasamos «La Base Noticias» al equipo para que lo revise.",
+                recomendaciones = listOf(
+                    Recomendacion(id = 3, texto = "https://youtu.be/abc", titulo = "La Base Noticias",
+                        creadoEn = Instant.now().minusSeconds(600)),
+                    Recomendacion(id = 2, texto = "el canal de cocina de doña Lupita",
+                        estado = Recomendacion.DESCARTADO, creadoEn = Instant.now().minusSeconds(3 * 86_400)),
+                    Recomendacion(id = 1, texto = "@canal14mx", titulo = "Canal 14", enDirectorio = true,
+                        creadoEn = Instant.now().minusSeconds(9 * 86_400))
+                )
+            ),
+            onRecomendar = { _, _, _ -> },
+            onReintentar = {},
+            onVolver = {}
+        )
+    }
+}
+
+/** Ajustes de una cuenta a la que el equipo le dejó recomendar canales. */
+@Preview(name = "Ajustes con recomendar", showBackground = true, heightDp = 1300)
+@Composable
+private fun PreviaAjustesConRecomendar() {
+    Marco(tema = "claro") {
+        AjustesPantalla(
+            estado = EstadoApp(listo = true, perfil = perfilConFavoritos.copy(tema = "claro", recomendar = true)),
             onGuardarPreferencia = { _, _ -> },
             onVincularGoogle = {},
             onCerrarSesion = {},

@@ -5,6 +5,7 @@ import com.voces.backend.chat.AvisoDeChat;
 import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.*;
 import com.voces.backend.push.PushService;
+import com.voces.backend.recomendaciones.RecomendacionesService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -513,11 +514,14 @@ public class DirectorioController {
      * El perfil lleva también lo que decide el equipo: si hay videos cortos,
      * si hay anuncios y si se pueden comprar. Así la app se entera de todo
      * con la misma lectura, la que ya hace al abrirse. También si tiene el
-     * chat con el equipo, que se enciende por cuenta.
+     * chat con el equipo y si puede recomendar canales, que dependen de la
+     * cuenta.
      */
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
         return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
-                ajustes.youtube(), avisoDeChat.topicDe(usuario.getId()));
+                ajustes.youtube(), avisoDeChat.topicDe(usuario.getId()),
+                RecomendacionesService.puede(ajustes.recomendaciones(),
+                        usuario.isEsAdmin(), usuario.isRecomendarHabilitado()));
     }
 
     private Usuario usuarioActual() {

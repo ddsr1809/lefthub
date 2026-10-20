@@ -96,6 +96,14 @@ public class Usuario {
     private boolean chatHabilitado = false;
 
     /**
+     * El equipo la eligió desde el panel para recomendar canales. Solo
+     * cuenta mientras el ajuste 'recomendaciones' esté en "elegidos": ver
+     * RecomendacionesService y V20.
+     */
+    @Column(name = "recomendar_habilitado", nullable = false)
+    private boolean recomendarHabilitado = false;
+
+    /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
      * 5.1.1(v).
@@ -222,6 +230,9 @@ public class Usuario {
 
     public boolean isChatHabilitado() { return chatHabilitado; }
     public void setChatHabilitado(boolean chatHabilitado) { this.chatHabilitado = chatHabilitado; }
+
+    public boolean isRecomendarHabilitado() { return recomendarHabilitado; }
+    public void setRecomendarHabilitado(boolean recomendarHabilitado) { this.recomendarHabilitado = recomendarHabilitado; }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

@@ -477,6 +477,22 @@ object ApiRelay {
         post("/api/chat/salir", JSONObject().put("conexion", conexion))
     }
 
+    // -------------------------------------------------------------------------
+    // Recomendar canales
+    // -------------------------------------------------------------------------
+    // Si la cuenta no puede (el equipo lo apagó con la pantalla abierta), las
+    // dos lanzan ErrorHttp 403 con un motivo escrito para leerse.
+
+    suspend fun recomendaciones(): MisRecomendaciones =
+        misRecomendacionesDe(getObject("/api/recomendaciones"))
+
+    /** Devuelve la frase del servidor para la pantalla y la recomendación guardada. */
+    suspend fun recomendar(texto: String, motivo: String?): Pair<String, Recomendacion?> {
+        val r = post("/api/recomendaciones", JSONObject().put("texto", texto).put("motivo", motivo ?: JSONObject.NULL))
+        val mensaje = r.optStringONull("mensaje") ?: "Gracias. El equipo lo va a revisar."
+        return mensaje to r.optJSONObject("recomendacion")?.let(::recomendacionDe)
+    }
+
     // El paso del JSON del servidor a los modelos de la app está en Mapeo.kt.
 
     // -------------------------------------------------------------------------

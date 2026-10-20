@@ -126,6 +126,13 @@ public final class Repositorios {
                 order by k.creadoEn asc, k.id asc
                 """)
         List<Canal> vivosDeYouTube();
+
+        /** Los ID de todos los canales de YouTube del directorio, visibles o no. */
+        @Query("""
+                select k.channelId from Canal k
+                where k.plataforma = 'youtube' and k.channelId is not null
+                """)
+        List<String> idsDeYouTube();
     }
 
     public interface Productoras extends JpaRepository<Productora, UUID> {
@@ -350,6 +357,9 @@ public final class Repositorios {
         /** Las cuentas a las que el equipo les activó el chat interno. */
         List<Usuario> findByChatHabilitadoTrueOrderByVistoEnDesc();
 
+        /** Las cuentas que el equipo eligió para recomendar canales. */
+        List<Usuario> findByRecomendarHabilitadoTrueOrderByVistoEnDesc();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
@@ -451,5 +461,29 @@ public final class Repositorios {
         void borrarDeUsuario(@Param("usuario") UUID usuario);
 
         long countByUsuarioId(UUID usuarioId);
+    }
+
+    public interface Recomendaciones extends JpaRepository<Recomendacion, Long> {
+
+        /** Las de una cuenta, la más nueva primero. Lo que ve la persona en la app. */
+        List<Recomendacion> findByUsuarioIdOrderByCreadoEnDesc(UUID usuarioId, Pageable pagina);
+
+        /** Las más recientes de todas, para el panel. */
+        List<Recomendacion> findAllByOrderByCreadoEnDesc(Pageable pagina);
+
+        long countByUsuarioIdAndCreadoEnAfter(UUID usuarioId, Instant desde);
+
+        long countByUsuarioIdAndEstado(UUID usuarioId, String estado);
+
+        long countByEstado(String estado);
+
+        /**
+         * Las recomendaciones de una cuenta pasan a otra. Hay que llamarlo
+         * antes de borrar la primera cuando se funden dos: si no, se irían
+         * con ella.
+         */
+        @Modifying
+        @Query("update Recomendacion r set r.usuarioId = :a where r.usuarioId = :de")
+        void pasar(@Param("de") UUID de, @Param("a") UUID a);
     }
 }

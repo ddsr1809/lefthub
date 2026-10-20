@@ -402,7 +402,13 @@ data class Perfil(
      */
     val chat: Boolean = false,
     /** El topic de FCM del aviso del chat. Solo viene con el chat activado. */
-    val chatAviso: String? = null
+    val chatAviso: String? = null,
+    /**
+     * Puede recomendar canales: Ajustes enseña "Recomendar un canal". Lo
+     * decide el equipo desde el panel. Un servidor anterior no lo manda, y
+     * entonces es que no.
+     */
+    val recomendar: Boolean = false
 ) {
     /**
      * La app ofrece y hace la comprobación de YouTube: esta compilación la
@@ -547,3 +553,45 @@ data class EstadoYouTube(
         else -> null
     }
 }
+
+/**
+ * Un canal que la persona recomendó para el directorio.
+ *
+ * [titulo] y [fotoUrl] son los del canal en YouTube, si el servidor lo pudo
+ * identificar; si la persona escribió solo un nombre, vienen en null y se
+ * enseña lo que escribió.
+ */
+data class Recomendacion(
+    val id: Long,
+    val texto: String,
+    val motivo: String? = null,
+    val titulo: String? = null,
+    val fotoUrl: String? = null,
+    /** pendiente | agregado | descartado */
+    val estado: String = PENDIENTE,
+    /** El canal ya está en el directorio, lo haya marcado el equipo o no. */
+    val enDirectorio: Boolean = false,
+    val creadoEn: Instant? = null
+) {
+    val nombre: String get() = titulo ?: texto
+
+    /** En palabras, para la persona que la mandó. */
+    val estadoEnPalabras: String
+        get() = when {
+            enDirectorio || estado == AGREGADO -> "Ya está en el directorio"
+            estado == DESCARTADO -> "El equipo lo revisó y por ahora no lo agregó"
+            else -> "El equipo todavía no lo revisa"
+        }
+
+    companion object {
+        const val PENDIENTE = "pendiente"
+        const val AGREGADO = "agregado"
+        const val DESCARTADO = "descartado"
+    }
+}
+
+/** Lo que mandó esta cuenta y cuántas puede mandar todavía hoy. */
+data class MisRecomendaciones(
+    val recomendaciones: List<Recomendacion> = emptyList(),
+    val quedanHoy: Int = 0
+)

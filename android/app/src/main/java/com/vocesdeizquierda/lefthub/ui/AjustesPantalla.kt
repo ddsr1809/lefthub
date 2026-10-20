@@ -38,7 +38,9 @@ fun AjustesPantalla(
     /** Abre el formulario de Google para cambiar la elección de privacidad. */
     onPrivacidadDeAnuncios: () -> Unit = {},
     /** Abre el chat con el equipo. Solo sale si el equipo lo activó. */
-    onAbrirChat: () -> Unit = {}
+    onAbrirChat: () -> Unit = {},
+    /** Abre "Recomendar un canal". Solo sale si el equipo lo permite a esta cuenta. */
+    onAbrirRecomendar: () -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -175,6 +177,22 @@ fun AjustesPantalla(
                     modifier = Modifier.padding(bottom = Espacio.md)
                 )
                 BotonGrande(titulo = "Abrir el chat", onClick = onAbrirChat)
+            }
+        }
+
+        // --- Recomendar un canal ---------------------------------------------
+        // Solo si el equipo se lo permite a esta cuenta: empieza apagado para
+        // todos y se enciende desde el panel.
+        if (estado.perfil.recomendar) {
+            Seccion("Recomendar un canal") {
+                Text(
+                    "¿Falta algún canal de YouTube en el directorio? Recomiéndalo y el " +
+                        "equipo lo revisará.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                BotonGrande(titulo = "Recomendar un canal", onClick = onAbrirRecomendar)
             }
         }
 
