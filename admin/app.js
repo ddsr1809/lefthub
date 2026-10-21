@@ -269,7 +269,7 @@
     filtroCreadores: { q: '', categoria: '' },
     publicaciones: null,
     filtroPubs: 'todos',    // todos | videos | cortos
-    ordenPubs: 'recientes', // recientes | vistas-7 | vistas-30 | vistas-0
+    pubs: null,             // pestaña, periodo, orden y filtro de Publicaciones: opcionesPub()
     ajustes: null,          // null: el servidor es anterior a los ajustes
     anuncios: null,         // lo último que dijo /api/admin/anuncios
     foliosNuevos: [],       // los folios recién creados, para copiarlos
@@ -1632,14 +1632,6 @@
       </div></section>`;
   }
 
-  // Cómo se ordena la lista: lo más reciente, o lo más visto en un periodo.
-  const ORDENES_PUB = {
-    recientes: ['Más recientes', 'recientes', 0],
-    'vistas-7': ['Más vistos · 7 días', 'vistas', 7],
-    'vistas-30': ['Más vistos · 30 días', 'vistas', 30],
-    'vistas-0': ['Más vistos · siempre', 'vistas', 0]
-  };
-
   // Las cifras vienen de YouTube y no siempre están: el canal puede ocultar
   // los "me gusta", o el servidor todavía no las ha pedido. Vacío no es cero.
   const hay = (n) => n !== null && n !== undefined;
@@ -1667,16 +1659,114 @@
     return d ? `<span class="duracion">${d}</span>` : '';
   }
 
-  /** "15 mil vistas" y debajo "842 me gusta · 97 comentarios", o cuántos lo ven en directo. */
-  function celdaCifras(p) {
-    if (!hay(p.vistas) && !hay(p.cifrasEn)) return '<span class="muted" title="Todavía no se han pedido a YouTube">Sin cifras aún</span>';
-    const cuando = p.cifrasEn ? ' title="Cifras de YouTube de ' + esc(relativo(p.cifrasEn)) + '"' : '';
-    const partes = [];
-    if (hay(p.meGusta)) partes.push(compacto(p.meGusta) + ' me gusta');
-    if (hay(p.comentarios)) partes.push(compacto(p.comentarios) + ' coment.');
-    return `<div class="cifras"${cuando}><b class="num">${hay(p.vistas) ? compacto(p.vistas) + ' vistas' : 'Vistas ocultas'}</b>
-      ${hay(p.espectadores) ? `<div><span class="badge b-bad">${esc(num(p.espectadores))} viendo ahora</span></div>` : ''}
-      ${partes.length ? `<div class="muted" style="font-size:12.5px">${partes.join(' · ')}</div>` : ''}</div>`;
+  // ---------------------------------------------------------------------------
+  // Qué se ve: los videos uno por uno, o sumados por creador, canal o medio.
+  // Todo dentro del mismo periodo y del mismo tipo (todos, videos o cortos).
+  // ---------------------------------------------------------------------------
+  const VISTAS_PUB = { videos: 'Videos', creador: 'Por creador', canal: 'Por canal', medio: 'Por medio' };
+
+  const PERIODOS = {
+    todo: 'Cualquier fecha',
+    '24h': 'Últimas 24 horas',
+    7: 'Últimos 7 días',
+    30: 'Últimos 30 días',
+    90: 'Últimos 90 días',
+    anio: 'Este año',
+    365: 'Últimos 12 meses',
+    propio: 'Elegir fechas…'
+  };
+
+  // Las columnas de la lista de videos que ordenan al tocarlas. Las de texto
+  // empiezan de la A a la Z; las demás, de más a menos.
+  const COLUMNAS_PUB = [
+    ['duracion', 'Duración'], ['titulo', 'Video'], ['creador', 'Creador'], ['vistas', 'Vistas'],
+    ['meGusta', 'Me gusta'], ['comentarios', 'Coment.'], ['estado', 'Estado'], ['publicado', 'Publicado']
+  ];
+  const DE_LA_A = ['titulo', 'creador', 'estado', 'nombre', 'detalle'];
+
+  // Lo mismo para los totales por grupo. Aquí se ordena en el panel: son pocas filas.
+  const COLUMNAS_TOTALES = [
+    ['nombre', 'Nombre'], ['videos', 'Videos'], ['vistas', 'Vistas'], ['promedio', 'Promedio por video'],
+    ['meGusta', 'Me gusta'], ['comentarios', 'Comentarios'], ['ultimo', 'Último video']
+  ];
+
+  /** Lo que el panel recuerda de esta sección mientras está abierto. */
+  function opcionesPub() {
+    if (!estado.pubs) {
+      estado.pubs = { vista: 'videos', periodo: 'todo', desde: '', hasta: '', orden: 'publicado', dir: 'desc',
+        filtro: null, limite: 100, totalOrden: 'vistas', totalDir: 'desc' };
+    }
+    return estado.pubs;
+  }
+
+  /** El periodo elegido como instantes: desde (incluido) y hasta (sin incluir). Las fechas propias son en tu hora local. */
+  function rangoPub(o) {
+    const ahora = new Date();
+    const dia = (texto, mas) => { const [a, m, d] = texto.split('-').map(Number); return new Date(a, m - 1, d + (mas || 0)); };
+    switch (o.periodo) {
+      case '24h': return { desde: new Date(ahora - 864e5) };
+      case 'anio': return { desde: new Date(ahora.getFullYear(), 0, 1) };
+      case 'propio': return { desde: o.desde ? dia(o.desde) : null, hasta: o.hasta ? dia(o.hasta, 1) : null };
+      case 'todo': return {};
+      default: return { desde: new Date(ahora - Number(o.periodo) * 864e5) };
+    }
+  }
+
+  function parametrosPub(o) {
+    const q = new URLSearchParams();
+    const filtro = FILTROS_PUB[estado.filtroPubs] ? estado.filtroPubs : 'todos';
+    if (filtro !== 'todos') q.set('tipo', filtro);
+    const r = rangoPub(o);
+    if (r.desde) q.set('desde', r.desde.toISOString());
+    if (r.hasta) q.set('hasta', r.hasta.toISOString());
+    return q;
+  }
+
+  /** Para ordenar en el panel lo que llegó, igual que el servidor: lo que no tiene el dato, al final. */
+  function comparar(valor, asc) {
+    return (a, b) => {
+      const x = valor(a), y = valor(b);
+      if (!hay(x) || x === '') return hay(y) && y !== '' ? 1 : 0;
+      if (!hay(y) || y === '') return -1;
+      // En español: sin distinguir acentos ni mayúsculas, y «¿Qué…» va con la Q.
+      const r = typeof x === 'string' ? x.localeCompare(y, 'es', { sensitivity: 'base', ignorePunctuation: true }) : x - y;
+      return asc ? r : -r;
+    };
+  }
+  const VALOR_PUB = {
+    duracion: (p) => p.duracionSegundos, titulo: (p) => p.titulo, creador: (p) => p.creadorNombre,
+    vistas: (p) => p.vistas, meGusta: (p) => p.meGusta, comentarios: (p) => p.comentarios,
+    estado: (p) => p.estado, publicado: (p) => (p.publicadoEn ? Date.parse(p.publicadoEn) : null)
+  };
+  const VALOR_TOTAL = {
+    nombre: (t) => t.nombre, videos: (t) => t.videos, vistas: (t) => t.vistas,
+    promedio: (t) => (t.conCifras ? t.vistas / t.conCifras : null),
+    meGusta: (t) => t.meGusta, comentarios: (t) => t.comentarios,
+    ultimo: (t) => (t.ultimo ? Date.parse(t.ultimo) : null)
+  };
+
+  /** Un encabezado que ordena al tocarlo, con su flecha si es el activo. */
+  function encabezado([clave, texto], activo, dir, accion) {
+    const es = clave === activo;
+    return `<th aria-sort="${es ? (dir === 'asc' ? 'ascending' : 'descending') : 'none'}"><button class="orden${es ? ' activo' : ''}" data-accion="${accion}" data-valor="${clave}" title="Ordenar por ${esc(texto.toLowerCase())}">${esc(texto)}<span aria-hidden="true">${es ? (dir === 'asc' ? '▲' : '▼') : '↕'}</span></button></th>`;
+  }
+
+  /** Lo que se cambia de una vez en las cuatro pestañas: pestaña, tipo, periodo. */
+  function barraPub(o, conCifras, ajustes) {
+    const filtro = FILTROS_PUB[estado.filtroPubs] ? estado.filtroPubs : 'todos';
+    return `<section class="panel filtros-pub"><div class="panel-body">
+      <div class="toolbar">
+        <div class="segmentos" role="tablist">${Object.entries(VISTAS_PUB).map(([k, v]) => `<button class="btn sm ${k === o.vista ? 'primary' : ''}" role="tab" aria-selected="${k === o.vista}" data-accion="vista-pubs" data-valor="${k}">${v}</button>`).join('')}</div>
+        <span class="separa"></span>
+        ${ajustes ? `<div class="segmentos" id="filtroPubs">${Object.entries(FILTROS_PUB).map(([k, v]) => `<button class="btn sm ${k === filtro ? 'primary' : ''}" data-accion="filtro-pubs" data-valor="${k}" aria-pressed="${k === filtro}">${v}</button>`).join('')}</div>` : ''}
+        <select class="input" id="periodoPub" aria-label="Periodo" style="width:auto">${Object.entries(PERIODOS).map(([k, v]) => `<option value="${k}" ${String(o.periodo) === String(k) ? 'selected' : ''}>${v}</option>`).join('')}</select>
+        ${o.periodo === 'propio' ? `<label class="hint" for="pubDesde">Del</label><input class="input" type="date" id="pubDesde" value="${esc(o.desde)}" style="width:auto">
+          <label class="hint" for="pubHasta">al</label><input class="input" type="date" id="pubHasta" value="${esc(o.hasta)}" style="width:auto">
+          <button class="btn sm primary" data-accion="aplicar-fechas">Aplicar</button>` : ''}
+        ${o.vista === 'videos' && conCifras ? '<span class="separa"></span><button class="btn sm" data-accion="actualizar-cifras">Actualizar cifras</button>' : ''}
+      </div>
+      <p class="hint" style="margin:10px 0 0">Por fecha de publicación en YouTube. Las cifras son las públicas de YouTube y el servidor las pone al día solo: los videos de los últimos dos días cada media hora, los del último mes cada seis horas y los demás cada tres días; los directos al aire, cada dos minutos.</p>
+    </div></section>`;
   }
 
   /** Arriba de la lista: lo que suman los videos que se están viendo. */
@@ -1694,54 +1784,148 @@
     </div>`;
   }
 
+  /** Un nombre que, al tocarlo, deja solo los videos de ese creador, canal o medio. */
+  const filtrable = (tipo, id, texto, clase) => (id && texto
+    ? `<button class="link filtrable ${clase || ''}" data-accion="filtrar-pubs" data-tipo="${tipo}" data-id="${esc(id)}" data-nombre="${esc(texto)}" title="Ver solo sus videos">${esc(texto)}</button>`
+    : esc(texto || '—'));
+
   async function vistaPublicaciones() {
-    const filtro = FILTROS_PUB[estado.filtroPubs] ? estado.filtroPubs : 'todos';
-    const orden = ORDENES_PUB[estado.ordenPubs] ? estado.ordenPubs : 'recientes';
-    const [, criterio, dias] = ORDENES_PUB[orden];
+    const o = opcionesPub();
+    if (o.vista !== 'videos') return vistaTotalesPub(o);
+
+    const q = parametrosPub(o);
+    q.set('limite', o.limite);
+    q.set('orden', o.orden);
+    q.set('dir', o.dir);
+    if (o.filtro) q.set(o.filtro.tipo, o.filtro.id);
     const [lista, ajustes] = await Promise.all([
-      api('/api/admin/publicaciones?limite=100' + (filtro !== 'todos' ? '&tipo=' + filtro : '')
-        + (criterio === 'vistas' ? '&orden=vistas&dias=' + dias : '')),
+      api('/api/admin/publicaciones?' + q.toString()),
       api('/api/admin/ajustes').catch(() => null)
     ]);
+    if (estado.vista !== 'publicaciones') return;
+    // El servidor ya los manda en orden. Ordenarlos aquí también deja la
+    // lista bien con un servidor anterior, que no entiende el orden pedido.
+    lista.sort(comparar(VALOR_PUB[o.orden] || VALOR_PUB.publicado, o.dir === 'asc'));
     estado.publicaciones = lista;
     estado.ajustes = ajustes;
     // Un servidor anterior a las cifras no manda detectadoEn (que siempre tiene valor).
     const conCifras = lista.some((p) => 'detectadoEn' in p);
+    const columnas = conCifras ? COLUMNAS_PUB : COLUMNAS_PUB.filter(([k]) => !['duracion', 'vistas', 'meGusta', 'comentarios'].includes(k));
+    const QUE = { creador: 'creador', canal: 'canal', medio: 'medio' };
 
     main.innerHTML = `
-      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Los videos que detectó el servidor, con su duración y sus cifras en YouTube. Si una plataforma tumba uno, muévelo a otro enlace y avisa a quienes siguen a su creador o a su medio. Toca el título de un video para ver su ficha completa.</p></div>
-        <div class="toolbar">
-          ${ajustes ? `<div class="toolbar" id="filtroPubs">${Object.entries(FILTROS_PUB).map(([k, v]) => `<button class="btn sm ${k === filtro ? 'primary' : ''}" data-accion="filtro-pubs" data-valor="${k}" aria-pressed="${k === filtro}">${v}</button>`).join('')}</div>` : ''}
-          ${conCifras ? `<select class="input" id="ordenPubs" aria-label="Orden" style="width:auto">${Object.entries(ORDENES_PUB).map(([k, [t]]) => `<option value="${k}" ${k === orden ? 'selected' : ''}>${t}</option>`).join('')}</select>
-          <button class="btn sm" data-accion="actualizar-cifras" ${lista.length ? '' : 'disabled'}>Actualizar cifras</button>` : ''}
-        </div></div>
+      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Los videos que detectó el servidor, con su duración y sus cifras en YouTube. Toca el encabezado de una columna para ordenar por ella, y el nombre de un creador, canal o medio para ver solo sus videos. Si una plataforma tumba un video, muévelo a otro enlace y avisa a quienes lo siguen.</p></div></div>
       <div class="stack">
+      ${barraPub(o, conCifras, ajustes)}
+      ${o.filtro ? `<div class="aviso-ok filtro-activo"><span>Solo los videos del ${esc(QUE[o.filtro.tipo] || o.filtro.tipo)} <b>${esc(o.filtro.nombre)}</b></span><button class="btn sm" data-accion="quitar-filtro-pubs">Ver todos</button></div>` : ''}
       ${conCifras ? resumenDeCifras(lista) : ''}
-      ${ajustes ? tarjetaCortos(ajustes) : ''}
+      ${ajustes && !o.filtro ? tarjetaCortos(ajustes) : ''}
       <section class="panel">
-        ${conCifras ? '<div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Las cifras son las públicas de YouTube y el servidor las pone al día solo: los videos de los últimos dos días cada media hora, los del último mes cada seis horas y los demás cada tres días. Los directos al aire, cada dos minutos. «Actualizar cifras» las pide ahora para esta lista.</p></div>' : ''}
-        <div class="tablewrap"><table class="tabla-pubs"><thead><tr><th></th><th>Video</th><th>Creador</th>${conCifras ? '<th>Vistas</th>' : ''}<th>Estado</th><th>Publicado</th><th></th></tr></thead><tbody>
+        <div class="tablewrap"><table class="tabla-pubs"><thead><tr>${columnas.map((c) => encabezado(c, o.orden, o.dir, 'ordenar-pubs')).join('')}<th></th></tr></thead><tbody>
       ${lista.length ? lista.map((p) => {
         const [t, c] = ESTADOS_PUB[p.estado] || [p.estado, 'b-mute'];
         const enlace = p.estado === 'moved' && p.destinoUrl ? p.destinoUrl : p.url;
         const titulo = conCifras
           ? `<button class="link titulo-video" data-accion="ver-video" data-video="${esc(p.videoId)}">${esc(p.titulo)}</button>`
           : `<b>${esc(p.titulo)}</b>`;
+        const cuando = p.cifrasEn ? ` title="Cifras de YouTube de ${esc(relativo(p.cifrasEn))}"` : '';
         return `<tr>
-          <td>${p.miniaturaUrl || conCifras ? `<div class="miniatura">${p.miniaturaUrl ? `<img class="thumb" src="${esc(p.miniaturaUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="thumb"></span>'}${conCifras ? etiquetaDuracion(p) : ''}</div>` : ''}</td>
-          <td><div class="titulo-2">${titulo}</div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? '<span class="badge b-warn">Corto</span>' : 'Video'}${p.canalNombre ? ' · ' + esc(p.canalNombre) : ''} · <span class="mono">${esc(p.videoId)}</span></span>${p.reportes ? ` <span class="badge b-warn" title="Veces que lo reportaron como roto">${num(p.reportes)} ${p.reportes === 1 ? 'reporte' : 'reportes'}</span>` : ''}</td>
-          <td>${esc(p.creadorNombre || '—')}${p.productoraNombre && p.productoraNombre !== p.creadorNombre ? `<div class="muted" style="font-size:12.5px">${esc(p.productoraNombre)}</div>` : ''}</td>
-          ${conCifras ? `<td>${celdaCifras(p)}</td>` : ''}
+          ${conCifras ? `<td><div class="miniatura">${p.miniaturaUrl ? `<img class="thumb" src="${esc(p.miniaturaUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="thumb"></span>'}${etiquetaDuracion(p)}</div></td>` : ''}
+          <td><div class="titulo-2">${titulo}</div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? '<span class="badge b-warn">Corto</span>' : 'Video'}${p.canalNombre ? ' · ' + filtrable('canal', p.canalId, p.canalNombre, 'tenue') : ''} · <span class="mono">${esc(p.videoId)}</span></span>${p.reportes ? ` <span class="badge b-warn" title="Veces que lo reportaron como roto">${num(p.reportes)} ${p.reportes === 1 ? 'reporte' : 'reportes'}</span>` : ''}</td>
+          <td>${filtrable('creador', p.creadorId, p.creadorNombre)}${p.productoraNombre && p.productoraNombre !== p.creadorNombre ? `<div style="font-size:12.5px">${filtrable('medio', p.productoraId, p.productoraNombre, 'tenue')}</div>` : ''}</td>
+          ${conCifras ? `<td class="num"${cuando}>${hay(p.vistas) ? `<b>${compacto(p.vistas)}</b>` : `<span class="muted">${p.cifrasEn ? 'Ocultas' : 'Sin cifras aún'}</span>`}${hay(p.espectadores) ? `<div><span class="badge b-bad">${esc(num(p.espectadores))} viendo ahora</span></div>` : ''}</td>
+          <td class="num"${cuando}>${hay(p.meGusta) ? compacto(p.meGusta) : '<span class="muted">—</span>'}</td>
+          <td class="num"${cuando}>${hay(p.comentarios) ? compacto(p.comentarios) : '<span class="muted">—</span>'}</td>` : ''}
           <td><span class="badge ${c}">${esc(t)}</span>${p.estado === 'moved' ? `<div class="muted" style="font-size:12.5px">a ${esc(PLATAFORMAS[p.destinoPlataforma] || p.destinoPlataforma || '')}</div>` : ''}</td>
-          <td class="num" title="${esc(fmtFecha(p.publicadoEn))}">${esc(fmtFecha(p.publicadoEn))}<div class="muted" style="font-size:12.5px">${esc(relativo(p.publicadoEn))}</div></td>
+          <td class="num fecha" title="${esc(fmtFecha(p.publicadoEn))}">${esc(fmtFecha(p.publicadoEn))}<div class="muted" style="font-size:12.5px">${esc(relativo(p.publicadoEn))}</div></td>
           <td class="acciones"><div class="botones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button>${ajustes && !p.enVivo ? `<button class="btn sm" data-accion="tipo-video" data-video="${esc(p.videoId)}" data-valor="${p.tipo === 'short' ? 'video' : 'short'}">${p.tipo === 'short' ? 'No es corto' : 'Es corto'}</button>` : ''}</div></td>
         </tr>`;
-      }).join('') : `<tr><td colspan="${conCifras ? 7 : 6}"><div class="empty">${VACIO_PUB[ajustes ? filtro : 'todos']}</div></td></tr>`}
-      </tbody></table></div></section>
+      }).join('') : `<tr><td colspan="${columnas.length + 1}"><div class="empty">${o.filtro || o.periodo !== 'todo' ? 'No hay videos en este periodo.' : VACIO_PUB[ajustes ? (FILTROS_PUB[estado.filtroPubs] ? estado.filtroPubs : 'todos') : 'todos']}</div></td></tr>`}
+      </tbody></table></div>
+      ${lista.length >= o.limite && o.limite < 500 ? `<div class="paginas"><span class="muted">Se ven los primeros ${num(lista.length)}.</span><button class="btn sm" data-accion="mas-pubs">Mostrar 100 más</button></div>` : ''}
+      </section>
       </div>`;
+    prepararBarraPub(o);
+  }
 
-    const sel = $('#ordenPubs');
-    if (sel) sel.addEventListener('change', () => { estado.ordenPubs = sel.value; vistaPublicaciones(); });
+  // Los totales por creador, canal o medio. El servidor suma; aquí se ordena.
+  async function vistaTotalesPub(o) {
+    const q = parametrosPub(o);
+    q.set('por', o.vista);
+    let lista;
+    const [r, ajustes] = await Promise.all([
+      api('/api/admin/publicaciones/totales?' + q.toString()).catch((e) => e),
+      estado.ajustes ? Promise.resolve(estado.ajustes) : api('/api/admin/ajustes').catch(() => null)
+    ]);
+    if (r instanceof Error) {
+      if (r.estado !== 404) throw r;
+      lista = null;
+    } else lista = r;
+    if (estado.vista !== 'publicaciones') return;
+    estado.ajustes = ajustes;
+    const NOMBRES = { creador: ['creador', 'creadores'], canal: ['canal', 'canales'], medio: ['medio', 'medios'] };
+    const [uno, varios] = NOMBRES[o.vista];
+
+    let cuerpo;
+    if (!lista) {
+      cuerpo = '<section class="panel"><div class="empty">Este servidor todavía no tiene la versión con los totales. Aparecerán aquí cuando se despliegue.</div></section>';
+    } else {
+      lista.sort(comparar(VALOR_TOTAL[o.totalOrden] || VALOR_TOTAL.vistas, o.totalDir === 'asc'));
+      const total = lista.reduce((t, x) => t + x.vistas, 0);
+      const videos = lista.reduce((t, x) => t + x.videos, 0);
+      const top = lista.reduce((a, b) => (!a || b.vistas > a.vistas ? b : a), null);
+      cuerpo = `
+        ${lista.length ? `<div class="stats">
+          <div class="stat"><div class="k">Vistas</div><div class="v">${compacto(total)}</div><div class="n">de ${plural(videos, 'video', 'videos')} en el periodo</div></div>
+          <div class="stat"><div class="k">${varios[0].toUpperCase() + varios.slice(1)} con videos</div><div class="v">${num(lista.length)}</div><div class="n">en el periodo</div></div>
+          <div class="stat"><div class="k">Promedio por ${uno}</div><div class="v">${compacto(Math.round(total / lista.length))}</div><div class="n">vistas</div></div>
+          <div class="stat"><div class="k">El más visto</div><div class="v">${compacto(top.vistas)}</div><div class="n clip" style="max-width:100%">${esc(top.nombre || 'ya no está en el directorio')}</div></div>
+        </div>` : ''}
+        <section class="panel">
+          ${o.vista === 'medio' ? '<div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Un video cuenta para un medio si salió de uno de los canales de ese medio, también los de sus creadores que estén asignados al medio.</p></div>' : ''}
+          <div class="tablewrap"><table class="tabla-totales"><thead><tr><th>#</th>${COLUMNAS_TOTALES.map((c) => encabezado(c, o.totalOrden, o.totalDir, 'ordenar-totales')).join('')}<th></th></tr></thead><tbody>
+          ${lista.length ? lista.map((t, i) => `<tr>
+            <td class="num muted">${i + 1}</td>
+            <td><div class="who">${o.vista === 'canal' ? '' : avatar(t.fotoUrl)}<div><b>${t.nombre ? esc(t.nombre) : '<span class="muted">Ya no está en el directorio</span>'}</b>${t.detalle || (t.nombre && !t.visible) ? `<span>${t.detalle ? esc(t.detalle) : ''}${t.nombre && !t.visible ? (t.detalle ? ' · ' : '') + 'oculto en la app' : ''}</span>` : ''}</div></div></td>
+            <td class="num">${num(t.videos)}</td>
+            <td class="num"><b>${compacto(t.vistas)}</b>${t.conCifras < t.videos ? `<div class="muted" style="font-size:12px" title="Los demás todavía no tienen cifras">de ${num(t.conCifras)} con cifras</div>` : ''}</td>
+            <td class="num">${t.conCifras ? compacto(Math.round(t.vistas / t.conCifras)) : '—'}</td>
+            <td class="num">${compacto(t.meGusta)}</td>
+            <td class="num">${compacto(t.comentarios)}</td>
+            <td class="num" title="${esc(fmtFecha(t.ultimo))}">${esc(relativo(t.ultimo))}</td>
+            <td class="acciones">${t.nombre ? `<button class="btn sm" data-accion="filtrar-pubs" data-tipo="${o.vista}" data-id="${esc(t.id)}" data-nombre="${esc(t.nombre)}" data-orden="vistas">Ver sus videos</button>` : ''}</td>
+          </tr>`).join('') : `<tr><td colspan="${COLUMNAS_TOTALES.length + 2}"><div class="empty">Ningún ${uno} publicó videos en este periodo.</div></td></tr>`}
+          </tbody></table></div>
+        </section>`;
+    }
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Publicaciones</h1><p class="sub">Lo que suman los videos de cada ${uno} en el periodo elegido. Toca el encabezado de una columna para ordenar, y «Ver sus videos» para la lista de ese ${uno}, de la más vista a la menos.</p></div></div>
+      <div class="stack">
+        ${barraPub(o, true, ajustes)}
+        ${cuerpo}
+      </div>`;
+    prepararBarraPub(o);
+  }
+
+  function prepararBarraPub(o) {
+    const sel = $('#periodoPub');
+    if (sel) {
+      sel.addEventListener('change', () => {
+        o.periodo = sel.value;
+        o.limite = 100;
+        // Fechas propias: se espera a que las elija y pulse Aplicar.
+        if (o.periodo === 'propio' && !(o.desde || o.hasta)) {
+          const hoy = new Date();
+          const iso = (d) => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+          o.hasta = iso(hoy);
+          o.desde = iso(new Date(hoy - 30 * 864e5));
+        }
+        vistaPublicaciones();
+      });
+    }
+    const enter = (e) => { if (e.key === 'Enter') { const b = $('[data-accion="aplicar-fechas"]'); if (b) b.click(); } };
+    ['#pubDesde', '#pubHasta'].forEach((id) => { const el = $(id); if (el) el.addEventListener('keydown', enter); });
   }
 
   /** "5 min después", "2 h después": lo que tardó el servidor en enterarse. */
@@ -3670,6 +3854,62 @@
 
         case 'filtro-pubs': {
           estado.filtroPubs = b.dataset.valor;
+          opcionesPub().limite = 100;
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'vista-pubs': {
+          opcionesPub().vista = b.dataset.valor;
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'ordenar-pubs': {
+          const o = opcionesPub(), clave = b.dataset.valor;
+          if (o.orden === clave) o.dir = o.dir === 'asc' ? 'desc' : 'asc';
+          else { o.orden = clave; o.dir = DE_LA_A.includes(clave) ? 'asc' : 'desc'; }
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'ordenar-totales': {
+          const o = opcionesPub(), clave = b.dataset.valor;
+          if (o.totalOrden === clave) o.totalDir = o.totalDir === 'asc' ? 'desc' : 'asc';
+          else { o.totalOrden = clave; o.totalDir = DE_LA_A.includes(clave) ? 'asc' : 'desc'; }
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'filtrar-pubs': {
+          const o = opcionesPub();
+          o.filtro = { tipo: b.dataset.tipo, id: b.dataset.id, nombre: b.dataset.nombre };
+          o.vista = 'videos';
+          o.limite = 100;
+          if (b.dataset.orden) { o.orden = b.dataset.orden; o.dir = 'desc'; }
+          await vistaPublicaciones();
+          window.scrollTo(0, 0);
+          break;
+        }
+
+        case 'quitar-filtro-pubs': {
+          opcionesPub().filtro = null;
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'mas-pubs': {
+          const o = opcionesPub();
+          o.limite = Math.min(500, o.limite + 100);
+          await vistaPublicaciones();
+          break;
+        }
+
+        case 'aplicar-fechas': {
+          const o = opcionesPub();
+          const desde = $('#pubDesde').value, hasta = $('#pubHasta').value;
+          if (desde && hasta && desde > hasta) { toast('La fecha inicial va antes que la final.', true); break; }
+          o.desde = desde; o.hasta = hasta; o.limite = 100;
           await vistaPublicaciones();
           break;
         }

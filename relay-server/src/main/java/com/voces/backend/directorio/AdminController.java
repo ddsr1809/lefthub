@@ -58,6 +58,7 @@ public class AdminController {
     private final TitulosDeCanales titulos;
     private final RevisionDeVideos revisionDeVideos;
     private final CifrasDeVideos cifras;
+    private final ConsultaDePublicaciones consulta;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -72,8 +73,10 @@ public class AdminController {
                            ReplicaService replica, AjustesService ajustes,
                            FotosService fotos, PerfilesService perfiles,
                            BorradoService borrado, TitulosDeCanales titulos,
-                           RevisionDeVideos revisionDeVideos, CifrasDeVideos cifras) {
+                           RevisionDeVideos revisionDeVideos, CifrasDeVideos cifras,
+                           ConsultaDePublicaciones consulta) {
         this.cifras = cifras;
+        this.consulta = consulta;
         this.titulos = titulos;
         this.revisionDeVideos = revisionDeVideos;
         this.creadores = creadores;
@@ -503,28 +506,78 @@ public class AdminController {
      *              cifras son las guardadas: aquí no se pregunta a YouTube,
      *              para que la lista cargue rápido (ver CifrasDeVideos).
      */
+    /**
+     * Los videos, con sus cifras, filtrados y en el orden que pida el panel.
+     *
+     * @param orden   publicado | vistas | meGusta | comentarios | duracion |
+     *                titulo | creador | estado. "recientes" es "publicado"
+     *                (lo de siempre, para quien no manda nada)
+     * @param dir     asc | desc. Sin él, desc, salvo título y creador (de la A a la Z)
+     * @param desde   instante ISO-8601 ("2026-10-01T07:00:00Z"): publicados desde entonces
+     * @param hasta   instante ISO-8601: publicados antes de entonces
+     * @param dias    atajo de una versión anterior del panel: los últimos N días
+     * @param creador solo los de ese creador; canal y medio, igual
+     *
+     * Las cifras son las guardadas: aquí no se pregunta a YouTube, para que
+     * la lista cargue rápido (ver CifrasDeVideos).
+     */
     @GetMapping("/publicaciones")
     @Transactional(readOnly = true)
     public List<Dtos.PublicacionAdminDto> recientes(@RequestParam(defaultValue = "40") int limite,
                                                     @RequestParam(required = false) String tipo,
-                                                    @RequestParam(defaultValue = "recientes") String orden,
-                                                    @RequestParam(defaultValue = "0") int dias) {
-        PageRequest pagina = PageRequest.of(0, Math.max(1, Math.min(limite, 200)));
+                                                    @RequestParam(defaultValue = "publicado") String orden,
+                                                    @RequestParam(required = false) String dir,
+                                                    @RequestParam(required = false) String desde,
+                                                    @RequestParam(required = false) String hasta,
+                                                    @RequestParam(defaultValue = "0") int dias,
+                                                    @RequestParam(required = false) UUID creador,
+                                                    @RequestParam(required = false) UUID canal,
+                                                    @RequestParam(required = false) UUID medio) {
+        if ("recientes".equals(orden)) orden = "publicado";
+        boolean ascendente = dir != null ? "asc".equals(dir) : ("titulo".equals(orden) || "creador".equals(orden));
 
-        List<Publicacion> lista;
-        if ("vistas".equals(orden)) {
-            Instant desde = dias > 0 ? Instant.now().minus(Duration.ofDays(Math.min(dias, 3650))) : Instant.EPOCH;
-            lista = "cortos".equals(tipo) ? publicaciones.masVistosDeTipo(desde, Publicacion.TIPO_CORTO, pagina)
-                    : "videos".equals(tipo) ? publicaciones.masVistosSinTipo(desde, Publicacion.TIPO_CORTO, pagina)
-                    : publicaciones.masVistos(desde, pagina);
-        } else {
-            // Sin `tipo`, todo junto, como siempre: el panel marca cuáles son cortos.
-            lista = "cortos".equals(tipo) ? publicaciones.findByTipoOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
-                    : "videos".equals(tipo) ? publicaciones.findByTipoNotOrderByPublicadoEnDesc(Publicacion.TIPO_CORTO, pagina)
-                    : publicaciones.findAllByOrderByPublicadoEnDesc(pagina);
-        }
-
+        List<Publicacion> lista = consulta.videos(
+                filtro(tipo, desde, hasta, dias, creador, canal, medio),
+                orden, ascendente, Math.max(1, Math.min(limite, 500)));
         return paraElPanel(lista, false);
+    }
+
+    /**
+     * Lo que suman los videos de cada creador, canal o medio en el periodo:
+     * cuántos videos, vistas, "me gusta" y comentarios. Un video cuenta para
+     * un medio si salió de un canal de ese medio. Los que ya no están en el
+     * directorio salen sin nombre.
+     */
+    @GetMapping("/publicaciones/totales")
+    @Transactional(readOnly = true)
+    public List<Dtos.TotalDePublicaciones> totales(@RequestParam String por,
+                                                   @RequestParam(required = false) String tipo,
+                                                   @RequestParam(required = false) String desde,
+                                                   @RequestParam(required = false) String hasta,
+                                                   @RequestParam(defaultValue = "0") int dias) {
+        if (!ConsultaDePublicaciones.GRUPOS.containsKey(por)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Agrupa por creador, canal o medio.");
+        }
+        Catalogo.Vista vista = catalogo.vista();
+        return consulta.totales(filtro(tipo, desde, hasta, dias, null, null, null), por).stream()
+                .map(t -> Dtos.TotalDePublicaciones.de(t, por, vista))
+                .toList();
+    }
+
+    private static ConsultaDePublicaciones.Filtro filtro(String tipo, String desde, String hasta, int dias,
+                                                         UUID creador, UUID canal, UUID medio) {
+        Instant inicio = instante(desde);
+        if (inicio == null && dias > 0) inicio = Instant.now().minus(Duration.ofDays(Math.min(dias, 3650)));
+        return new ConsultaDePublicaciones.Filtro(tipo, inicio, instante(hasta), creador, canal, medio);
+    }
+
+    private static Instant instante(String texto) {
+        if (texto == null || texto.isBlank()) return null;
+        try {
+            return Instant.parse(texto.trim());
+        } catch (Exception e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "La fecha no es válida: " + texto);
+        }
     }
 
     /**

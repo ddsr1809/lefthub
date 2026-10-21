@@ -259,6 +259,18 @@ minutos con el vigilante de siempre. Con mil videos son unas 30 unidades al
 día. El botón «Actualizar cifras» y abrir la ficha de un video las piden al
 momento (1 unidad por cada 50 videos). La app no recibe nada de esto.
 
+En Publicaciones se elige qué ver (los videos uno por uno, o sumados **por
+creador**, **por canal** o **por medio**), el tipo (todos, videos o cortos) y
+el periodo (24 horas, 7, 30 o 90 días, este año, 12 meses o fechas propias).
+Cada encabezado de columna ordena con un clic, y otro clic invierte el orden;
+tocar el nombre de un creador, canal o medio deja solo sus videos. Un video
+cuenta para un medio si salió de un canal de ese medio. Todo se calcula con las
+cifras guardadas, sin gastar cuota. En la API:
+`GET /api/admin/publicaciones` (con `orden`, `dir`, `desde`, `hasta`,
+`creador`, `canal`, `medio`, `tipo` y `limite` hasta 500) y
+`GET /api/admin/publicaciones/totales?por=creador|canal|medio`. La duración
+se guarda también en segundos (V22) para poder ordenar por ella.
+
 Si alguna vez agregas búsqueda, hazlo con `playlistItems.list` sobre la playlist de subidas del canal (1 unidad), nunca con `search.list`.
 
 ---

@@ -184,29 +184,6 @@ public final class Repositorios {
 
         List<Publicacion> findByVideoIdIn(Collection<String> videoIds);
 
-        // --- Los más vistos, para el panel. Solo los publicados desde `desde`;
-        //     los que todavía no tienen cifras van al final.
-
-        @Query("""
-                select p from Publicacion p where p.publicadoEn >= :desde
-                order by coalesce(p.vistas, -1) desc, p.publicadoEn desc
-                """)
-        List<Publicacion> masVistos(@Param("desde") Instant desde, Pageable pagina);
-
-        @Query("""
-                select p from Publicacion p where p.publicadoEn >= :desde and p.tipo = :tipo
-                order by coalesce(p.vistas, -1) desc, p.publicadoEn desc
-                """)
-        List<Publicacion> masVistosDeTipo(@Param("desde") Instant desde, @Param("tipo") String tipo,
-                                          Pageable pagina);
-
-        @Query("""
-                select p from Publicacion p where p.publicadoEn >= :desde and p.tipo <> :tipo
-                order by coalesce(p.vistas, -1) desc, p.publicadoEn desc
-                """)
-        List<Publicacion> masVistosSinTipo(@Param("desde") Instant desde, @Param("tipo") String tipo,
-                                           Pageable pagina);
-
         /**
          * Los videos cuyas cifras toca pedir otra vez. Cuanto más nuevo el
          * video, más rápido cambian: los de dos días, cada media hora; los del
