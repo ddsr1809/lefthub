@@ -58,7 +58,9 @@ nav .cuenta{margin-left:auto;font-size:12px;font-weight:700;background:rgba(255,
 .quien{margin-top:auto;padding:0 8px;font-size:12.5px;color:var(--side-muted);word-break:break-all}
 .quien button{margin-top:8px;background:none;border:1px solid rgba(255,255,255,.2);color:var(--side-ink);border-radius:var(--radius-sm);padding:5px 10px;cursor:pointer;font-weight:600;font-size:13px}
 
-main{padding:28px clamp(16px,3vw,40px) 60px;min-width:0;max-width:1280px}
+/* En pantallas anchas el contenido usa el espacio; el tope solo evita
+   renglones interminables en monitores muy grandes. */
+main{padding:28px clamp(16px,3vw,40px) 60px;min-width:0;max-width:1760px}
 .head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:22px}
 h1{font-size:25px;line-height:1.15;letter-spacing:-.02em;margin:0;font-weight:800}
 .sub{color:var(--muted);margin:4px 0 0;font-size:14.5px;max-width:70ch}
@@ -332,10 +334,12 @@ td.acciones .rec-acciones .btn{margin-left:0}
 /* Publicaciones: la tabla tiene que caber en el ancho del panel. Los títulos
    ocupan hasta dos líneas y los botones se acomodan en dos renglones si hace
    falta, en vez de empujar la tabla más allá del borde. */
-.tabla-pubs .titulo-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:180px;max-width:340px}
+.tabla-pubs .titulo-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;min-width:180px;max-width:560px}
 .tabla-pubs .titulo-video{display:inline}
 .tabla-pubs .cifras{min-width:100px}
 .tabla-pubs .cifras .muted{white-space:normal}
 .tabla-pubs td.acciones{white-space:normal}
 .tabla-pubs .botones{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:4px;max-width:170px;margin-left:auto}
 .tabla-pubs .botones .btn{margin-left:0}
+/* Con espacio de sobra, los botones de cada video en un solo renglón. */
+@media (min-width:1700px){.tabla-pubs .botones{max-width:none}}
