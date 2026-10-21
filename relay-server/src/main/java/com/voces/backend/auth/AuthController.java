@@ -193,6 +193,7 @@ public class AuthController {
                 recomendaciones.pasar(anonimo.get().getId(), usuario.getId());
                 if (anonimo.get().isRecomendarHabilitado()) usuario.setRecomendarHabilitado(true);
                 if (anonimo.get().isYoutubeHabilitado()) usuario.setYoutubeHabilitado(true);
+                if (anonimo.get().isStickersHabilitado()) usuario.setStickersHabilitado(true);
                 // Y la conversación con el equipo, si la tenía: se cifra otra
                 // vez para la cuenta que se queda, que hereda también el chat.
                 chat.pasar(anonimo.get().getId(), usuario.getId());

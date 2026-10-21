@@ -367,6 +367,9 @@ public final class Repositorios {
         /** Las cuentas que el equipo autorizó para agregar al directorio desde la app. */
         List<Usuario> findByEditorHabilitadoTrueOrderByVistoEnDesc();
 
+        /** Las cuentas que el equipo eligió para ver los stickers. */
+        List<Usuario> findByStickersHabilitadoTrueOrderByVistoEnDesc();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
@@ -557,4 +560,33 @@ public final class Repositorios {
 
         long countByUsuarioId(UUID usuarioId);
     }
+
+    // --- Stickers (V25) ------------------------------------------------------
+
+    public interface PaquetesStickers extends JpaRepository<PaqueteStickers, UUID> {
+
+        List<PaqueteStickers> findAllByOrderByOrdenAscCreadoEnAsc();
+
+        List<PaqueteStickers> findByPublicadoTrueOrderByOrdenAscCreadoEnAsc();
+
+        /** Para poner el paquete nuevo de un creador al final de los suyos. */
+        @Query("select coalesce(max(p.orden), -1) from PaqueteStickers p where p.creadorId = :creador")
+        int ultimoOrden(@Param("creador") UUID creador);
+    }
+
+    public interface Stickers extends JpaRepository<Sticker, UUID> {
+
+        List<Sticker> findByPaqueteIdOrderByOrdenAscCreadoEnAsc(UUID paqueteId);
+
+        List<Sticker> findByPaqueteIdInOrderByOrdenAscCreadoEnAsc(Collection<UUID> paquetes);
+
+        long countByPaqueteId(UUID paqueteId);
+
+        @Query("select coalesce(max(s.orden), -1) from Sticker s where s.paqueteId = :paquete")
+        int ultimoOrden(@Param("paquete") UUID paquete);
+    }
+
+    public interface DatosDeStickers extends JpaRepository<DatosDeSticker, UUID> {}
+
+    public interface IconosDePaquetes extends JpaRepository<IconoDePaquete, UUID> {}
 }
