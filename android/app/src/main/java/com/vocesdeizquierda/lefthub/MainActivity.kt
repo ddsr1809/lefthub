@@ -34,10 +34,12 @@ import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.chat.BandejaViewModel
 import com.vocesdeizquierda.lefthub.chat.ChatViewModel
 import com.vocesdeizquierda.lefthub.recomendar.RecomendarViewModel
+import com.vocesdeizquierda.lefthub.agregar.AgregarViewModel
 import com.vocesdeizquierda.lefthub.data.Abiertos
 import com.vocesdeizquierda.lefthub.data.Aceptacion
 import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.AvisoTocado
+import com.vocesdeizquierda.lefthub.data.TipoDeAlta
 import com.vocesdeizquierda.lefthub.data.AyudaTele
 import com.vocesdeizquierda.lefthub.data.VideoDeAviso
 import com.vocesdeizquierda.lefthub.data.EstadoServidor
@@ -494,7 +496,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                             (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }) ||
                             (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)) ||
                             // Se entra desde Ajustes: su pestaña sigue marcada.
-                            (destino == "ajustes" && ruta == "recomendar"),
+                            (destino == "ajustes" && (ruta == "recomendar" || ruta == "agregar")),
                         onClick = {
                             // Cada pestaña abre siempre su pantalla principal.
                             // Antes se guardaba dónde se había quedado cada
@@ -812,9 +814,38 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 )
             }
 
+            composable("agregar") {
+                // Vive lo que vive esta pantalla: al volver a entrar, empieza de cero.
+                val modeloAgregar: AgregarViewModel = viewModel()
+                val alcance = rememberCoroutineScope()
+                val duenos = remember(estado.creadores, estado.productoras) {
+                    duenosDe(estado.creadores, estado.productoras)
+                }
+                AgregarPantalla(
+                    modelo = modeloAgregar,
+                    duenos = duenos,
+                    etiquetas = estado.etiquetas,
+                    // Lo nuevo ya está en el servidor: que el Directorio lo enseñe sin esperar.
+                    onAgregado = { alcance.launch { modelo.refrescarDirectorio() } },
+                    // El mismo camino que un aviso de "creador nuevo": pide el
+                    // directorio otra vez y luego abre la ficha.
+                    onVerFicha = { hecho ->
+                        AvisoTocado.ficha.value = when (hecho.tipo) {
+                            TipoDeAlta.CREADOR -> "creador/${hecho.id}"
+                            TipoDeAlta.MEDIO -> "productora/${hecho.id}"
+                            TipoDeAlta.CANAL -> "canal/${hecho.id}"
+                        }
+                    },
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
             composable("ajustes") {
                 AjustesPantalla(
                     estado = estado,
+                    onAbrirAgregar = { nav.navigate("agregar") { launchSingleTop = true } },
                     onAbrirChat = { nav.navigate("chat") { launchSingleTop = true } },
                     onAbrirBandeja = { nav.navigate("chat-equipo") { launchSingleTop = true } },
                     onAbrirRecomendar = { nav.navigate("recomendar") { launchSingleTop = true } },

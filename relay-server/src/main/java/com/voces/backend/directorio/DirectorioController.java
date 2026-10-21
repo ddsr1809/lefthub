@@ -7,6 +7,7 @@ import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.*;
 import com.voces.backend.push.PushService;
 import com.voces.backend.recomendaciones.RecomendacionesService;
+import com.voces.backend.editor.EditorService;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -562,7 +563,8 @@ public class DirectorioController {
                 AjustesService.permite(ajustes.youtube(), usuario.isEsAdmin(), usuario.isYoutubeHabilitado()),
                 chatDe(usuario),
                 RecomendacionesService.puede(ajustes.recomendaciones(),
-                        usuario.isEsAdmin(), usuario.isRecomendarHabilitado()));
+                        usuario.isEsAdmin(), usuario.isRecomendarHabilitado()),
+                EditorService.puede(usuario));
     }
 
     /**

@@ -194,14 +194,20 @@ class AppViewModel(
      * Vuelve a pedir el directorio en el acto, sin esperar a la siguiente
      * vuelta de cinco minutos. Lo usa el toque en un aviso de "creador nuevo"
      * (o medio, o canal): si la app llevaba un rato abierta, todavía no lo
-     * conoce y su ficha diría que ya no está. Sin red, se queda lo que había.
+     * conoce y su ficha diría que ya no está. También agregar al directorio
+     * desde la app, por lo mismo. Sin red, se queda lo que había.
      */
     suspend fun refrescarDirectorio() {
         withTimeoutOrNull(8_000L) {
             val creadores = async { runCatching { ApiRelay.creadores() }.getOrNull() }
             val productoras = async { runCatching { ApiRelay.productoras() }.getOrNull() }
+            // También las etiquetas: lo recién agregado desde la app pudo
+            // llevar alguna, y sin esto no saldría en su filtro hasta la
+            // siguiente vuelta.
+            val etiquetas = async { runCatching { ApiRelay.etiquetas() }.getOrNull() }
             creadores.await()?.let { lista -> _estado.update { it.copy(creadores = lista) } }
             productoras.await()?.let { lista -> _estado.update { it.copy(productoras = lista) } }
+            etiquetas.await()?.let { lista -> _estado.update { it.copy(etiquetas = lista) } }
         }
     }
 

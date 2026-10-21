@@ -293,6 +293,7 @@
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
     recomendaciones: vistaRecomendaciones,
+    editores: vistaEditores,
     avisos: vistaAvisos,
     anuncios: vistaAnuncios,
     apps: vistaApps,
@@ -2217,6 +2218,74 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Editores: agregar al directorio desde la app
+  // ---------------------------------------------------------------------------
+  // Las cuentas autorizadas aquí dan de alta creadores, medios y canales desde
+  // su teléfono, sin pasar por el panel ni esperar aprobación: sale en el acto.
+  // Por eso esta sección es sobre todo un historial, para revisar después qué
+  // entró y quién lo metió. Empieza sin nadie autorizado, tampoco los admins.
+  const TIPOS_ALTA = { creador: ['Creador', 'b-ok'], medio: ['Medio', 'b-info'], canal: ['Canal', 'b-warn'] };
+  const ACCION_ALTA = { creador: 'editar-creador', medio: 'editar-productora', canal: 'editar-canal' };
+
+  async function vistaEditores() {
+    let d;
+    try {
+      // Frescos: lo agregado desde la app no está en lo que el panel tenía
+      // guardado, y «Revisar» abre su ficha desde ahí.
+      [d] = await Promise.all([api('/api/admin/editores'), cargarCreadores(true), cargarProductoras(true)]);
+    } catch (e) {
+      if (e.estado === 404) {
+        main.innerHTML = '<div class="head"><div><h1>Editores</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no permite agregar desde la app. Actualízalo para usarlo.</div></div>';
+        return;
+      }
+      throw e;
+    }
+    if (estado.vista !== 'editores') return;
+
+    const cuenta = (u) => u.email || 'Cuenta ' + String(u.id).slice(0, 8);
+    const hoy = d.altas.filter((a) => Date.now() - new Date(a.creadoEn) < 864e5).length;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Editores</h1><p class="sub">Cuentas que pueden agregar creadores, medios y canales de YouTube desde la app. Lo que agregan sale en el directorio en el acto, sin pasar por aquí: revísalo abajo. Cada cuenta puede hacer hasta 20 altas al día.</p></div></div>
+      <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Cuentas autorizadas</h2><span class="muted" style="font-size:13px">${plural(d.editores.length, 'cuenta', 'cuentas')}</span></div>
+          <div class="panel-body">
+            ${d.editores.length ? '<ul class="lista-simple">' + d.editores.map((u) => `<li><span class="clip"><b>${esc(cuenta(u))}</b>${u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : ''} <span class="muted" style="font-size:12.5px">· ${esc(plural(u.altas, 'alta', 'altas'))} · abrió la app ${esc(relativo(u.vistoEn))}</span></span><button class="btn sm danger" data-accion="editor-usuario" data-desde="lista" data-id="${esc(u.id)}" data-valor="false" data-nombre="${esc(cuenta(u))}">Quitar</button></li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Nadie todavía. Mientras no autorices a nadie, la app no enseña esta opción a ninguna cuenta, tampoco a los administradores.</p>'}
+            <p class="hint" style="margin:10px 0 0">Para autorizar una cuenta, búscala en <button class="link" data-ir="usuarios">Usuarios</button>, ábrela con «Ver» y pulsa «Dejar que agregue desde la app». Tiene que ser una cuenta guardada con Google o Apple.</p>
+          </div></section>
+        <section class="panel">
+          <div class="panel-head"><h2>Lo que se agregó desde la app</h2><span class="muted" style="font-size:13px">${plural(d.altas.length, 'alta', 'altas')}${hoy ? ' · ' + num(hoy) + ' en 24 h' : ''}</span></div>
+          <div class="tablewrap"><table><thead><tr><th>Qué</th><th>Nombre</th><th>Quién</th><th>Cuándo</th><th></th></tr></thead><tbody>
+          ${d.altas.length ? d.altas.map((a) => {
+            const [t, c] = TIPOS_ALTA[a.tipo] || [a.tipo, 'b-mute'];
+            return `<tr>
+              <td><span class="badge ${c}">${esc(t)}</span></td>
+              <td><div class="clip"><b>${esc(a.nombre)}</b></div>${a.channelId ? `<a class="mono" style="font-size:12px" href="https://www.youtube.com/channel/${esc(a.channelId)}" target="_blank" rel="noopener">${esc(a.channelId)}</a>` : ''}</td>
+              <td><div class="clip">${esc(a.autor || 'Cuenta borrada')}</div></td>
+              <td class="num" title="${esc(fmtFecha(a.creadoEn))}">${esc(relativo(a.creadoEn))}</td>
+              <td class="acciones">${a.existe ? `<button class="btn sm" data-accion="${ACCION_ALTA[a.tipo]}" data-id="${esc(a.objetoId)}">Revisar</button>` : '<span class="badge b-mute">Ya no está</span>'}</td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="5"><div class="empty">Todavía no se ha agregado nada desde la app.</div></td></tr>'}
+          </tbody></table></div>
+        </section>
+      </div>`;
+  }
+
+  /** Bloque de la ficha de una cuenta: dejarla o no agregar al directorio desde la app. */
+  function fichaEditor(u) {
+    const nombre = esc(u.email || 'esta cuenta');
+    if (u.editorHabilitado) {
+      return `<div><button class="btn danger" data-accion="editor-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Ya no dejar que agregue desde la app</button>
+          <p class="hint" style="margin:6px 0 0">Puede agregar creadores, medios y canales desde la app. Lo que agregó está en <button class="link" data-ir="editores">Editores</button>.</p></div>`;
+    }
+    if (u.proveedor === 'anonimo') {
+      return '<div><p class="hint" style="margin:0">Para dejar que agregue al directorio desde la app, primero tiene que guardar su cuenta con Google o Apple.</p></div>';
+    }
+    return `<div><button class="btn" data-accion="editor-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Dejar que agregue desde la app</button>
+          <p class="hint" style="margin:6px 0 0">Verá «Agregar al directorio» en Ajustes de la app. Lo que agregue sale en el acto, sin aprobación.</p></div>`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Avisos del equipo
   // ---------------------------------------------------------------------------
   // Lo que el equipo manda a mano: un medio o un canal nuevo, un video
@@ -2524,7 +2593,8 @@
       + (u.posibleBot && !sinBot ? ' <span class="badge b-bad">Posible bot</span>' : '')
       + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '')
       + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '')
-      + (u.youtubeHabilitado ? ' <span class="badge b-info">YouTube</span>' : '');
+      + (u.youtubeHabilitado ? ' <span class="badge b-info">YouTube</span>' : '')
+      + (u.editorHabilitado ? ' <span class="badge b-warn">Editor</span>' : '');
   };
 
   // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
@@ -2812,6 +2882,7 @@
         ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
         ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.youtubeHabilitado === undefined ? '' : fichaYouTube(u)}
+        ${u.editorHabilitado === undefined ? '' : fichaEditor(u)}
         ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
   }
@@ -4412,6 +4483,22 @@
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/recomendar?valor=' + dar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
           if (b.dataset.desde === 'lista') await vistaRecomendaciones();
+          else await abrirUsuario(id);
+          break;
+        }
+
+        case 'editor-usuario': {
+          const dar = b.dataset.valor === 'true';
+          const ok = await confirmar(
+            dar ? '¿Dejar que ' + b.dataset.nombre + ' agregue desde la app?' : '¿Quitarle a ' + b.dataset.nombre + ' el permiso de agregar?',
+            dar ? 'Podrá dar de alta creadores, medios y canales de YouTube desde su teléfono. Salen en el directorio en el acto, sin pasar por aquí ni esperar aprobación, y se suscriben a los avisos de sus videos. Lo que agregue lo verás en la sección Editores.'
+              : 'Deja de ver «Agregar al directorio» en la app. Lo que ya agregó se queda en el directorio.',
+            dar ? 'Dar permiso' : 'Quitar permiso', !dar || config.ambiente === 'produccion');
+          if (!ok) break;
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/editor?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (b.dataset.desde === 'lista') await vistaEditores();
           else await abrirUsuario(id);
           break;
         }

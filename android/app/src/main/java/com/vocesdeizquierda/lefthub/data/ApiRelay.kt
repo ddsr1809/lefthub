@@ -520,6 +520,42 @@ object ApiRelay {
         return mensaje to r.optJSONObject("recomendacion")?.let(::recomendacionDe)
     }
 
+    // -------------------------------------------------------------------------
+    // Agregar al directorio (cuentas autorizadas desde el panel)
+    // -------------------------------------------------------------------------
+    // Sin permiso, el servidor contesta 403 con un motivo escrito para leerse.
+
+    suspend fun loQueAgregue(): LoQueAgregue = loQueAgregueDe(getObject("/api/editor"))
+
+    /** Un canal de YouTube por su enlace, su @handle o su ID. */
+    suspend fun buscarCanalParaAgregar(texto: String): CanalEncontrado =
+        canalEncontradoDe(getObject("/api/editor/canal?query=" + URLEncoder.encode(texto.trim(), "UTF-8")))
+
+    suspend fun agregarCreador(nombre: String, descripcion: String?, channelId: String, etiquetas: List<String>): Agregado =
+        agregado(post("/api/editor/creadores", JSONObject()
+            .put("nombre", nombre)
+            .put("descripcion", descripcion ?: JSONObject.NULL)
+            .put("channelId", channelId)
+            .put("etiquetas", JSONArray(etiquetas))))
+
+    suspend fun agregarMedio(nombre: String, descripcion: String?, channelId: String?, etiquetas: List<String>): Agregado =
+        agregado(post("/api/editor/medios", JSONObject()
+            .put("nombre", nombre)
+            .put("descripcion", descripcion ?: JSONObject.NULL)
+            .put("channelId", channelId ?: JSONObject.NULL)
+            .put("etiquetas", JSONArray(etiquetas))))
+
+    /** Un canal más de un creador o de un medio que ya está: uno de los dos. */
+    suspend fun agregarCanal(channelId: String, creadorId: String?, productoraId: String?, etiquetas: List<String>): Agregado =
+        agregado(post("/api/editor/canales", JSONObject()
+            .put("channelId", channelId)
+            .put("creadorId", creadorId ?: JSONObject.NULL)
+            .put("productoraId", productoraId ?: JSONObject.NULL)
+            .put("etiquetas", JSONArray(etiquetas))))
+
+    private fun agregado(json: JSONObject): Agregado =
+        agregadoDe(json) ?: throw IOException("El servidor contestó algo que esta versión de la app no entiende.")
+
     // El paso del JSON del servidor a los modelos de la app está en Mapeo.kt.
 
     // -------------------------------------------------------------------------
