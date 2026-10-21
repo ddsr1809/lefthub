@@ -648,8 +648,9 @@ public class AdminController {
 
     @GetMapping("/ajustes")
     public Dtos.AjustesDto ajustes() {
-        return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios(), ajustes.youtube(),
-                ajustes.recomendaciones());
+        String youtube = ajustes.youtube();
+        return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios(),
+                AjustesService.RECOMENDAR_TODOS.equals(youtube), ajustes.recomendaciones(), youtube);
     }
 
     /** Solo cambia lo que llega; lo demás se queda como estaba. */
@@ -657,7 +658,14 @@ public class AdminController {
     public Dtos.AjustesDto cambiarAjustes(@RequestBody Dtos.CambiarAjustes peticion) {
         if (peticion.cortos() != null) ajustes.ponerCortos(peticion.cortos());
         if (peticion.anuncios() != null) ajustes.ponerAnuncios(peticion.anuncios());
-        if (peticion.youtube() != null) ajustes.ponerYoutube(peticion.youtube());
+        if (peticion.youtube() != null) ajustes.ponerYoutube(peticion.youtube().booleanValue());
+        if (peticion.youtubeAlcance() != null) {
+            if (!AjustesService.alcanceValido(peticion.youtubeAlcance())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "A quién se ofrece YouTube: apagado, admins, elegidos o todos.");
+            }
+            ajustes.ponerYoutube(peticion.youtubeAlcance());
+        }
         if (peticion.recomendaciones() != null) {
             if (!AjustesService.alcanceValido(peticion.recomendaciones())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

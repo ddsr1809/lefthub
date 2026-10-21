@@ -77,13 +77,48 @@ public class AjustesService {
      * enciende sin publicar otra versión de la app.
      */
     @Transactional(readOnly = true)
-    public boolean youtube() {
-        return encendido(YOUTUBE);
+    public String youtube() {
+        String valor = ajustes.findById(YOUTUBE).map(Ajuste::getValor).orElse(RECOMENDAR_APAGADO);
+        // Hasta el servidor 1.0.11 era un interruptor: "true" era para todos.
+        if ("true".equals(valor)) return RECOMENDAR_TODOS;
+        return alcanceValido(valor) ? valor : RECOMENDAR_APAGADO;
     }
 
+    /**
+     * A quién se ofrece "Conectar con YouTube": apagado, admins, elegidos o
+     * todos. Mientras Google no apruebe la verificación, lo seguro es
+     * "elegidos": así se prueba en la app de producción sin gastar el cupo de
+     * 100 cuentas ni enseñarle el aviso de app no verificada a nadie más.
+     */
+    @Transactional
+    public void ponerYoutube(String alcance) {
+        if (!alcanceValido(alcance)) {
+            throw new IllegalArgumentException("Alcance desconocido: " + alcance);
+        }
+        Ajuste ajuste = ajustes.findById(YOUTUBE).orElseGet(() -> new Ajuste(YOUTUBE));
+        ajuste.setValor(alcance);
+        ajuste.setActualizadoEn(Instant.now());
+        ajustes.save(ajuste);
+    }
+
+    /** Lo de antes: encendido es para todos, apagado es para nadie. */
     @Transactional
     public void ponerYoutube(boolean encendido) {
-        poner(YOUTUBE, encendido);
+        ponerYoutube(encendido ? RECOMENDAR_TODOS : RECOMENDAR_APAGADO);
+    }
+
+    /**
+     * Si un alcance (apagado, admins, elegidos o todos) le llega a una cuenta.
+     * Estático y sin base de datos para probar cada combinación.
+     */
+    public static boolean permite(String alcance, boolean esAdmin, boolean elegida) {
+        if (alcance == null) return false;
+        return switch (alcance) {
+            case RECOMENDAR_TODOS -> true;
+            case RECOMENDAR_ELEGIDOS -> esAdmin || elegida;
+            case RECOMENDAR_ADMINS -> esAdmin;
+            default -> false;
+        };
     }
 
     // -------------------------------------------------------------------------

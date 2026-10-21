@@ -726,7 +726,18 @@ El servidor no guarda tokens de Google ni necesita `client secret`: el token dur
 
 **Antes de encenderlo en producción**
 
-`youtube.readonly` es un permiso sensible. Sin la verificación de OAuth aprobada, Google muestra la pantalla de "app no verificada" y solo deja que 100 personas den el permiso en toda la vida del proyecto; al agotarse el cupo se desactiva también el inicio de sesión con Google. Por eso el sabor `prod` de Android trae `SUSCRIPCIONES_YOUTUBE` en `false` (`android/app/build.gradle.kts`). Pide la verificación, espera la aprobación y cámbialo entonces.
+`youtube.readonly` es un permiso sensible. Sin la verificación de OAuth aprobada, Google muestra la pantalla de "app no verificada" y solo deja que 100 personas den el permiso en toda la vida del proyecto. Por eso la función viene en todas las apps desde la 1.0.6 (`SUSCRIPCIONES_YOUTUBE` en `true`), pero el servidor decide a quién se le ofrece.
+
+**A quién se le ofrece (panel → Apps → Suscripciones de YouTube)**
+
+Igual que las recomendaciones, con cuatro alcances guardados en el ajuste `youtube`:
+
+- **Nadie** (`apagado`): la app no ofrece conectar YouTube ni consulta nada.
+- **Solo administradores** (`admins`).
+- **Administradores y cuentas elegidas** (`elegidos`): además, las cuentas marcadas con *Ofrecerle conectar YouTube* en su ficha de Usuarios (`usuarios.youtube_habilitado`, V21). Es el que hay que usar mientras Google revisa la verificación: el revisor lo prueba en la app de producción sin que nadie más vea el aviso de "app no verificada" ni gaste el cupo.
+- **Todos** (`todos`): cualquier cuenta que guardó su cuenta con Google. Solo con la verificación aprobada.
+
+El perfil (`GET /api/perfil`) manda `youtube` ya resuelto para cada cuenta, así que la app no cambia. Un servidor anterior guardaba `true`/`false`; `true` se sigue leyendo como `todos`. Desde el panel: `PUT /api/admin/ajustes` con `{"youtubeAlcance": "elegidos"}` y `POST /api/admin/usuarios/{id}/youtube?valor=true`.
 
 Para la verificación y para cumplir las políticas de la API de YouTube, la política de privacidad tiene que decir qué se lee (a qué canales del directorio está suscrita la persona), para qué, y enlazar a la política de privacidad de Google y a los términos de YouTube.
 
