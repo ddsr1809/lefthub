@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -33,7 +34,9 @@ import java.time.Instant
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.anuncios.Huecos
 import com.vocesdeizquierda.lefthub.data.Abiertos
+import com.vocesdeizquierda.lefthub.data.Cifras
 import com.vocesdeizquierda.lefthub.data.Publicacion
+import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -45,6 +48,12 @@ import java.util.Locale
 // Los videos cortos (Shorts) no van en esa lista. Si el equipo los permite y
 // la persona no los apagó, tienen su propio apartado, al que se entra a
 // propósito con un botón; si no, aquí no hay ni rastro de ellos.
+//
+// «Lo más visto» es el otro apartado: lo que más se ha visto de todo el
+// directorio, lo siga la persona o no, en las últimas 24 horas o en la
+// semana. Sirve para descubrir, pero no se mezcla con lo de arriba: la
+// lista de siempre sigue siendo solo de quienes eligió. Y aunque no siga a
+// nadie todavía, lo más visto se puede ver.
 //
 // Los anuncios, cuando los hay, van entre los videos como una tarjeta más,
 // con otra forma y con la palabra "Publicidad" escrita arriba: nadie debe
@@ -66,6 +75,10 @@ fun NovedadesPantalla(
     cortos: List<Publicacion> = emptyList(),
     /** El equipo permite los cortos y la persona no los apagó en Ajustes. */
     verCortos: Boolean = false,
+    /** «Lo más visto», por periodo ("hoy", "semana"). Ver AppViewModel.cargarMasVistas. */
+    masVistas: Map<String, VideosDeCanal> = emptyMap(),
+    /** Pide lo más visto de ese periodo: al entrar al apartado o al cambiar de periodo. */
+    onCargarMasVistas: (String) -> Unit = {},
     /** Los videos que ya abrió desde la app: su tarjeta se ve distinta. */
     abiertos: Set<String> = emptySet(),
     /**
@@ -81,18 +94,40 @@ fun NovedadesPantalla(
 ) {
     val contexto = LocalContext.current
 
-    // En qué apartado está. Sobrevive a girar el teléfono; al abrir la app
-    // siempre se empieza por los videos de siempre.
-    var enCortos by rememberSaveable { mutableStateOf(false) }
+    // En qué apartado está, y en «Lo más visto», de qué periodo. Sobreviven
+    // a girar el teléfono; al abrir la app siempre se empieza por los videos
+    // de siempre.
+    var elegido by rememberSaveable { mutableStateOf(Apartado.VIDEOS) }
+    var periodo by rememberSaveable { mutableStateOf(PERIODO_HOY) }
     // Si los cortos se apagan mientras se estaban viendo, se vuelve a los videos.
-    val viendoCortos = verCortos && enCortos
-    val lista = if (viendoCortos) cortos else publicaciones
+    val apartado = if (elegido == Apartado.CORTOS && !verCortos) Apartado.VIDEOS else elegido
+    val delPeriodo = masVistas[periodo] ?: VideosDeCanal(periodo, cargando = true)
+    val lista = when (apartado) {
+        Apartado.VIDEOS -> publicaciones
+        Apartado.CORTOS -> cortos
+        Apartado.MAS_VISTO -> delPeriodo.lista
+    }
 
-    if (!hayFavoritos) {
+    // Lo más visto cambia a lo largo del día: se pide cada vez que se entra.
+    LaunchedEffect(apartado, periodo) {
+        if (apartado == Apartado.MAS_VISTO) onCargarMasVistas(periodo)
+    }
+
+    if (!hayFavoritos && apartado != Apartado.MAS_VISTO) {
         Vacio(
             titulo = "Todavía no sigues a nadie",
             mensaje = "Elige a los creadores y medios que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
-            accion = { BotonGrande("Ver el directorio", onClick = onIrAlDirectorio) }
+            accion = {
+                Column {
+                    BotonGrande("Ver el directorio", onClick = onIrAlDirectorio)
+                    BotonGrande(
+                        "Ver lo más visto",
+                        subtitulo = "De todos los creadores del directorio",
+                        variante = VarianteBoton.SECUNDARIO,
+                        onClick = { elegido = Apartado.MAS_VISTO }
+                    )
+                }
+            }
         )
         return
     }
@@ -122,18 +157,32 @@ fun NovedadesPantalla(
             )
         }
 
-        if (verCortos) {
-            item {
-                SelectorDeApartado(
-                    enCortos = viendoCortos,
-                    onElegir = { enCortos = it }
+        item {
+            SelectorDeApartado(
+                apartado = apartado,
+                conCortos = verCortos,
+                onElegir = { elegido = it }
+            )
+        }
+
+        if (apartado == Apartado.MAS_VISTO) {
+            item(key = "periodo") {
+                ElegirPeriodo(periodo = periodo, onElegir = { periodo = it })
+            }
+            item(key = "explicacion") {
+                Text(
+                    "Lo que más se ha visto de todos los creadores del directorio, los sigas o no, " +
+                        if (periodo == PERIODO_HOY) "en las últimas 24 horas." else "en los últimos 7 días.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
                 )
             }
         }
 
         // Cómo verlo en la tele. Solo con los videos de siempre y solo si
         // alguno se abre en YouTube, que es de donde sale el botón.
-        if (ayudaTele && !viendoCortos && lista.any { it.destino.plataforma == "youtube" }) {
+        if (ayudaTele && apartado == Apartado.VIDEOS && lista.any { it.destino.plataforma == "youtube" }) {
             item(key = "ayuda-tele") {
                 TarjetaVerEnLaTele(onEntendido = onAyudaTeleEntendida)
             }
@@ -141,13 +190,36 @@ fun NovedadesPantalla(
 
         if (lista.isEmpty()) {
             item {
-                Vacio(
-                    titulo = if (viendoCortos) "Sin videos cortos por ahora"
-                    else "Sin novedades por ahora",
-                    mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras, cuantosCanales)}. " +
-                        if (viendoCortos) "En cuanto publiquen un video corto, aparece aquí."
-                        else "En cuanto publiquen algo, el aviso llega a este teléfono."
-                )
+                when {
+                    apartado == Apartado.MAS_VISTO && delPeriodo.cargando -> Text(
+                        "Buscando lo más visto…",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    apartado == Apartado.MAS_VISTO && delPeriodo.fallo -> Vacio(
+                        titulo = "No se pudo traer lo más visto",
+                        mensaje = "Revisa tu conexión e inténtalo otra vez.",
+                        accion = {
+                            BotonGrande("Intentar otra vez", onClick = { onCargarMasVistas(periodo) })
+                        }
+                    )
+
+                    apartado == Apartado.MAS_VISTO -> Vacio(
+                        titulo = if (periodo == PERIODO_HOY) "Nada todavía hoy" else "Nada esta semana",
+                        mensaje = if (periodo == PERIODO_HOY)
+                            "En las últimas 24 horas nadie del directorio ha publicado, o YouTube aún no cuenta sus vistas. Prueba con «Esta semana»."
+                        else "En los últimos 7 días nadie del directorio ha publicado, o YouTube aún no cuenta sus vistas."
+                    )
+
+                    else -> Vacio(
+                        titulo = if (apartado == Apartado.CORTOS) "Sin videos cortos por ahora"
+                        else "Sin novedades por ahora",
+                        mensaje = "Sigues a ${aQuienSigue(cuantosFavoritos, cuantasProductoras, cuantosCanales)}. " +
+                            if (apartado == Apartado.CORTOS) "En cuanto publiquen un video corto, aparece aquí."
+                            else "En cuanto publiquen algo, el aviso llega a este teléfono."
+                    )
+                }
             }
         }
 
@@ -156,6 +228,8 @@ fun NovedadesPantalla(
                 TarjetaPublicacion(
                     publicacion = publicacion,
                     abierto = publicacion.videoId in abiertos,
+                    // En «Lo más visto» cada tarjeta dice en qué lugar va y cuántas vistas tiene.
+                    puesto = if (apartado == Apartado.MAS_VISTO) posicion + 1 else null,
                     onAbrir = {
                         val destino = publicacion.destino
                         Enrutador.abrirVideo(
@@ -163,7 +237,7 @@ fun NovedadesPantalla(
                             destino.plataforma,
                             destino.videoId,
                             destino.url,
-                            campana = "novedades"
+                            campana = if (apartado == Apartado.MAS_VISTO) "mas_visto" else "novedades"
                         )
                         Abiertos.marcar(contexto, publicacion.videoId)
                     }
@@ -186,34 +260,94 @@ fun NovedadesPantalla(
     }
 }
 
+/** Los apartados de Novedades. */
+internal enum class Apartado { VIDEOS, MAS_VISTO, CORTOS }
+
+internal const val PERIODO_HOY = "hoy"
+internal const val PERIODO_SEMANA = "semana"
+
 /**
- * Los dos apartados de Novedades. Dos botones grandes con su nombre escrito,
- * uno al lado del otro; el que está elegido va relleno.
+ * Los apartados de Novedades: botones grandes con su nombre escrito; el que
+ * está elegido va relleno. Tres en una fila no caben con letra grande, así
+ * que con los cortos encendidos «Lo más visto» baja a su propia fila, a lo
+ * ancho.
  */
 @Composable
-private fun SelectorDeApartado(enCortos: Boolean, onElegir: (Boolean) -> Unit) {
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
+private fun SelectorDeApartado(apartado: Apartado, conCortos: Boolean, onElegir: (Apartado) -> Unit) {
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(bottom = Espacio.md)
     ) {
-        BotonGrande(
-            titulo = "Videos",
-            modifier = Modifier
-                .weight(1f)
-                .semantics { selected = !enCortos },
-            variante = if (!enCortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
-            onClick = { onElegir(false) }
-        )
-        BotonGrande(
-            titulo = "Videos cortos",
-            modifier = Modifier
-                .weight(1f)
-                .semantics { selected = enCortos },
-            variante = if (enCortos) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
-            onClick = { onElegir(true) }
-        )
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            BotonDeApartado("Videos", Apartado.VIDEOS, apartado, onElegir, Modifier.weight(1f))
+            if (conCortos) {
+                BotonDeApartado("Videos cortos", Apartado.CORTOS, apartado, onElegir, Modifier.weight(1f))
+            } else {
+                BotonDeApartado("Lo más visto", Apartado.MAS_VISTO, apartado, onElegir, Modifier.weight(1f))
+            }
+        }
+        if (conCortos) {
+            BotonDeApartado("Lo más visto", Apartado.MAS_VISTO, apartado, onElegir)
+        }
+    }
+}
+
+@Composable
+private fun BotonDeApartado(
+    titulo: String,
+    este: Apartado,
+    elegido: Apartado,
+    onElegir: (Apartado) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    BotonGrande(
+        titulo = titulo,
+        modifier = modifier.semantics { selected = este == elegido },
+        variante = if (este == elegido) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
+        onClick = { onElegir(este) }
+    )
+}
+
+/**
+ * «Hoy» o «Esta semana», dentro de Lo más visto. Más pequeños que los
+ * botones de arriba, porque van por debajo de ellos. El elegido va relleno
+ * y además lleva una palomita: no depende solo del color.
+ */
+@Composable
+private fun ElegirPeriodo(periodo: String, onElegir: (String) -> Unit) {
+    val esquema = MaterialTheme.colorScheme
+    val forma = RoundedCornerShape(50)
+
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = Espacio.sm)
+    ) {
+        listOf(PERIODO_HOY to "Hoy", PERIODO_SEMANA to "Esta semana").forEach { (clave, nombre) ->
+            val esteElegido = clave == periodo
+            Box(
+                contentAlignment = Alignment.Center,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = Tactil.minimo)
+                    .clip(forma)
+                    .background(if (esteElegido) esquema.primary else esquema.surface)
+                    .border(1.dp, if (esteElegido) esquema.primary else esquema.outline, forma)
+                    .selectable(selected = esteElegido, role = Role.Tab, onClick = { onElegir(clave) })
+                    .padding(horizontal = Espacio.md, vertical = Espacio.sm)
+            ) {
+                Text(
+                    if (esteElegido) "✓ $nombre" else nombre,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
+                    color = if (esteElegido) esquema.onPrimary else esquema.onSurface
+                )
+            }
+        }
     }
 }
 
@@ -231,10 +365,15 @@ internal fun TarjetaPublicacion(
     onAbrir: () -> Unit,
     /** "El enlace no funciona". null: la tarjeta no lo enseña (en Novedades). */
     onReportar: (() -> Unit)? = null,
-    abierto: Boolean = false
+    abierto: Boolean = false,
+    /** En «Lo más visto», en qué lugar va: la tarjeta lo dice con sus vistas. */
+    puesto: Int? = null
 ) {
     val esquema = MaterialTheme.colorScheme
     val destino = publicacion.destino
+    val lugar = puesto?.let { n ->
+        listOfNotNull("Número $n", publicacion.vistas?.let { Cifras.vistas(it) }).joinToString(" · ")
+    }
 
     Column(
         modifier = Modifier
@@ -249,6 +388,7 @@ internal fun TarjetaPublicacion(
                 .clickable(onClick = onAbrir)
                 .semantics {
                     contentDescription =
+                        (lugar?.let { "$it. " } ?: "") +
                         "Abrir el video ${publicacion.title} de ${publicacion.firma}. " +
                         if (abierto) "Ya lo abriste." else "Nuevo."
                 }
@@ -267,6 +407,14 @@ internal fun TarjetaPublicacion(
             }
 
             Column(Modifier.padding(Espacio.md)) {
+                if (lugar != null) {
+                    Text(
+                        lugar,
+                        style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                        color = esquema.primary,
+                        modifier = Modifier.padding(bottom = Espacio.xs)
+                    )
+                }
                 EtiquetaDeEstado(abierto)
                 Text(
                     // Quién lo publicó y, si su canal es de una productora, cuál.
