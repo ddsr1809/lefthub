@@ -253,6 +253,33 @@ public final class Repositorios {
                 """)
         List<Publicacion> delCanal(@Param("canal") UUID canal, Pageable pagina);
 
+        /**
+         * Lo más visto de todo el directorio entre lo publicado desde
+         * `desde`, para el apartado «Lo más visto» de Novedades. Solo de los
+         * canales visibles (`canales`) o, si el video perdió su canal, de un
+         * creador visible (`creadores`); ninguna de las dos puede llegar
+         * vacía.
+         *
+         * Sin cortos ni retirados, y sin los directos que aún no empiezan:
+         * todavía no tienen vistas. Los que nunca han tenido cifras tampoco,
+         * porque no hay con qué ordenarlos.
+         */
+        @Query("""
+                select p from Publicacion p
+                where (p.canalId in :canales or (p.canalId is null and p.creadorId in :creadores))
+                  and p.plataforma = 'youtube'
+                  and p.estado <> 'removed'
+                  and p.tipo <> 'short'
+                  and p.directo <> 'programado'
+                  and p.vistas is not null
+                  and p.publicadoEn >= :desde
+                order by p.vistas desc, p.publicadoEn desc
+                """)
+        List<Publicacion> masVistas(@Param("canales") Collection<UUID> canales,
+                                    @Param("creadores") Collection<UUID> creadores,
+                                    @Param("desde") Instant desde,
+                                    Pageable pagina);
+
         @Modifying
         @Query("update Publicacion p set p.reportes = p.reportes + 1 where p.videoId = :videoId")
         void sumarReporte(@Param("videoId") String videoId);
