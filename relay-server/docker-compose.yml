@@ -36,6 +36,8 @@ services:
       DB_CLAVE: ${DB_CLAVE}
       RELAY_URL_PUBLICA: ${RELAY_URL_PUBLICA}
       JWT_SECRETO: ${JWT_SECRETO}
+      # La llave que cifra los mensajes del chat guardados. Vacio = sin chat.
+      CHAT_LLAVES: ${CHAT_LLAVES:-}
       WEBSUB_SECRETO: ${WEBSUB_SECRETO}
       WEBSUB_TOKEN_CALLBACK: ${WEBSUB_TOKEN_CALLBACK}
       TOKEN_INTERNO: ${TOKEN_INTERNO}

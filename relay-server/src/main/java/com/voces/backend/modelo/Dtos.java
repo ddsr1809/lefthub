@@ -367,16 +367,25 @@ public final class Dtos {
              */
             boolean avisosCortos,
             /**
-             * El equipo le activó el chat interno: la app enseña la entrada
-             * al chat en Ajustes. Una app anterior lo ignora.
+             * El equipo le activó el chat y el servidor lo tiene disponible:
+             * la app enseña "Hablar con el equipo" en Ajustes.
              */
             boolean chat,
             /**
-             * El topic de FCM por el que llega el aviso de "el equipo quiere
-             * hablar contigo". Sale de un HMAC con el secreto del servidor,
-             * así que nadie puede adivinar el de otra cuenta. Null sin chat.
+             * El topic de FCM por el que llega el aviso de "tienes un mensaje
+             * del equipo". Sale de un HMAC con el secreto del servidor, así que
+             * nadie puede adivinar el de otra cuenta. Null sin chat.
              */
             String chatAviso,
+            /** Mensajes del equipo que todavía no ha leído. */
+            long chatSinLeer,
+            /**
+             * Solo para administradores: el topic del aviso de "una cuenta te
+             * escribió", que comparten todos los del equipo. Null para el resto.
+             */
+            String chatAvisoEquipo,
+            /** Solo para administradores: conversaciones con algo sin leer. */
+            long chatEquipoSinLeer,
             /**
              * Esta cuenta puede recomendar canales: la app enseña "Recomendar
              * un canal". Lo decide el equipo desde el panel (ver
@@ -393,7 +402,7 @@ public final class Dtos {
          */
         public static PerfilDto de(Usuario u, boolean cortosDisponibles,
                                    boolean anuncios, boolean compraDisponible,
-                                   boolean youtube, String chatAviso, boolean recomendar) {
+                                   boolean youtube, ChatDelPerfil chat, boolean recomendar) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
@@ -404,10 +413,15 @@ public final class Dtos {
                     u.isCortos(), cortosDisponibles,
                     anuncios, u.isSinAnuncios(), compraDisponible, youtube,
                     u.isAvisosCortos(),
-                    u.isChatHabilitado(), u.isChatHabilitado() ? chatAviso : null,
+                    chat.activo(), chat.activo() ? chat.aviso() : null, chat.sinLeer(),
+                    chat.avisoEquipo(), chat.equipoSinLeer(),
                     recomendar);
         }
     }
+
+    /** Lo del chat que va en el perfil. Lo arma DirectorioController. */
+    public record ChatDelPerfil(boolean activo, String aviso, long sinLeer,
+                                String avisoEquipo, long equipoSinLeer) {}
 
     public record Preferencias(String escalaTexto, String tema, Boolean avisos, Boolean cortos,
                                Boolean avisosCortos) {}
