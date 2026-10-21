@@ -88,9 +88,9 @@ public class Usuario {
     private Instant sinAnunciosDesde;
 
     /**
-     * El equipo le activó el chat interno desde el panel. Solo con esto en
-     * true un administrador puede abrirle una conversación. Los mensajes no
-     * se guardan en ningún sitio: ver chat/SalasDeChat y V19.
+     * El equipo le activó el chat desde el panel. Solo con esto en true la
+     * persona ve el chat y el equipo puede escribirle. Los mensajes se guardan
+     * cifrados en mensajes_chat: ver chat/ChatService, V19 y V23.
      */
     @Column(name = "chat_habilitado", nullable = false)
     private boolean chatHabilitado = false;

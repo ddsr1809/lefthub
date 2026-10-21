@@ -1,6 +1,7 @@
 package com.voces.backend.auth;
 
 import com.voces.backend.acceso.RegistroDeAcceso;
+import com.voces.backend.chat.ChatService;
 import com.voces.backend.cuenta.AppleService;
 import com.voces.backend.modelo.Dtos;
 import com.voces.backend.modelo.Repositorios;
@@ -50,11 +51,12 @@ public class AuthController {
     private final RegistroDeAcceso accesos;
     private final Repositorios.Compras compras;
     private final Repositorios.Recomendaciones recomendaciones;
+    private final ChatService chat;
 
     public AuthController(Repositorios.Usuarios usuarios, ServicioJwt jwt,
                           VerificadorIdentidad verificador, AppleService apple,
                           RegistroDeAcceso accesos, Repositorios.Compras compras,
-                          Repositorios.Recomendaciones recomendaciones) {
+                          Repositorios.Recomendaciones recomendaciones, ChatService chat) {
         this.usuarios = usuarios;
         this.jwt = jwt;
         this.verificador = verificador;
@@ -62,6 +64,7 @@ public class AuthController {
         this.accesos = accesos;
         this.compras = compras;
         this.recomendaciones = recomendaciones;
+        this.chat = chat;
     }
 
     /** Sesión invisible. Se llama al abrir la app, sin interfaz de por medio. */
@@ -190,6 +193,10 @@ public class AuthController {
                 recomendaciones.pasar(anonimo.get().getId(), usuario.getId());
                 if (anonimo.get().isRecomendarHabilitado()) usuario.setRecomendarHabilitado(true);
                 if (anonimo.get().isYoutubeHabilitado()) usuario.setYoutubeHabilitado(true);
+                // Y la conversación con el equipo, si la tenía: se cifra otra
+                // vez para la cuenta que se queda, que hereda también el chat.
+                chat.pasar(anonimo.get().getId(), usuario.getId());
+                if (anonimo.get().isChatHabilitado()) usuario.setChatHabilitado(true);
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
                 //

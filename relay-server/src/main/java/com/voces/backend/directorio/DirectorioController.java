@@ -2,6 +2,7 @@ package com.voces.backend.directorio;
 
 import com.voces.backend.anuncios.TiendaGoogle;
 import com.voces.backend.chat.AvisoDeChat;
+import com.voces.backend.chat.ChatService;
 import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.*;
 import com.voces.backend.push.PushService;
@@ -49,6 +50,7 @@ public class DirectorioController {
     private final TiendaGoogle tienda;
     private final UltimosVideos ultimosVideos;
     private final AvisoDeChat avisoDeChat;
+    private final ChatService chat;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
@@ -56,9 +58,10 @@ public class DirectorioController {
                                 Repositorios.Usuarios usuarios,
                                 Catalogo catalogo, AjustesService ajustes,
                                 TiendaGoogle tienda, UltimosVideos ultimosVideos,
-                                AvisoDeChat avisoDeChat) {
+                                AvisoDeChat avisoDeChat, ChatService chat) {
         this.ultimosVideos = ultimosVideos;
         this.avisoDeChat = avisoDeChat;
+        this.chat = chat;
         this.creadores = creadores;
         this.productoras = productoras;
         this.publicaciones = publicaciones;
@@ -520,9 +523,26 @@ public class DirectorioController {
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
         return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
                 AjustesService.permite(ajustes.youtube(), usuario.isEsAdmin(), usuario.isYoutubeHabilitado()),
-                avisoDeChat.topicDe(usuario.getId()),
+                chatDe(usuario),
                 RecomendacionesService.puede(ajustes.recomendaciones(),
                         usuario.isEsAdmin(), usuario.isRecomendarHabilitado()));
+    }
+
+    /**
+     * El chat en el perfil: si la persona lo tiene y cuántos mensajes del
+     * equipo no ha leído; a un administrador, además, el aviso del equipo y
+     * cuántas conversaciones esperan respuesta. Es lo que lee la app cada
+     * minuto para el número de "sin leer".
+     */
+    private Dtos.ChatDelPerfil chatDe(Usuario usuario) {
+        boolean disponible = chat.disponible();
+        boolean activo = disponible && usuario.isChatHabilitado();
+        boolean equipo = disponible && usuario.isEsAdmin();
+        return new Dtos.ChatDelPerfil(activo,
+                activo ? avisoDeChat.topicDe(usuario.getId()) : null,
+                activo ? chat.sinLeerDeLaPersona(usuario.getId()) : 0,
+                equipo ? avisoDeChat.topicDelEquipo() : null,
+                equipo ? chat.conversacionesSinLeer() : 0);
     }
 
     private Usuario usuarioActual() {

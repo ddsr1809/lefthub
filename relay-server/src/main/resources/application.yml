@@ -161,6 +161,14 @@ relay:
     minima-android: ${APP_VERSION_MINIMA_ANDROID:}
     minima-ios: ${APP_VERSION_MINIMA_IOS:}
 
+  chat:
+    # Las llaves que cifran los mensajes del chat guardados en la base. Sin
+    # ellas, quien tenga una copia de la base no puede leer nada. Cada
+    # ambiente lleva las suyas, y NO van en el respaldo de la base: si se
+    # pierden, se pierden los mensajes. Formato y cómo cambiarlas: ver
+    # RelayProperties.Chat. Vacío = el chat no está disponible.
+    llaves: ${CHAT_LLAVES:}
+
   replica:
     # Solo en producción: URL del servidor de testing. Cada creador que se
     # guarda en el panel se copia allá. Vacío = no se copia nada.

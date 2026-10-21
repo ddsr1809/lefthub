@@ -128,7 +128,32 @@ internal fun perfilDe(json: JSONObject): Perfil {
         youtube = json.optBoolean("youtube", false),
         chat = json.optBoolean("chat", false),
         chatAviso = json.optStringONull("chatAviso"),
+        chatSinLeer = json.optLong("chatSinLeer", 0),
+        esAdmin = json.optBoolean("esAdmin", false),
+        chatAvisoEquipo = json.optStringONull("chatAvisoEquipo"),
+        chatEquipoSinLeer = json.optLong("chatEquipoSinLeer", 0),
         recomendar = json.optBoolean("recomendar", false)
+    )
+}
+
+internal fun mensajeDelChatDe(json: JSONObject) = MensajeDelChat(
+    id = json.getLong("id"),
+    texto = json.optString("texto"),
+    deAdmin = json.optBoolean("deAdmin"),
+    autor = json.optStringONull("autor"),
+    creadoEn = json.optStringONull("creadoEn")?.let { runCatching { Instant.parse(it) }.getOrNull() } ?: Instant.now(),
+    leidoEn = json.optStringONull("leidoEn")?.let { runCatching { Instant.parse(it) }.getOrNull() }
+)
+
+internal fun conversacionDelChatDe(json: JSONObject): ConversacionDelChat {
+    val id = json.getString("id")
+    return ConversacionDelChat(
+        id = id,
+        nombre = json.optStringONull("email") ?: ("Invitado " + id.take(8)),
+        ultimo = json.optStringONull("ultimo"),
+        ultimoEn = json.optStringONull("ultimoEn")?.let { runCatching { Instant.parse(it) }.getOrNull() },
+        ultimoDeAdmin = json.optBoolean("ultimoDeAdmin"),
+        sinLeer = json.optLong("sinLeer", 0)
     )
 }
 

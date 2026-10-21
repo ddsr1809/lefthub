@@ -917,48 +917,89 @@ uno cada tres minutos.
 
 ## Chat con el equipo
 
-Un chat por escrito entre un administrador y una persona que usa la app de
-Android. Solo lo abre el equipo, y solo con las cuentas a las que antes se lo
-activó.
+Un chat por escrito entre el equipo y una persona que usa la app de Android.
+Los mensajes **se guardan**: el equipo escribe y la persona contesta cuando
+abre la app, y al revés. Un administrador contesta desde el panel o desde su
+teléfono, con la misma app.
 
 - **Activarlo.** Panel → Usuarios → *Ver* en la cuenta → *Activar el chat con
   esta cuenta*. En un minuto como mucho, la app enseña *Hablar con el equipo*
-  en Ajustes. Las cuentas con chat salen en la sección **Chat** del panel, con
-  quién está dentro ahora mismo. *Quitar el chat* cierra en el acto la
-  conversación que hubiera.
-- **Hablar.** *Abrir chat* abre una ventana abajo a la derecha que sigue ahí
-  aunque cambies de sección. Si la persona no tiene la app abierta, le llega un
-  aviso que solo dice *El equipo de Voces quiere hablar contigo*; al tocarlo
-  entra al chat. Una conversación a la vez por cuenta: si otro administrador
-  la abre, la toma.
-- **Cifrado de extremo a extremo.** El navegador y el teléfono hacen cada uno
-  un par de llaves ECDH P-256 al entrar, que nunca salen de la memoria. Con
-  ellas acuerdan una clave AES-256-GCM que el servidor no conoce: por el
-  servidor pasan las llaves públicas y mensajes que no puede leer. Los dos
-  lados ven el mismo **código de seguridad** de 8 cifras; si coinciden, nadie
-  cambió las llaves por el camino. El esquema está en `admin/chat-cifrado.js`
-  y `android/.../chat/CifradoChat.kt`, y tienen que ser idénticos
-  (`make panel-test` lo comprueba con un mensaje cifrado en Java).
-- **No se guarda nada.** Ni en la base de datos, ni en disco, ni en los
-  registros, ni en el teléfono. El servidor tiene cada mensaje cifrado en
-  memoria solo hasta que el otro lado lo recoge, segundos después
-  (`chat/SalasDeChat.java`). Al cerrar el chat, al salir de la pantalla, a los
-  30 minutos sin mensajes o al reiniciar el servidor, la conversación
-  desaparece de los dos lados. La pantalla del chat en Android no deja hacer
-  capturas ni sale en apps recientes.
-- **Sin cambios en el VPS.** Va por HTTPS normal, con consultas que esperan
-  hasta 25 segundos a que llegue un mensaje; no hace falta tocar Apache.
+  en Ajustes. La persona también puede escribir primero.
+- **En el panel**, sección **Chat**: a la izquierda las cuentas con chat, primero
+  las que esperan respuesta (el número junto a *Chat* en el menú dice
+  cuántas); a la derecha la conversación, que se pone al día sola. Cada
+  mensaje dice quién del equipo lo escribió, y si la persona ya lo leyó.
+- **En el teléfono de un administrador**: Ajustes → *Chat con las cuentas* →
+  *Abrir la bandeja*. Sale solo si la cuenta es administradora. Si el rol se
+  dio después de entrar, hay que cerrar sesión y volver a entrar.
+- **Avisos.** Cuando el equipo escribe, a la persona le llega *Tienes un
+  mensaje del equipo de Voces*. Cuando ella contesta, a los teléfonos de los
+  administradores les llega *Mensaje nuevo en el chat*, y tocarlo abre esa
+  conversación. Ninguno lleva el texto, y no salen si el otro lado tiene la
+  conversación abierta en ese momento. Uno cada dos minutos por conversación.
+- **Lo que ve la persona.** Los mensajes del equipo salen como *Equipo de
+  Voces*, nunca con el correo de quien los escribió.
+- **Borrar.** *Borrar conversación* (panel) borra los mensajes de los dos
+  lados y deja el chat activado. *Quitar el chat* borra la conversación y lo
+  quita. Borrar la cuenta se lleva la conversación. No hay borrado
+  automático. Si un invitado guarda su cuenta con Google y ya tenía una, la
+  conversación pasa a la que se queda.
 
-Lo único que guarda la base es el permiso: `usuarios.chat_habilitado` (V19).
-La app de iPhone todavía no tiene el chat.
+### Cómo se protege
 
-En la API: `POST /api/chat/entrar` (`{clave}`), `GET
-/api/chat/eventos?conexion=`, `POST /api/chat/mensajes` (`{conexion, iv,
-cifrado}`) y `POST /api/chat/salir`; del panel, `POST
-/api/admin/usuarios/{id}/chat?valor=`, `GET /api/admin/chat` y las mismas
-cuatro bajo `/api/admin/chat/{id}/`. `GET /api/perfil` dice `chat` y
-`chatAviso` (el topic de FCM del aviso, sacado con un HMAC del secreto del
-servidor para que nadie pueda suscribirse al de otra cuenta).
+- **Cifrado en el servidor.** El texto se guarda con AES-256-GCM
+  (`chat/CifradorDeChat.java`). La llave no está en la base sino en
+  `CHAT_LLAVES`, en el `.env` de cada ambiente: una copia de la base o un
+  respaldo solo tienen bytes. Cada mensaje va atado a su conversación y a
+  quién lo escribió: no se puede mover a otra ni hacerlo pasar por del otro
+  lado. El servidor sí lo lee al entregarlo; es lo que deja contestar desde
+  el panel y desde varios teléfonos.
+- **Nada en los registros.** El servidor registra que hubo un mensaje, nunca
+  qué decía.
+- **En el teléfono no se guarda.** La conversación está en memoria mientras
+  la pantalla está abierta, y esa pantalla no deja hacer capturas.
+
+### La llave (`CHAT_LLAVES`)
+
+- **En el VPS se crea sola** en el primer despliegue de cada ambiente
+  (`scripts/deploy-vps.sh`), distinta en test y en prod. No se imprime.
+- **En local**, `./local.sh` la agrega a `relay-server/.env.local`.
+- **Guarda una copia aparte**, fuera del VPS: solo está en el `.env`, y si
+  se pierde, los mensajes guardados ya no se pueden leer. Para verla:
+  `grep ^CHAT_LLAVES /opt/vocesleft/relay-server/.env.prod`. (Los mensajes
+  tampoco van en `respaldo-datos.sh`, que solo sube a GitHub el directorio.)
+- **Cambiarla** sin perder lo anterior: agrega una con el número siguiente y
+  deja la vieja, `CHAT_LLAVES=1:vieja,2:nueva`
+  (`echo "2:$(openssl rand -base64 32)"`). Lo nuevo se cifra con la 2 y lo
+  viejo se sigue leyendo con la 1.
+- Sin llave, el servidor arranca igual y el chat no se ofrece. Con una llave
+  mal escrita, el servidor no arranca y el despliegue vuelve a la versión
+  anterior.
+
+### Lo que guarda la base
+
+| Dónde | Qué |
+|---|---|
+| `usuarios.chat_habilitado` (V19) | Si la cuenta tiene el chat |
+| `mensajes_chat` (V23) | Cada mensaje: cuenta, si es del equipo, quién del equipo, número de llave, IV, texto cifrado, fecha y cuándo se leyó |
+
+La app de iPhone todavía no tiene el chat. Las apps Android 1.0.13 (las del
+chat en vivo) ven *Hablar con el equipo*, pero al abrirlo les sale que
+actualicen la app.
+
+### En la API
+
+De la app: `GET /api/chat/mensajes?despues=&esperar=`, `POST
+/api/chat/mensajes` (`{texto}`) y `POST /api/chat/salir?hasta=`. Del equipo:
+`GET /api/admin/chat` (la bandeja), `GET /api/admin/chat/sin-leer`, las
+mismas tres bajo `/api/admin/chat/{id}/`, `DELETE /api/admin/chat/{id}` y
+`POST /api/admin/usuarios/{id}/chat?valor=`. Con `esperar=true`, si no hay nada
+nuevo el servidor espera hasta 25 segundos a que llegue algo. Un mensaje queda
+leído cuando quien lo recibe confirma que ya lo tiene (la consulta siguiente
+o la salida), no al entregárselo. `GET /api/perfil` dice `chat`, `chatAviso`,
+`chatSinLeer` y, a un administrador, `chatAvisoEquipo` y `chatEquipoSinLeer`.
+Los avisos van a topics sacados con un HMAC del secreto del servidor, para que
+nadie pueda suscribirse al de otra cuenta ni al del equipo.
 
 ---
 

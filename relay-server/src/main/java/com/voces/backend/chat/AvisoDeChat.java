@@ -17,18 +17,23 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * El aviso de "el equipo quiere hablar contigo".
+ * Los avisos de "tienes un mensaje" del chat.
  *
- * Los avisos de FCM van por topics, y un teléfono se puede suscribir a
- * cualquier topic que conozca. Si el del chat fuera "chat_" + el id de la
- * cuenta, otro podría suscribirse al de alguien más y enterarse de cuándo le
- * escribe el equipo. Por eso sale de un HMAC con el secreto del servidor: el
- * perfil se lo da solo a su dueño y nadie puede calcular el de otro.
+ * Dos destinos: la persona, cuando el equipo le escribe, y los
+ * administradores, cuando ella contesta. Los dos son topics de FCM, y un
+ * teléfono se puede suscribir a cualquier topic que conozca. Si fueran
+ * "chat_" + el id de la cuenta, otro podría suscribirse al de alguien más y
+ * enterarse de cuándo le escribe el equipo, o al de los administradores y
+ * saber cuándo escribe cualquiera. Por eso salen de un HMAC con el secreto del
+ * servidor: el perfil da a cada cuenta solo el suyo, y el del equipo solo a
+ * los administradores.
+ *
+ * Ninguno lleva el texto del mensaje. Ver PushService.avisarChat.
  */
 @Component
 public class AvisoDeChat {
 
-    /** Un aviso por cuenta en este tiempo, aunque se abra y cierre varias veces. */
+    /** Un aviso por conversación y destino en este tiempo, aunque lleguen varios mensajes. */
     static final Duration ENTRE_AVISOS = Duration.ofMinutes(2);
 
     private static final String RESPALDO = "lefthub-chat-sin-secreto";
@@ -36,7 +41,7 @@ public class AvisoDeChat {
     private final PushService push;
     private final byte[] secreto;
     private final Clock reloj;
-    private final Map<UUID, Instant> ultimos = new ConcurrentHashMap<>();
+    private final Map<String, Instant> ultimos = new ConcurrentHashMap<>();
 
     /**
      * El que usa Spring. @Autowired hace falta porque hay otro constructor,
@@ -50,40 +55,72 @@ public class AvisoDeChat {
 
     AvisoDeChat(PushService push, String secreto, Clock reloj) {
         this.push = push;
-        // Sin secreto (un arranque local a medio configurar) el topic sigue
-        // siendo estable, solo que adivinable. El servidor exige el secreto
+        // Sin secreto (un arranque local a medio configurar) los topics siguen
+        // siendo estables, solo que adivinables. El servidor exige el secreto
         // del JWT de todos modos para emitir sesiones.
         this.secreto = (secreto == null || secreto.isBlank() ? RESPALDO : secreto)
                 .getBytes(StandardCharsets.UTF_8);
         this.reloj = reloj;
     }
 
-    /** chat_ y 32 caracteres hexadecimales. Los topics de FCM los admiten. */
+    /** El de una cuenta: chat_ y 32 caracteres hexadecimales. */
     public String topicDe(UUID usuarioId) {
-        try {
-            Mac mac = Mac.getInstance("HmacSHA256");
-            mac.init(new SecretKeySpec(secreto, "HmacSHA256"));
-            byte[] firma = mac.doFinal(("chat:" + usuarioId).getBytes(StandardCharsets.UTF_8));
-            return "chat_" + HexFormat.of().formatHex(firma).substring(0, 32);
-        } catch (Exception e) {
-            throw new IllegalStateException("HmacSHA256 no disponible", e);
-        }
+        return "chat_" + firma("chat:" + usuarioId);
+    }
+
+    /** El de los administradores. Todos los del equipo comparten este. */
+    public String topicDelEquipo() {
+        return "chatequipo_" + firma("chat-equipo");
     }
 
     /**
-     * Manda el aviso, salvo que ya se haya mandado hace poco.
+     * El equipo le escribió: aviso a la persona. Al tocarlo, la app abre su chat.
      *
      * @return true si se mandó y FCM lo aceptó
      */
-    public boolean invitar(UUID usuarioId) {
-        Instant ahora = reloj.instant();
-        Instant anterior = ultimos.get(usuarioId);
-        if (anterior != null && anterior.plus(ENTRE_AVISOS).isAfter(ahora)) return false;
+    public boolean avisarPersona(UUID usuarioId) {
+        if (reciente("persona:" + usuarioId)) return false;
+        return push.avisarChat(topicDe(usuarioId),
+                "Tienes un mensaje del equipo de Voces",
+                "Toca para leerlo.",
+                Map.of("tipo", "chat"),
+                "chat") == null;
+    }
 
-        ultimos.put(usuarioId, ahora);
+    /**
+     * La persona contestó: aviso a los administradores. Al tocarlo, la app de
+     * un administrador abre esa conversación. Solo va el id de la cuenta, que
+     * no dice nada a quien no tenga acceso al panel.
+     */
+    public boolean avisarEquipo(UUID usuarioId) {
+        if (reciente("equipo:" + usuarioId)) return false;
+        return push.avisarChat(topicDelEquipo(),
+                "Mensaje nuevo en el chat",
+                "Una cuenta te escribió. Toca para leerlo.",
+                Map.of("tipo", "chat_equipo", "usuarioId", usuarioId.toString()),
+                "chat_" + usuarioId) == null;
+    }
+
+    // -------------------------------------------------------------------------
+
+    /** true si a ese destino ya se le avisó hace poco; si no, lo anota. */
+    private boolean reciente(String clave) {
+        Instant ahora = reloj.instant();
+        Instant anterior = ultimos.get(clave);
+        if (anterior != null && anterior.plus(ENTRE_AVISOS).isAfter(ahora)) return true;
+        ultimos.put(clave, ahora);
         // De paso, que el mapa no crezca sin límite.
         ultimos.values().removeIf(t -> t.plus(ENTRE_AVISOS).isBefore(ahora));
+        return false;
+    }
 
-        return push.avisarChat(topicDe(usuarioId)) == null;
+    private String firma(String texto) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secreto, "HmacSHA256"));
+            return HexFormat.of().formatHex(mac.doFinal(texto.getBytes(StandardCharsets.UTF_8))).substring(0, 32);
+        } catch (Exception e) {
+            throw new IllegalStateException("HmacSHA256 no disponible", e);
+        }
     }
 }

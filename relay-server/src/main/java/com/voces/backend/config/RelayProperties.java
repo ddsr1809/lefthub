@@ -24,8 +24,22 @@ public record RelayProperties(
         @DefaultValue Perfiles perfiles,
         @DefaultValue Compras compras,
         @DefaultValue Servidor servidor,
-        @DefaultValue Apps apps
+        @DefaultValue Apps apps,
+        @DefaultValue Chat chat
 ) {
+
+    /**
+     * Las llaves con las que se cifran los mensajes del chat guardados en la
+     * base. Van aquí y no en la base: quien se lleve una copia de la base no
+     * puede leer las conversaciones sin ellas.
+     *
+     * @param llaves "1:BASE64" o, para cambiar de llave sin perder lo anterior,
+     *               "1:BASE64,2:BASE64". Cada una son 32 bytes al azar:
+     *               {@code echo "1:$(openssl rand -base64 32)"}. Se cifra con
+     *               la de número más alto; las demás solo sirven para leer lo
+     *               que ya estaba. Vacío = el chat no está disponible.
+     */
+    public record Chat(@DefaultValue("") String llaves) {}
 
     public record Jwt(
             @DefaultValue("") String secreto,

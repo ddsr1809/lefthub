@@ -278,6 +278,7 @@
     servidor: null,         // versión y commit del servidor; null si no los dice
     aviso: null,            // lo que se está redactando en Avisos
     avisoPreset: null,      // con qué abrir Avisos (desde la ficha de un video)
+    chatAbierto: null,      // la conversación del chat que se abre al entrar a la sección
     filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 },
     filtroRecs: 'pendientes' // pendientes | revisadas | todas
   };
@@ -306,6 +307,8 @@
   function ir(vista) {
     vista = ALIAS[vista] || vista;
     if (!VISTAS[vista]) vista = 'resumen';
+    // Fuera de la sección Chat no se queda ninguna conversación escuchando.
+    if (vista !== 'chat' && chat) olvidarChat();
     estado.vista = vista;
     if (location.hash !== '#' + vista) history.replaceState(null, '', '#' + vista);
     $$('#nav button').forEach((b) => b.setAttribute('aria-current', b.dataset.vista === vista ? 'page' : 'false'));
@@ -362,6 +365,8 @@
 
   // Los contadores del menú salen de las mismas rutas que usan las vistas.
   async function refrescarContadores() {
+    // Aparte y primero: que un fallo de los demás no deje el chat sin número.
+    contarChat();
     try {
       const [creadores, productoras, reportes] = await Promise.all([
         cargarCreadores(true), cargarProductoras(true), api('/api/admin/reportes?limite=200')]);
@@ -3309,325 +3314,308 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Chat con una cuenta
+  // Chat con las cuentas
   // ---------------------------------------------------------------------------
-  // Cifrado de extremo a extremo con chat-cifrado.js: el servidor solo pasa
-  // llaves públicas y mensajes que no puede leer, y no guarda nada. Aquí
-  // tampoco: la conversación vive en `chat` mientras la ventana está abierta y
-  // al cerrarla se borra. Una conversación a la vez.
-  const CC = window.ChatCifrado;
+  // Una conversación por cuenta, guardada en el servidor y cifrada allí (ver
+  // chat/ChatService). Aquí no se guarda nada: lo que está en pantalla vive en
+  // `chat` y se suelta al salir de la sección. Con una conversación abierta,
+  // el panel espera los mensajes nuevos con consultas de hasta 25 segundos.
   const MAX_TEXTO_CHAT = 2000;
-  let chat = null;
+  let chat = null;         // la conversación abierta
+  let bandejaChat = [];    // lo último que dijo /api/admin/chat
 
   const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
-  const rutaChat = (c, final) => '/api/admin/chat/' + encodeURIComponent(c.usuarioId) + '/' + final;
   const nombreEnChat = (u) => u.email || 'Invitado ' + String(u.id).slice(0, 8);
+  const rutaChat = (id, final) => '/api/admin/chat/' + encodeURIComponent(id) + (final ? '/' + final : '');
 
-  /** El bloque de la ficha de una cuenta: activar, quitar o abrir el chat. */
+  /** El bloque de la ficha de una cuenta: activar, abrir o quitar el chat. */
   function fichaChat(u) {
     const nombre = esc(nombreEnChat(u));
     if (!u.chatHabilitado) {
       return `<div><button class="btn" data-accion="chat-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Activar el chat con esta cuenta</button>
-        <p class="hint" style="margin:6px 0 0">Verá «Hablar con el equipo» en Ajustes de la app. Solo los administradores pueden escribirle.</p></div>`;
+        <p class="hint" style="margin:6px 0 0">Verá «Hablar con el equipo» en Ajustes de la app. Los mensajes se guardan cifrados hasta que borres la conversación o le quites el chat.</p></div>`;
     }
     return `<div class="toolbar">
-        <button class="btn primary" data-accion="abrir-chat" data-id="${esc(u.id)}" data-nombre="${nombre}">Abrir chat</button>
+        <button class="btn primary" data-accion="abrir-chat" data-id="${esc(u.id)}">Abrir el chat</button>
         <button class="btn danger" data-accion="chat-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Quitar el chat</button>
       </div>`;
   }
 
-  async function vistaChat() {
-    const lista = await api('/api/admin/chat');
-    if (estado.vista !== 'chat') return;
-
-    const estadoDe = (c) => {
-      if (c.conmigo) return '<span class="badge b-ok">Contigo</span>' + (c.enElChat ? ' <span class="badge b-ok">En el chat</span>' : '');
-      if (c.conAdmin) return '<span class="badge b-warn">Con otro administrador</span>';
-      if (c.enElChat) return '<span class="badge b-ok">Esperando en el chat</span>';
-      return '<span class="badge b-mute">No está en el chat</span>';
-    };
-
-    main.innerHTML = `
-      <div class="head"><div><h1>Chat</h1><p class="sub">Habla por escrito con una persona que usa la app. Solo puedes escribir a las cuentas a las que les activaste el chat: búscalas en <button class="link" data-ir="usuarios">Usuarios</button>, ábrelas con «Ver» y pulsa «Activar el chat».</p></div></div>
-      <div class="stack">
-        <section class="panel"><div class="panel-head"><h2>Cuentas con chat</h2><span class="muted" style="font-size:13px">${plural(lista.length, 'cuenta', 'cuentas')}</span></div>
-          <div class="tablewrap"><table><thead><tr><th>Cuenta</th><th>Ahora</th><th>App</th><th>Abrió la app</th><th></th></tr></thead><tbody>
-          ${lista.length ? lista.map((c) => `<tr>
-            <td><div class="clip"><b>${esc(nombreEnChat(c))}</b></div><span class="mono muted">${esc(c.id)}</span></td>
-            <td>${estadoDe(c)}</td>
-            <td>${c.appVersion ? esc(nombrePlataforma(c.appPlataforma) + ' ' + c.appVersion) : '<span class="muted">—</span>'}</td>
-            <td class="num" title="${esc(fmtFecha(c.vistoEn))}">${esc(relativo(c.vistoEn))}</td>
-            <td class="acciones">
-              <button class="btn sm primary" data-accion="abrir-chat" data-id="${esc(c.id)}" data-nombre="${esc(nombreEnChat(c))}">Abrir chat</button>
-              <button class="btn sm danger" data-accion="chat-usuario" data-desde="lista" data-id="${esc(c.id)}" data-valor="false" data-nombre="${esc(nombreEnChat(c))}">Quitar</button>
-            </td></tr>`).join('') : '<tr><td colspan="5"><div class="empty">Ninguna cuenta tiene el chat activado todavía.</div></td></tr>'}
-          </tbody></table></div>
-        </section>
-        <section class="panel"><div class="panel-head"><h2>Cómo funciona</h2></div><div class="panel-body stack" style="gap:10px">
-          <p style="margin:0"><b>Cifrado de extremo a extremo.</b> Tu navegador y el teléfono de la persona acuerdan una clave que solo conocen ellos dos. El servidor pasa los mensajes sin poder leerlos.</p>
-          <p style="margin:0"><b>No se guarda nada.</b> Ni en la base de datos, ni en el servidor, ni en el teléfono. Al cerrar la ventana del chat, o cuando la persona sale, la conversación desaparece de los dos lados.</p>
-          <p style="margin:0"><b>Código de seguridad.</b> Los dos ven las mismas 8 cifras. Si quieres estar seguro de que hablas con esa persona y nadie se metió en medio, pídele que te las lea.</p>
-          <p class="hint" style="margin:0">Si la persona no tiene la app abierta, al abrir el chat le llega un aviso al teléfono que solo dice que el equipo quiere hablar con ella, sin nada de lo que escribas. Necesita la versión de la app que trae el chat.</p>
-        </div></section>
-      </div>`;
-
-    // Quién está dentro cambia solo: se refresca mientras se mira.
-    clearTimeout(vistaChat.reloj);
-    vistaChat.reloj = setTimeout(() => { if (estado.vista === 'chat' && !modal.open) vistaChat().catch(() => {}); }, 15000);
+  /** El número junto a «Chat» en el menú: conversaciones que esperan respuesta. */
+  async function contarChat() {
+    const n = $('#n-chat');
+    if (!n) return;
+    try {
+      const r = await api('/api/admin/chat/sin-leer');
+      n.textContent = r.conversaciones; n.hidden = !r.conversaciones;
+    } catch (e) { n.hidden = true; }
   }
 
-  async function abrirChat(usuarioId, nombre) {
-    if (chat && chat.usuarioId === usuarioId && chat.vivo) {
-      $('#chatVentana').classList.remove('plegada');
-      $('#chatTexto').focus();
-      return;
-    }
-    if (!CC || !window.isSecureContext || !(window.crypto && crypto.subtle)) {
-      toast('El chat cifrado necesita abrir el panel por HTTPS.', true);
-      return;
-    }
-    if (chat) await cerrarChat();
+  function cuandoCorto(iso) {
+    if (!iso) return '';
+    const d = new Date(iso);
+    const hoy = new Date();
+    return d.toDateString() === hoy.toDateString()
+      ? d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' })
+      : d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
+  }
 
-    const c = {
-      usuarioId, nombre, par: await CC.nuevoPar(), conexion: null,
-      clave: null, codigo: null, enviados: 0, ultimoN: 0, enviando: false,
-      mensajes: [], vivo: true, fase: 'entrando'
-    };
+  async function vistaChat() {
+    const [lista, cuenta] = await Promise.all([api('/api/admin/chat'), api('/api/admin/chat/sin-leer').catch(() => null)]);
+    if (estado.vista !== 'chat') return;
+    bandejaChat = lista;
+
+    if (cuenta && cuenta.disponible === false) {
+      main.innerHTML = `<div class="head"><div><h1>Chat</h1></div></div>
+        <section class="panel"><div class="panel-body"><div class="aviso-mal"><b>El chat no está disponible en este servidor.</b> Falta la llave con la que se cifran los mensajes (CHAT_LLAVES en el .env del VPS). Mientras no esté, la app no enseña el chat.</div></div></section>`;
+      return;
+    }
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Chat</h1><p class="sub">Escribe a las cuentas a las que les activaste el chat y contesta lo que te escriben. Para activarlo a alguien: <button class="link" data-ir="usuarios">Usuarios</button> → «Ver» → «Activar el chat». También puedes contestar desde la app, entrando con tu cuenta de administrador.</p></div></div>
+      <div class="chat-pantalla" id="chatPantalla">
+        <section class="panel chat-bandeja"><div class="panel-head"><h2>Conversaciones</h2><span class="muted" style="font-size:13px" id="chatTotal"></span></div>
+          <div id="chatBandeja"></div></section>
+        <section class="panel chat-hilo" id="chatHilo"><div class="empty">Elige una conversación.</div></section>
+      </div>
+      <p class="hint" style="margin:12px 0 0">Los mensajes se guardan cifrados en el servidor con una llave que no está en la base de datos: una copia de la base no basta para leerlos. A la persona le llega un aviso que no dice lo que escribiste, y solo ve «Equipo de Voces», nunca tu correo.</p>`;
+    pintarBandeja();
+
+    const abrir = estado.chatAbierto && lista.find((c) => c.id === estado.chatAbierto);
+    if (abrir) await abrirConversacion(abrir.id);
+    else if (window.matchMedia('(min-width: 761px)').matches && lista.length && !chat) await abrirConversacion(lista[0].id);
+    refrescarBandejaLuego();
+  }
+
+  /** La lista de la izquierda se pone al día sola mientras la sección está abierta. */
+  function refrescarBandejaLuego() {
+    clearTimeout(refrescarBandejaLuego.reloj);
+    refrescarBandejaLuego.reloj = setTimeout(async () => {
+      if (estado.vista !== 'chat') return;
+      try {
+        bandejaChat = await api('/api/admin/chat');
+        if (estado.vista === 'chat') { pintarBandeja(); contarChat(); }
+      } catch (e) { /* se reintenta */ }
+      refrescarBandejaLuego();
+    }, 15000);
+  }
+
+  function pintarBandeja() {
+    const caja = $('#chatBandeja');
+    if (!caja) return;
+    const total = $('#chatTotal');
+    if (total) total.textContent = plural(bandejaChat.length, 'cuenta', 'cuentas');
+    if (!bandejaChat.length) {
+      caja.innerHTML = '<div class="empty">Ninguna cuenta tiene el chat activado todavía.</div>';
+      return;
+    }
+    caja.innerHTML = '<ul class="chat-conversaciones">' + bandejaChat.map((c) => {
+      const abierta = chat && chat.usuarioId === c.id;
+      // Si la tengo abierta, lo que llegó ya lo estoy viendo.
+      const sinLeer = abierta ? 0 : c.sinLeer;
+      const vistazo = c.ultimo ? (c.ultimoDeAdmin ? 'Equipo: ' : '') + c.ultimo : 'Sin mensajes todavía';
+      return `<li><button class="chat-conv ${abierta ? 'abierta' : ''} ${sinLeer ? 'pendiente' : ''}" data-accion="abrir-chat" data-id="${esc(c.id)}">
+          <span class="chat-conv-fila"><b class="clip">${esc(nombreEnChat(c))}</b><span class="muted chat-conv-hora">${esc(cuandoCorto(c.ultimoEn))}</span></span>
+          <span class="chat-conv-fila"><span class="muted clip">${esc(vistazo)}</span>${sinLeer ? `<span class="badge b-ok">${num(sinLeer)}</span>` : ''}</span>
+        </button></li>`;
+    }).join('') + '</ul>';
+  }
+
+  async function abrirConversacion(id) {
+    if (chat && chat.usuarioId === id && chat.vivo) { $('#chatTexto') && $('#chatTexto').focus(); return; }
+    olvidarChat();
+    const cuenta = bandejaChat.find((c) => c.id === id) || { id };
+    const c = { usuarioId: id, nombre: nombreEnChat(cuenta), mensajes: [], ultimoId: 0, vivo: true, enviando: false, error: null, cargado: false };
     chat = c;
-    pintarChat();
+    estado.chatAbierto = id;
+    const pantalla = $('#chatPantalla');
+    if (pantalla) pantalla.classList.add('con-hilo');
+    pintarBandeja();
+    pintarHilo();
 
-    let r;
     try {
-      r = await api(rutaChat(c, 'entrar'), { metodo: 'POST', cuerpo: { clave: c.par.publicaBase64 } });
+      agregarMensajes(c, await api(rutaChat(id, 'mensajes')));
     } catch (e) {
       if (chat === c) terminarChat(c, e.message);
       return;
     }
-    if (chat !== c || !c.vivo) return;
-
-    c.conexion = r.conexion;
-    if (r.claveDelOtro) {
-      await llaveDelOtro(c, r.claveDelOtro);
-    } else {
-      c.fase = 'esperando';
-      nota(c, r.avisado
-        ? 'Le mandamos un aviso a su teléfono. En cuanto abra el chat, podrán escribirse.'
-        : 'Todavía no tiene el chat abierto. En cuanto entre, podrán escribirse.');
-    }
-    pintarChat();
+    if (chat !== c) return;
+    c.cargado = true;
+    pintarHilo();
+    // Abrirla es leer lo que había: los contadores bajan.
+    const enLista = bandejaChat.find((x) => x.id === id);
+    if (enLista) enLista.sinLeer = 0;
+    pintarBandeja();
+    contarChat();
     escucharChat(c);
   }
 
-  /** Recoge lo que llega, sin parar, mientras la conversación sigue viva. */
+  function agregarMensajes(c, lista) {
+    let nuevos = false;
+    for (const m of lista || []) {
+      if (c.mensajes.some((x) => x.id === m.id)) continue;
+      c.mensajes.push(m);
+      nuevos = true;
+    }
+    c.mensajes.sort((a, b) => a.id - b.id);
+    if (c.mensajes.length) c.ultimoId = c.mensajes[c.mensajes.length - 1].id;
+    return nuevos;
+  }
+
+  /** Espera lo que llegue mientras la conversación siga abierta. */
   async function escucharChat(c) {
     let fallos = 0;
-    while (c.vivo) {
-      let eventos;
+    while (c.vivo && chat === c) {
+      let lista;
       try {
-        eventos = await api(rutaChat(c, 'eventos') + '?conexion=' + encodeURIComponent(c.conexion));
+        lista = await api(rutaChat(c.usuarioId, 'mensajes') + '?esperar=true&despues=' + c.ultimoId);
         fallos = 0;
+        if (c.error) { c.error = null; pintarHilo(); }
       } catch (e) {
-        if (!c.vivo) return;
-        if ([401, 403, 404, 409, 410].includes(e.estado)) { terminarChat(c, e.message); return; }
-        // Sin red o el servidor reiniciando: se reintenta cada vez más despacio.
+        if (!c.vivo || chat !== c) return;
+        if ([401, 403, 404, 409].includes(e.estado)) { terminarChat(c, e.message); return; }
+        // Sin red o el servidor reiniciando: cada vez más despacio.
         fallos++;
-        if (fallos === 3) nota(c, 'Se perdió la conexión. Reintentando…');
+        if (fallos === 3) { c.error = 'Se perdió la conexión. Reintentando…'; pintarHilo(); }
         await pausa(Math.min(30000, 2000 * fallos));
         continue;
       }
-      for (const ev of eventos || []) {
-        if (!c.vivo) return;
-        await procesarEvento(c, ev);
-      }
-      pintarChat();
-    }
-  }
-
-  async function procesarEvento(c, ev) {
-    switch (ev.tipo) {
-      case 'llave':
-        await llaveDelOtro(c, ev.clave);
-        break;
-      case 'mensaje': {
-        if (!c.clave) return;
-        const m = await CC.descifrar(c.clave, 'usuario', ev.iv, ev.cifrado);
-        if (!m) { nota(c, 'Llegó un mensaje que no se pudo descifrar y se descartó.'); return; }
-        if (m.n <= c.ultimoN) return; // repetido: alguien lo reenvió
-        c.ultimoN = m.n;
-        c.mensajes.push({ mio: false, texto: m.t, hora: new Date() });
-        break;
-      }
-      case 'salio':
-        c.clave = null;
-        c.fase = 'esperando';
-        nota(c, 'La persona cerró el chat en su teléfono. Si vuelve a entrar, pueden seguir.');
-        break;
-      case 'cerrada':
-        terminarChat(c, ev.motivo || 'La conversación terminó.');
-        break;
-    }
-  }
-
-  async function llaveDelOtro(c, claveBase64) {
-    try {
-      const otra = CC.deBase64(claveBase64);
-      c.clave = await CC.clave(c.par.privada, claveBase64, c.par.publica, otra);
-      const codigo = await CC.codigo(c.par.publica, otra);
-      nota(c, c.codigo && c.codigo !== codigo
-        ? 'La persona volvió a entrar. El código de seguridad cambió: ' + codigo + '.'
-        : 'La persona está en el chat.');
-      c.codigo = codigo;
-      c.ultimoN = 0;
-      c.fase = 'conectado';
-    } catch (e) {
-      c.clave = null;
-      nota(c, 'La llave que mandó su teléfono no es válida. Pídele que cierre y vuelva a abrir el chat.');
+      if (chat !== c || !c.vivo) return;
+      if (agregarMensajes(c, lista)) pintarHilo();
     }
   }
 
   async function enviarChat() {
     const c = chat;
     const caja = $('#chatTexto');
-    if (!c || !caja || c.enviando) return;
+    if (!c || !caja || c.enviando || !c.vivo) return;
     const texto = caja.value.trim();
     if (!texto) return;
-    if (texto.length > MAX_TEXTO_CHAT) { toast('Máximo ' + num(MAX_TEXTO_CHAT) + ' caracteres por mensaje.', true); return; }
-    if (!c.clave) { toast('La persona todavía no está en el chat.', true); return; }
+    if (texto.length > MAX_TEXTO_CHAT) { toast('Máximo ' + num(MAX_TEXTO_CHAT) + ' letras por mensaje.', true); return; }
 
-    // De uno en uno: el contador de cada mensaje tiene que llegar en orden.
     c.enviando = true;
-    pintarChat();
+    pintarPie();
     try {
-      const m = await CC.cifrar(c.clave, 'admin', ++c.enviados, texto);
-      await api(rutaChat(c, 'mensajes'), { metodo: 'POST', cuerpo: { conexion: c.conexion, iv: m.iv, cifrado: m.cifrado } });
+      const m = await api(rutaChat(c.usuarioId, 'mensajes'), { metodo: 'POST', cuerpo: { texto } });
       if (chat !== c) return;
-      c.mensajes.push({ mio: true, texto, hora: new Date() });
+      agregarMensajes(c, [m]);
       caja.value = '';
+      pintarHilo();
     } finally {
       c.enviando = false;
-      if (chat === c) { pintarChat(); $('#chatTexto') && $('#chatTexto').focus(); }
+      if (chat === c) { pintarPie(); $('#chatTexto') && $('#chatTexto').focus(); }
     }
-  }
-
-  function nota(c, texto) {
-    c.mensajes.push({ nota: true, texto, hora: new Date() });
   }
 
   function terminarChat(c, motivo) {
     c.vivo = false;
-    c.fase = 'terminado';
-    c.clave = null;
-    c.par = null;
-    if (motivo) nota(c, motivo);
-    if (chat === c) pintarChat();
+    c.error = motivo || 'La conversación ya no está disponible.';
+    if (chat === c) pintarHilo();
   }
 
-  /** Avisa al servidor y borra la conversación de la pantalla y de la memoria. */
-  async function cerrarChat() {
-    const c = chat;
-    if (!c) return;
-    const despedirse = c.vivo && c.conexion;
-    olvidarChat();
-    if (despedirse) {
-      try { await api(rutaChat(c, 'salir'), { metodo: 'POST', cuerpo: { conexion: c.conexion } }); } catch (e) { /* ya se cerrará solo */ }
-    }
-  }
-
+  /** Suelta la conversación abierta y le dice al servidor que ya no se mira. */
   function olvidarChat() {
     const c = chat;
     chat = null;
-    if (c) {
-      c.vivo = false;
-      c.clave = null;
-      c.par = null;
-      c.mensajes.length = 0;
+    if (!c) return;
+    const vivo = c.vivo;
+    c.vivo = false;
+    c.mensajes.length = 0;
+    if (vivo && sesion && sesion.token) {
+      api(rutaChat(c.usuarioId, 'salir') + '?hasta=' + c.ultimoId, { metodo: 'POST' }).catch(() => {});
     }
-    const v = $('#chatVentana');
-    if (v) v.remove();
   }
 
-  // Al cerrar la pestaña o recargar, el teléfono se entera en vez de esperar
-  // dos minutos a que el servidor note que el panel se fue.
+  // Al cerrar la pestaña o recargar, la persona vuelve a recibir avisos al
+  // momento en vez de esperar a que el servidor note que el panel se fue.
   window.addEventListener('pagehide', () => {
     const c = chat;
-    if (!c || !c.vivo || !c.conexion || !sesion || !sesion.token) return;
+    if (!c || !c.vivo || !sesion || !sesion.token) return;
     try {
-      fetch(BASE + rutaChat(c, 'salir'), {
+      fetch(BASE + rutaChat(c.usuarioId, 'salir') + '?hasta=' + c.ultimoId, {
         method: 'POST', keepalive: true,
-        headers: { Authorization: 'Bearer ' + sesion.token, 'Content-Type': 'application/json', 'X-App-Plataforma': 'panel' },
-        body: JSON.stringify({ conexion: c.conexion })
+        headers: { Authorization: 'Bearer ' + sesion.token, 'X-App-Plataforma': 'panel' }
       });
     } catch (e) { /* nada que hacer */ }
   });
 
-  function pintarChat() {
+  function pintarHilo() {
     const c = chat;
-    if (!c) return;
-    let v = $('#chatVentana');
-    if (!v) {
-      v = document.createElement('section');
-      v.id = 'chatVentana';
-      v.className = 'chat-ventana';
-      v.setAttribute('aria-label', 'Chat');
-      v.innerHTML = `
-        <div class="chat-cabeza">
-          <div class="chat-quien"><b id="chatNombre"></b><span id="chatEstado"></span></div>
-          <button class="btn sm" data-accion="chat-plegar" title="Plegar o desplegar">–</button>
-          <button class="btn sm" data-accion="chat-cerrar">Cerrar</button>
+    const hilo = $('#chatHilo');
+    if (!hilo || !c) return;
+
+    if (!hilo.querySelector('.chat-lista')) {
+      hilo.innerHTML = `
+        <div class="panel-head chat-cabeza">
+          <button class="btn sm solo-movil-chat" data-accion="chat-volver">‹ Conversaciones</button>
+          <h2 class="clip" id="chatNombre"></h2>
+          <div class="toolbar">
+            <button class="btn sm" data-accion="ver-usuario" id="chatFicha">Ficha</button>
+            <button class="btn sm danger" data-accion="chat-borrar" id="chatBorrar">Borrar conversación</button>
+          </div>
         </div>
-        <div class="chat-codigo" id="chatCodigo"></div>
         <div class="chat-lista" id="chatLista" aria-live="polite"></div>
         <div class="chat-pie" id="chatPie"></div>`;
-      document.body.appendChild(v);
     }
-
-    $('#chatNombre').textContent = c.nombre || 'Cuenta';
-    $('#chatEstado').textContent = {
-      entrando: 'Abriendo…',
-      esperando: 'Esperando a que entre',
-      conectado: 'Conectado · cifrado de extremo a extremo',
-      terminado: 'Conversación terminada'
-    }[c.fase] || '';
-
-    $('#chatCodigo').innerHTML = c.codigo && c.fase === 'conectado'
-      ? 'Código de seguridad <b class="mono">' + esc(c.codigo) + '</b> <span class="muted">· la persona ve el mismo en su teléfono</span>'
-      : '<span class="muted">Nada de esta conversación se guarda. Al cerrar, se borra.</span>';
+    $('#chatNombre').textContent = c.nombre;
+    $('#chatFicha').dataset.id = c.usuarioId;
+    $('#chatBorrar').dataset.id = c.usuarioId;
+    $('#chatBorrar').dataset.nombre = c.nombre;
 
     const lista = $('#chatLista');
+    const abajo = lista.scrollHeight - lista.scrollTop - lista.clientHeight < 80;
     lista.innerHTML = '';
+    if (!c.cargado && c.vivo) {
+      lista.innerHTML = '<div class="cargando">Cargando…</div>';
+    } else if (!c.mensajes.length && !c.error) {
+      lista.innerHTML = '<div class="empty">Todavía no se han escrito. Lo que mandes le llega con un aviso al teléfono.</div>';
+    }
     for (const m of c.mensajes) {
       const fila = document.createElement('div');
-      fila.className = m.nota ? 'chat-nota' : 'chat-msj ' + (m.mio ? 'mio' : 'suyo');
+      fila.className = 'chat-msj ' + (m.deAdmin ? 'mio' : 'suyo');
+      if (m.deAdmin && m.autor && m.autor !== 'Tú') {
+        const quien = document.createElement('span');
+        quien.className = 'chat-autor';
+        quien.textContent = m.autor;
+        fila.appendChild(quien);
+      }
       const texto = document.createElement('div');
       texto.textContent = m.texto; // nunca innerHTML: lo escribió otra persona
       fila.appendChild(texto);
-      if (!m.nota) {
-        const hora = document.createElement('span');
-        hora.className = 'chat-hora';
-        hora.textContent = m.hora.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit' });
-        fila.appendChild(hora);
-      }
+      const pie = document.createElement('span');
+      pie.className = 'chat-hora';
+      pie.textContent = cuandoCorto(m.creadoEn) + (m.deAdmin ? (m.leidoEn ? ' · Leído' : ' · Enviado') : '');
+      pie.title = fmtFecha(m.creadoEn);
+      fila.appendChild(pie);
       lista.appendChild(fila);
     }
-    lista.scrollTop = lista.scrollHeight;
+    if (c.error) {
+      const nota = document.createElement('div');
+      nota.className = 'chat-nota';
+      nota.textContent = c.error;
+      lista.appendChild(nota);
+    }
+    if (abajo || c.mensajes.length < 3) lista.scrollTop = lista.scrollHeight;
+    pintarPie();
+  }
 
+  function pintarPie() {
+    const c = chat;
     const pie = $('#chatPie');
-    if (c.fase === 'terminado') {
-      pie.innerHTML = '<button class="btn primary" data-accion="chat-reabrir">Volver a abrir</button><button class="btn" data-accion="chat-cerrar">Cerrar</button>';
+    if (!pie || !c) return;
+    if (!c.vivo) {
+      pie.innerHTML = '<button class="btn" data-accion="recargar">Volver a cargar</button>';
       return;
     }
     if (!$('#chatTexto')) {
-      pie.innerHTML = `<textarea class="input" id="chatTexto" rows="2" maxlength="${MAX_TEXTO_CHAT}" placeholder="Escribe un mensaje" aria-label="Mensaje"></textarea>
+      pie.innerHTML = `<textarea class="input" id="chatTexto" rows="2" maxlength="${MAX_TEXTO_CHAT}" placeholder="Escribe un mensaje (Enter envía, Mayús+Enter salta de línea)" aria-label="Mensaje"></textarea>
         <button class="btn primary" id="chatEnviar" data-accion="chat-enviar">Enviar</button>`;
       $('#chatTexto').addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); enviarChat().catch((err) => toast(err.message, true)); }
       });
-      setTimeout(() => $('#chatTexto') && $('#chatTexto').focus(), 30);
     }
-    const listo = c.fase === 'conectado' && !!c.clave;
-    $('#chatEnviar').disabled = !listo || c.enviando;
+    $('#chatEnviar').disabled = c.enviando || !c.cargado;
     $('#chatEnviar').textContent = c.enviando ? 'Enviando…' : 'Enviar';
-    $('#chatTexto').placeholder = listo ? 'Escribe un mensaje (Enter envía, Mayús+Enter salta de línea)' : 'Espera a que la persona entre';
   }
 
   // ---------------------------------------------------------------------------
@@ -4160,37 +4148,51 @@
           const activar = b.dataset.valor === 'true';
           if (!activar) {
             const ok = await confirmar('¿Quitarle el chat a ' + b.dataset.nombre + '?',
-              'Ya no verá el chat en la app y ningún administrador podrá escribirle. Si tiene una conversación abierta, se cierra en este momento.',
-              'Quitar el chat', false);
+              'Ya no verá el chat en la app y se borra toda su conversación con el equipo. No se puede deshacer.',
+              'Quitar el chat y borrar', true);
             if (!ok) break;
           }
           b.disabled = true;
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/chat?valor=' + activar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
-          if (!activar && chat && chat.usuarioId === id) olvidarChat();
-          if (b.dataset.desde === 'lista') await vistaChat();
-          else await abrirUsuario(id);
+          if (!activar && chat && chat.usuarioId === id) { olvidarChat(); estado.chatAbierto = null; }
+          if (estado.vista === 'chat') { cerrarModal(); await vistaChat(); } else await abrirUsuario(id);
+          contarChat();
           break;
         }
 
         case 'abrir-chat': {
-          cerrarModal();
-          await abrirChat(id, b.dataset.nombre);
+          if (estado.vista !== 'chat') {
+            cerrarModal();
+            estado.chatAbierto = id;
+            ir('chat');
+          } else {
+            await abrirConversacion(id);
+          }
           break;
         }
 
         case 'chat-enviar': await enviarChat(); break;
-        case 'chat-cerrar': await cerrarChat(); break;
-        case 'chat-reabrir': {
-          const { usuarioId, nombre } = chat || {};
-          if (!usuarioId) break;
+
+        case 'chat-volver': {
           olvidarChat();
-          await abrirChat(usuarioId, nombre);
+          estado.chatAbierto = null;
+          const p = $('#chatPantalla');
+          if (p) p.classList.remove('con-hilo');
+          pintarBandeja();
           break;
         }
-        case 'chat-plegar': {
-          const v = $('#chatVentana');
-          if (v) v.classList.toggle('plegada');
+
+        case 'chat-borrar': {
+          const ok = await confirmar('¿Borrar la conversación con ' + b.dataset.nombre + '?',
+            'Se borran todos los mensajes, los tuyos y los suyos, para los dos lados. La cuenta sigue con el chat activado. No se puede deshacer.',
+            'Borrar conversación', true);
+          if (!ok) break;
+          const r = await api(rutaChat(id), { metodo: 'DELETE' });
+          toast(r.mensaje || 'Conversación borrada.');
+          olvidarChat();
+          await vistaChat();
+          contarChat();
           break;
         }
 

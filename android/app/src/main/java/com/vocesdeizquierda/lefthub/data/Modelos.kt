@@ -403,6 +403,18 @@ data class Perfil(
     val chat: Boolean = false,
     /** El topic de FCM del aviso del chat. Solo viene con el chat activado. */
     val chatAviso: String? = null,
+    /** Mensajes del equipo que todavía no ha leído. */
+    val chatSinLeer: Long = 0,
+    /** Esta cuenta es del equipo: puede entrar al panel y contestar el chat. */
+    val esAdmin: Boolean = false,
+    /**
+     * Solo para administradores, y solo si el servidor tiene el chat: el
+     * topic del aviso de "una cuenta te escribió". Con él, Ajustes enseña la
+     * bandeja de conversaciones.
+     */
+    val chatAvisoEquipo: String? = null,
+    /** Solo para administradores: conversaciones con algo sin leer. */
+    val chatEquipoSinLeer: Long = 0,
     /**
      * Puede recomendar canales: Ajustes enseña "Recomendar un canal". Lo
      * decide el equipo desde el panel. Un servidor anterior no lo manda, y
@@ -594,4 +606,31 @@ data class Recomendacion(
 data class MisRecomendaciones(
     val recomendaciones: List<Recomendacion> = emptyList(),
     val quedanHoy: Int = 0
+)
+
+/**
+ * Un mensaje del chat con el equipo, ya en claro: el servidor lo guarda
+ * cifrado y lo descifra al entregarlo. En el teléfono no se guarda.
+ *
+ * @param autor quién lo escribió. A la persona siempre le llega "Equipo de
+ *              Voces"; a un administrador, "Tú" o el correo de quien fue.
+ */
+data class MensajeDelChat(
+    val id: Long,
+    val texto: String,
+    val deAdmin: Boolean,
+    val autor: String?,
+    val creadoEn: Instant,
+    /** Cuándo lo vio el otro lado. Null mientras no lo ha abierto. */
+    val leidoEn: Instant?
+)
+
+/** Una conversación en la bandeja de un administrador. */
+data class ConversacionDelChat(
+    val id: String,
+    val nombre: String,
+    val ultimo: String?,
+    val ultimoEn: Instant?,
+    val ultimoDeAdmin: Boolean,
+    val sinLeer: Long
 )
