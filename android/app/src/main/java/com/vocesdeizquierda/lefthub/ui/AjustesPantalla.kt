@@ -42,7 +42,9 @@ fun AjustesPantalla(
     /** Solo administradores: abre la bandeja del chat con las cuentas. */
     onAbrirBandeja: () -> Unit = {},
     /** Abre "Recomendar un canal". Solo sale si el equipo lo permite a esta cuenta. */
-    onAbrirRecomendar: () -> Unit = {}
+    onAbrirRecomendar: () -> Unit = {},
+    /** Abre "Agregar al directorio". Solo sale si el equipo autorizó a esta cuenta. */
+    onAbrirAgregar: () -> Unit = {}
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -212,6 +214,22 @@ fun AjustesPantalla(
                     },
                     onClick = onAbrirBandeja
                 )
+            }
+        }
+
+        // --- Agregar al directorio -------------------------------------------
+        // Solo las cuentas que el equipo autorizó en el panel. Va antes que
+        // recomendar: quien puede agregar no necesita pedírselo a nadie.
+        if (estado.perfil.editor) {
+            Seccion("Agregar al directorio") {
+                Text(
+                    "El equipo te dejó agregar creadores, medios y canales de YouTube. " +
+                        "Lo que agregues sale en el directorio en el acto, para todos.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                BotonGrande(titulo = "Agregar al directorio", onClick = onAbrirAgregar)
             }
         }
 

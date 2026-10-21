@@ -425,7 +425,13 @@ data class Perfil(
      * decide el equipo desde el panel. Un servidor anterior no lo manda, y
      * entonces es que no.
      */
-    val recomendar: Boolean = false
+    val recomendar: Boolean = false,
+    /**
+     * El equipo la autorizó a agregar creadores, medios y canales desde la
+     * app, sin aprobación: Ajustes enseña "Agregar al directorio". Un
+     * servidor anterior no lo manda, y entonces es que no.
+     */
+    val editor: Boolean = false
 ) {
     /**
      * La app ofrece y hace la comprobación de YouTube: esta compilación la
@@ -638,4 +644,51 @@ data class ConversacionDelChat(
     val ultimoEn: Instant?,
     val ultimoDeAdmin: Boolean,
     val sinLeer: Long
+)
+
+// --- Agregar al directorio desde la app -------------------------------------
+
+/** Qué se agrega. La clave es la que usa el servidor. */
+enum class TipoDeAlta(val clave: String) {
+    CREADOR("creador"), MEDIO("medio"), CANAL("canal");
+
+    companion object {
+        fun de(clave: String?): TipoDeAlta? = entries.firstOrNull { it.clave == clave }
+    }
+}
+
+/** Un canal de YouTube encontrado al buscarlo para agregarlo. */
+data class CanalEncontrado(
+    val channelId: String,
+    val titulo: String? = null,
+    val fotoUrl: String? = null,
+    val handle: String? = null,
+    /** Suscriptores tal como los da YouTube, en texto. Null si los oculta. */
+    val suscriptores: String? = null,
+    /** Nombre de quien ya lo tiene en el directorio. Null si no está. */
+    val yaEsDe: String? = null
+) {
+    val libre: Boolean get() = yaEsDe == null
+}
+
+/** Lo que se acaba de agregar: a qué ficha llevar a la persona. */
+data class Agregado(
+    val tipo: TipoDeAlta,
+    val id: String,
+    val nombre: String,
+    val mensaje: String,
+    /** Algo que conviene saber aunque haya salido bien. Null si nada. */
+    val aviso: String? = null
+)
+
+data class AltaDesdeApp(
+    val tipo: TipoDeAlta,
+    val id: String,
+    val nombre: String,
+    val creadoEn: Instant? = null
+)
+
+data class LoQueAgregue(
+    val quedanHoy: Int = 0,
+    val altas: List<AltaDesdeApp> = emptyList()
 )

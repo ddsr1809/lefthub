@@ -34,6 +34,12 @@ import com.vocesdeizquierda.lefthub.data.FichaDeVideo
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.data.Recomendacion
 import com.vocesdeizquierda.lefthub.recomendar.EstadoRecomendar
+import com.vocesdeizquierda.lefthub.agregar.Dueno
+import com.vocesdeizquierda.lefthub.agregar.EstadoAgregar
+import com.vocesdeizquierda.lefthub.data.AltaDesdeApp
+import com.vocesdeizquierda.lefthub.data.CanalEncontrado
+import com.vocesdeizquierda.lefthub.data.LoQueAgregue
+import com.vocesdeizquierda.lefthub.data.TipoDeAlta
 
 
 // Previews.
@@ -659,6 +665,72 @@ private fun PreviaAjustesConRecomendar() {
             onVincularGoogle = {},
             onCerrarSesion = {},
             onBorrarCuenta = {}
+        )
+    }
+}
+
+private val duenosDeEjemplo = listOf(
+    Dueno("juan", "Juan Pérez", esMedio = false),
+    Dueno("estudio", "Estudio X", esMedio = true)
+)
+
+/** Agregar al directorio: qué agregar y lo que ya agregó. */
+@VistaPreviaAccesible
+@Composable
+private fun PreviaAgregarMenu() {
+    Marco {
+        AgregarContenido(
+            estado = EstadoAgregar(
+                cargando = false,
+                historial = LoQueAgregue(
+                    quedanHoy = 18,
+                    altas = listOf(
+                        AltaDesdeApp(TipoDeAlta.CREADOR, "c1", "Rosa Luna", Instant.now().minusSeconds(900)),
+                        AltaDesdeApp(TipoDeAlta.CANAL, "k1", "La Base Clips", Instant.now().minusSeconds(2 * 86_400))
+                    )
+                )
+            ),
+            duenos = duenosDeEjemplo, etiquetas = emptyList(),
+            onElegir = {}, onBuscar = {}, onOlvidarCanal = {}, onAgregar = { _, _, _, _ -> },
+            onVerFicha = {}, onVolver = {}
+        )
+    }
+}
+
+/** Agregar un creador con el canal ya encontrado en YouTube. */
+@Preview(name = "Agregar creador", showBackground = true, heightDp = 1300)
+@Composable
+private fun PreviaAgregarCreador() {
+    Marco(tema = "claro") {
+        AgregarContenido(
+            estado = EstadoAgregar(
+                cargando = false,
+                tipo = TipoDeAlta.CREADOR,
+                encontrado = CanalEncontrado("UC123", titulo = "Rosa Luna", handle = "rosaluna", suscriptores = "125000")
+            ),
+            duenos = duenosDeEjemplo,
+            etiquetas = listOf(Etiqueta(id = "e1", nombre = "Política"), Etiqueta(id = "e2", nombre = "Cocina")),
+            onElegir = {}, onBuscar = {}, onOlvidarCanal = {}, onAgregar = { _, _, _, _ -> },
+            onVerFicha = {}, onVolver = {}
+        )
+    }
+}
+
+/** Un canal que ya está en el directorio: no se deja agregar. */
+@Preview(name = "Agregar canal repetido", showBackground = true, heightDp = 1000,
+    uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun PreviaAgregarCanalRepetido() {
+    Marco {
+        AgregarContenido(
+            estado = EstadoAgregar(
+                cargando = false,
+                tipo = TipoDeAlta.CANAL,
+                encontrado = CanalEncontrado("UC124", titulo = "Juan Pérez Clips", yaEsDe = "Juan Pérez")
+            ),
+            duenos = duenosDeEjemplo, etiquetas = emptyList(),
+            onElegir = {}, onBuscar = {}, onOlvidarCanal = {}, onAgregar = { _, _, _, _ -> },
+            onVerFicha = {}, onVolver = {}
         )
     }
 }

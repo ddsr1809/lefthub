@@ -112,6 +112,14 @@ public class Usuario {
     private boolean youtubeHabilitado = false;
 
     /**
+     * El equipo la autorizó desde el panel para agregar creadores, medios y
+     * canales desde la app, sin aprobación previa. Ver editor/EditorService
+     * y V24.
+     */
+    @Column(name = "editor_habilitado", nullable = false)
+    private boolean editorHabilitado = false;
+
+    /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
      * 5.1.1(v).
@@ -244,6 +252,9 @@ public class Usuario {
 
     public boolean isYoutubeHabilitado() { return youtubeHabilitado; }
     public void setYoutubeHabilitado(boolean youtubeHabilitado) { this.youtubeHabilitado = youtubeHabilitado; }
+
+    public boolean isEditorHabilitado() { return editorHabilitado; }
+    public void setEditorHabilitado(boolean editorHabilitado) { this.editorHabilitado = editorHabilitado; }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

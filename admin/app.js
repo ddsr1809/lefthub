@@ -279,7 +279,7 @@
     aviso: null,            // lo que se está redactando en Avisos
     avisoPreset: null,      // con qué abrir Avisos (desde la ficha de un video)
     chatAbierto: null,      // la conversación del chat que se abre al entrar a la sección
-    filtroUsuarios: { q: '', filtro: '', pais: '', orden: 'vistos', pagina: 0 },
+    filtroUsuarios: { q: '', tipos: [], marcas: [], pais: '', orden: 'visto', dir: 'desc', pagina: 0, tamano: 50 },
     filtroRecs: 'pendientes' // pendientes | revisadas | todas
   };
 
@@ -293,6 +293,7 @@
     publicaciones: vistaPublicaciones,
     reportes: vistaReportes,
     recomendaciones: vistaRecomendaciones,
+    editores: vistaEditores,
     avisos: vistaAvisos,
     anuncios: vistaAnuncios,
     apps: vistaApps,
@@ -2217,6 +2218,74 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Editores: agregar al directorio desde la app
+  // ---------------------------------------------------------------------------
+  // Las cuentas autorizadas aquí dan de alta creadores, medios y canales desde
+  // su teléfono, sin pasar por el panel ni esperar aprobación: sale en el acto.
+  // Por eso esta sección es sobre todo un historial, para revisar después qué
+  // entró y quién lo metió. Empieza sin nadie autorizado, tampoco los admins.
+  const TIPOS_ALTA = { creador: ['Creador', 'b-ok'], medio: ['Medio', 'b-info'], canal: ['Canal', 'b-warn'] };
+  const ACCION_ALTA = { creador: 'editar-creador', medio: 'editar-productora', canal: 'editar-canal' };
+
+  async function vistaEditores() {
+    let d;
+    try {
+      // Frescos: lo agregado desde la app no está en lo que el panel tenía
+      // guardado, y «Revisar» abre su ficha desde ahí.
+      [d] = await Promise.all([api('/api/admin/editores'), cargarCreadores(true), cargarProductoras(true)]);
+    } catch (e) {
+      if (e.estado === 404) {
+        main.innerHTML = '<div class="head"><div><h1>Editores</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no permite agregar desde la app. Actualízalo para usarlo.</div></div>';
+        return;
+      }
+      throw e;
+    }
+    if (estado.vista !== 'editores') return;
+
+    const cuenta = (u) => u.email || 'Cuenta ' + String(u.id).slice(0, 8);
+    const hoy = d.altas.filter((a) => Date.now() - new Date(a.creadoEn) < 864e5).length;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Editores</h1><p class="sub">Cuentas que pueden agregar creadores, medios y canales de YouTube desde la app. Lo que agregan sale en el directorio en el acto, sin pasar por aquí: revísalo abajo. Cada cuenta puede hacer hasta 20 altas al día.</p></div></div>
+      <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Cuentas autorizadas</h2><span class="muted" style="font-size:13px">${plural(d.editores.length, 'cuenta', 'cuentas')}</span></div>
+          <div class="panel-body">
+            ${d.editores.length ? '<ul class="lista-simple">' + d.editores.map((u) => `<li><span class="clip"><b>${esc(cuenta(u))}</b>${u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : ''} <span class="muted" style="font-size:12.5px">· ${esc(plural(u.altas, 'alta', 'altas'))} · abrió la app ${esc(relativo(u.vistoEn))}</span></span><button class="btn sm danger" data-accion="editor-usuario" data-desde="lista" data-id="${esc(u.id)}" data-valor="false" data-nombre="${esc(cuenta(u))}">Quitar</button></li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Nadie todavía. Mientras no autorices a nadie, la app no enseña esta opción a ninguna cuenta, tampoco a los administradores.</p>'}
+            <p class="hint" style="margin:10px 0 0">Para autorizar una cuenta, búscala en <button class="link" data-ir="usuarios">Usuarios</button>, ábrela con «Ver» y pulsa «Dejar que agregue desde la app». Tiene que ser una cuenta guardada con Google o Apple.</p>
+          </div></section>
+        <section class="panel">
+          <div class="panel-head"><h2>Lo que se agregó desde la app</h2><span class="muted" style="font-size:13px">${plural(d.altas.length, 'alta', 'altas')}${hoy ? ' · ' + num(hoy) + ' en 24 h' : ''}</span></div>
+          <div class="tablewrap"><table><thead><tr><th>Qué</th><th>Nombre</th><th>Quién</th><th>Cuándo</th><th></th></tr></thead><tbody>
+          ${d.altas.length ? d.altas.map((a) => {
+            const [t, c] = TIPOS_ALTA[a.tipo] || [a.tipo, 'b-mute'];
+            return `<tr>
+              <td><span class="badge ${c}">${esc(t)}</span></td>
+              <td><div class="clip"><b>${esc(a.nombre)}</b></div>${a.channelId ? `<a class="mono" style="font-size:12px" href="https://www.youtube.com/channel/${esc(a.channelId)}" target="_blank" rel="noopener">${esc(a.channelId)}</a>` : ''}</td>
+              <td><div class="clip">${esc(a.autor || 'Cuenta borrada')}</div></td>
+              <td class="num" title="${esc(fmtFecha(a.creadoEn))}">${esc(relativo(a.creadoEn))}</td>
+              <td class="acciones">${a.existe ? `<button class="btn sm" data-accion="${ACCION_ALTA[a.tipo]}" data-id="${esc(a.objetoId)}">Revisar</button>` : '<span class="badge b-mute">Ya no está</span>'}</td>
+            </tr>`;
+          }).join('') : '<tr><td colspan="5"><div class="empty">Todavía no se ha agregado nada desde la app.</div></td></tr>'}
+          </tbody></table></div>
+        </section>
+      </div>`;
+  }
+
+  /** Bloque de la ficha de una cuenta: dejarla o no agregar al directorio desde la app. */
+  function fichaEditor(u) {
+    const nombre = esc(u.email || 'esta cuenta');
+    if (u.editorHabilitado) {
+      return `<div><button class="btn danger" data-accion="editor-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Ya no dejar que agregue desde la app</button>
+          <p class="hint" style="margin:6px 0 0">Puede agregar creadores, medios y canales desde la app. Lo que agregó está en <button class="link" data-ir="editores">Editores</button>.</p></div>`;
+    }
+    if (u.proveedor === 'anonimo') {
+      return '<div><p class="hint" style="margin:0">Para dejar que agregue al directorio desde la app, primero tiene que guardar su cuenta con Google o Apple.</p></div>';
+    }
+    return `<div><button class="btn" data-accion="editor-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Dejar que agregue desde la app</button>
+          <p class="hint" style="margin:6px 0 0">Verá «Agregar al directorio» en Ajustes de la app. Lo que agregue sale en el acto, sin aprobación.</p></div>`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Avisos del equipo
   // ---------------------------------------------------------------------------
   // Lo que el equipo manda a mano: un medio o un canal nuevo, un video
@@ -2516,14 +2585,16 @@
     const [a, m, d] = String(dia).split('-').map(Number);
     return new Date(a, m - 1, d).toLocaleDateString('es-MX', { day: 'numeric', month: 'short' });
   };
-  const badgeProveedor = (u) => {
+  // En la lista, el posible bot tiene su propia columna: ahí no se repite.
+  const badgeProveedor = (u, sinBot) => {
     const [t, c] = PROVEEDORES[u.proveedor] || [u.proveedor, 'b-mute'];
     return `<span class="badge ${c}">${esc(t)}</span>`
       + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '')
-      + (u.posibleBot ? ' <span class="badge b-bad">Posible bot</span>' : '')
+      + (u.posibleBot && !sinBot ? ' <span class="badge b-bad">Posible bot</span>' : '')
       + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '')
       + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '')
-      + (u.youtubeHabilitado ? ' <span class="badge b-info">YouTube</span>' : '');
+      + (u.youtubeHabilitado ? ' <span class="badge b-info">YouTube</span>' : '')
+      + (u.editorHabilitado ? ' <span class="badge b-warn">Editor</span>' : '');
   };
 
   // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
@@ -2567,12 +2638,53 @@
     }).join('')}</div>`;
   }
 
+  // ---------------------------------------------------------------------------
+  // La lista de cuentas: filtros que se combinan y columnas que ordenan
+  // ---------------------------------------------------------------------------
+  // Tipos: vale cualquiera de los marcados. Marcas: tiene que cumplirlas todas.
+  // El servidor filtra, ordena y pagina (ConsultaDeUsuarios); aquí solo se
+  // pide y se pinta.
+  const TIPOS_USUARIO = [['anonimo', 'Invitados'], ['google', 'Google'], ['apple', 'Apple']];
+  const MARCAS_USUARIO = [
+    ['admin', 'Administradores'], ['bot', 'Posibles bots'], ['persona', 'Sin indicio de bot'],
+    ['siguen', 'Siguen a alguien'], ['nosiguen', 'No siguen a nadie'], ['sinanuncios', 'Sin anuncios'],
+    ['activos7', 'Activos en 7 días'], ['nuevos7', 'Nuevas en 7 días']
+  ];
+  // Las que se contradicen: marcar una desmarca la otra.
+  const OPUESTAS = { bot: 'persona', persona: 'bot', siguen: 'nosiguen', nosiguen: 'siguen' };
+  const COLUMNAS_USUARIOS = [['cuenta', 'Cuenta'], ['tipo', 'Tipo'], ['pais', 'Conexión'], ['bot', 'Bot'],
+    ['sigue', 'Sigue a'], ['alta', 'Alta'], ['visto', 'Abrió la app']];
+  const USUARIOS_DE_LA_A = ['cuenta', 'tipo', 'pais'];
+  const TAMANOS_USUARIOS = [25, 50, 100, 200];
+
+  /** Los filtros guardados, con la forma de ahora aunque vengan de una versión anterior del panel. */
+  function filtroUsuarios() {
+    const f = estado.filtroUsuarios;
+    if (!Array.isArray(f.tipos)) f.tipos = [];
+    if (!Array.isArray(f.marcas)) f.marcas = [];
+    if (f.filtro) {
+      (TIPOS_USUARIO.some(([k]) => k === f.filtro) ? f.tipos : f.marcas).push(f.filtro);
+      delete f.filtro;
+    }
+    if (f.orden === 'vistos') f.orden = 'visto';
+    if (f.orden === 'nuevos') f.orden = 'alta';
+    if (!f.dir) f.dir = 'desc';
+    if (!TAMANOS_USUARIOS.includes(f.tamano)) f.tamano = 50;
+    return f;
+  }
+
+  const hayFiltrosUsuarios = (f) => !!(f.q.trim() || f.tipos.length || f.marcas.length || f.pais);
+
   let pedidoUsuarios = 0;
   /** Trae la página que piden los filtros. Devuelve false si llegó tarde y otra más nueva ya ganó. */
   async function cargarUsuarios() {
-    const f = estado.filtroUsuarios;
+    const f = filtroUsuarios();
     const miPedido = ++pedidoUsuarios;
-    const p = new URLSearchParams({ q: f.q.trim(), filtro: f.filtro, pais: f.pais, orden: f.orden, pagina: String(f.pagina) });
+    const p = new URLSearchParams({ q: f.q.trim(), tipos: f.tipos.join(','), marcas: f.marcas.join(','), pais: f.pais,
+      orden: f.orden, dir: f.dir, pagina: String(f.pagina), tamano: String(f.tamano) });
+    // Un servidor anterior solo entiende un filtro a la vez.
+    const elegidos = f.tipos.concat(f.marcas);
+    if (elegidos.length === 1) p.set('filtro', elegidos[0]);
     const datos = await api('/api/admin/usuarios?' + p.toString());
     if (miPedido !== pedidoUsuarios) return false;
     estado.usuarios = datos;
@@ -2582,13 +2694,14 @@
   function filasUsuarios() {
     const pag = estado.usuarios;
     if (!pag || !pag.usuarios.length) {
-      const f = estado.filtroUsuarios;
-      return `<tr><td colspan="7"><div class="empty">${f.q.trim() || f.filtro || f.pais ? 'Ninguna cuenta coincide.' : 'Todavía no hay cuentas.'}</div></td></tr>`;
+      return `<tr><td colspan="${COLUMNAS_USUARIOS.length + 1}"><div class="empty">${hayFiltrosUsuarios(filtroUsuarios())
+        ? 'Ninguna cuenta coincide. <button class="link" data-accion="limpiar-usuarios">Quitar los filtros</button>' : 'Todavía no hay cuentas.'}</div></td></tr>`;
     }
     return pag.usuarios.map((u) => `<tr>
-      <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b></div><span class="mono muted">${esc(u.id)}</span></td>
-      <td>${badgeProveedor(u)}</td>
+      <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b>${u.sinAnuncios ? ' <span class="badge b-mute" title="No ve anuncios">Sin anuncios</span>' : ''}</div><span class="mono muted">${esc(u.id)}</span></td>
+      <td>${badgeProveedor(u, true)}</td>
       <td>${u.pais || u.red ? `<div>${esc(nombrePais(u.pais) || '—')}</div><div class="muted clip" style="font-size:12.5px;max-width:220px" title="${esc(u.red || '')}">${esc(u.red || '')}</div>` : '<span class="muted">—</span>'}</td>
+      <td>${u.posibleBot ? `<span class="badge b-bad" title="${esc(u.motivoBot || '')}">Posible bot</span>` : '<span class="muted">—</span>'}</td>
       <td class="num">${num(u.favoritos)}</td>
       <td class="num">${esc(fmtDia(u.creadoEn))}</td>
       <td class="num" title="${esc(fmtFecha(u.vistoEn))}">${esc(relativo(u.vistoEn))}</td>
@@ -2596,14 +2709,38 @@
     </tr>`).join('');
   }
 
+  function cabezaUsuarios() {
+    const f = filtroUsuarios();
+    return '<tr>' + COLUMNAS_USUARIOS.map((c) => encabezado(c, f.orden, f.dir, 'ordenar-usuarios')).join('') + '<th></th></tr>';
+  }
+
+  /** Las casillas de tipo y de marcas, y lo que suman. Se repinta con cada cambio. */
+  function filtrosUsuarios() {
+    const f = filtroUsuarios();
+    const pag = estado.usuarios;
+    const chip = (grupo, [k, v], activo) => `<button class="chip${activo ? ' activo' : ''}" data-accion="chip-usuarios" data-grupo="${grupo}" data-valor="${k}" aria-pressed="${activo}">${activo ? '✓ ' : ''}${esc(v)}</button>`;
+    return `
+      <div class="fila-chips"><span class="etiqueta-chips" title="Vale cualquiera de los marcados">Tipo</span>
+        ${TIPOS_USUARIO.map((t) => chip('tipos', t, f.tipos.includes(t[0]))).join('')}</div>
+      <div class="fila-chips"><span class="etiqueta-chips" title="Tiene que cumplir todas las marcadas">Solo</span>
+        ${MARCAS_USUARIO.map((m) => chip('marcas', m, f.marcas.includes(m[0]))).join('')}</div>
+      <div class="resumen-filtros"><span>${pag ? `<b>${num(pag.total)}</b> ${pag.total === 1 ? 'cuenta coincide' : 'cuentas coinciden'}` : ''}${f.tipos.length > 1 ? ' · de cualquiera de los tipos marcados' : ''}${f.marcas.length > 1 ? ' · con todas las marcas elegidas' : ''}</span>
+        ${hayFiltrosUsuarios(f) ? '<button class="link" data-accion="limpiar-usuarios">Quitar los filtros</button>' : ''}</div>`;
+  }
+
   function pieUsuarios() {
     const pag = estado.usuarios;
     if (!pag) return '';
+    const f = filtroUsuarios();
     const desde = pag.total ? pag.pagina * pag.tamano + 1 : 0;
     const hasta = Math.min((pag.pagina + 1) * pag.tamano, pag.total);
+    const ir = (n, texto, apagado) => `<button class="btn sm" data-accion="pagina-usuarios" data-pagina="${n}" ${apagado ? 'disabled' : ''}>${texto}</button>`;
     return `<span class="muted">${pag.total ? num(desde) + '–' + num(hasta) + ' de ' + num(pag.total) : '0 cuentas'}</span>
-      <button class="btn sm" data-accion="pagina-usuarios" data-pagina="${pag.pagina - 1}" ${pag.pagina <= 0 ? 'disabled' : ''}>Anterior</button>
-      <button class="btn sm" data-accion="pagina-usuarios" data-pagina="${pag.pagina + 1}" ${pag.pagina >= pag.paginas - 1 ? 'disabled' : ''}>Siguiente</button>`;
+      <label class="hint" for="tamanoUsuarios">Por página</label>
+      <select class="input" id="tamanoUsuarios" style="width:auto">${TAMANOS_USUARIOS.map((n) => `<option value="${n}" ${n === f.tamano ? 'selected' : ''}>${n}</option>`).join('')}</select>
+      ${ir(0, 'Primera', pag.pagina <= 0)}${ir(pag.pagina - 1, 'Anterior', pag.pagina <= 0)}
+      <span class="muted">Página ${num(pag.pagina + 1)} de ${num(pag.paginas)}</span>
+      ${ir(pag.pagina + 1, 'Siguiente', pag.pagina >= pag.paginas - 1)}${ir(pag.paginas - 1, 'Última', pag.pagina >= pag.paginas - 1)}`;
   }
 
   async function repintarUsuarios() {
@@ -2613,18 +2750,18 @@
       return;
     }
     if (!llego || estado.vista !== 'usuarios') return;
-    const filas = $('#filasUsuarios'), pie = $('#pieUsuarios');
-    if (filas) filas.innerHTML = filasUsuarios();
-    if (pie) pie.innerHTML = pieUsuarios();
+    const partes = { '#filasUsuarios': filasUsuarios, '#pieUsuarios': pieUsuarios, '#cabezaUsuarios': cabezaUsuarios, '#filtrosUsuarios': filtrosUsuarios };
+    Object.entries(partes).forEach(([sel, pintar]) => { const el = $(sel); if (el) el.innerHTML = pintar(); });
+    const t = $('#tamanoUsuarios');
+    if (t) t.addEventListener('change', () => { const f = filtroUsuarios(); f.tamano = Number(t.value); f.pagina = 0; repintarUsuarios(); });
   }
 
-  /** Cambia los filtros desde un botón y deja la tabla a la vista. */
+  /** Cambia los filtros desde un botón (las cuentas de una IP, los administradores) y deja la tabla a la vista. */
   async function filtrarUsuarios(cambios) {
-    const f = Object.assign(estado.filtroUsuarios, cambios, { pagina: 0 });
+    const f = Object.assign(filtroUsuarios(), { q: '', tipos: [], marcas: [], pais: '' }, cambios, { pagina: 0 });
     const tabla = $('#filasUsuarios');
     if (estado.vista !== 'usuarios' || !tabla) { ir('usuarios'); return; }
     $('#qUsuarios').value = f.q;
-    $('#filtroUsuarios').value = f.filtro;
     $('#paisUsuarios').value = f.pais;
     await repintarUsuarios();
     const panel = tabla.closest('.panel');
@@ -2632,7 +2769,7 @@
   }
 
   async function vistaUsuarios() {
-    const f = estado.filtroUsuarios;
+    const f = filtroUsuarios();
     let zona = 'UTC';
     try { zona = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { /* UTC */ }
 
@@ -2673,22 +2810,18 @@
               ${r.posiblesBots ? '<button class="btn" data-accion="ver-bots">Ver estas cuentas</button>' : ''}
             </div></section>
         </div>
-        <section class="panel">
-          <div class="panel-head"><div class="toolbar">
-            <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo, IP o ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
-            <select class="input" id="filtroUsuarios" aria-label="Tipo de cuenta">
-              ${[['', 'Todas las cuentas'], ['anonimo', 'Invitados'], ['google', 'Con Google'], ['apple', 'Con Apple'], ['admin', 'Administradores'], ['bot', 'Posibles bots']].map(([k, v]) => `<option value="${k}" ${f.filtro === k ? 'selected' : ''}>${v}</option>`).join('')}
-            </select>
-            <select class="input" id="paisUsuarios" aria-label="País">
-              <option value="">Todos los países</option>
-              ${Object.keys(r.porPais || {}).map((k) => [k, nombrePais(k)]).sort((a, b) => a[1].localeCompare(b[1], 'es')).map(([k, v]) => `<option value="${esc(k)}" ${f.pais === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}
-            </select>
-            <select class="input" id="ordenUsuarios" aria-label="Orden">
-              <option value="vistos" ${f.orden === 'vistos' ? 'selected' : ''}>Últimos en abrir la app</option>
-              <option value="nuevos" ${f.orden === 'nuevos' ? 'selected' : ''}>Cuentas más nuevas</option>
-            </select>
-          </div></div>
-          <div class="tablewrap"><table><thead><tr><th>Cuenta</th><th>Tipo</th><th>Conexión</th><th>Sigue a</th><th>Alta</th><th>Abrió la app</th><th></th></tr></thead>
+        <section class="panel" id="listaUsuarios">
+          <div class="panel-head" style="display:block">
+            <div class="toolbar">
+              <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo, IP, compañía de internet o ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
+              <select class="input" id="paisUsuarios" aria-label="País">
+                <option value="">Todos los países</option>
+                ${Object.keys(r.porPais || {}).map((k) => [k, nombrePais(k)]).sort((a, b) => a[1].localeCompare(b[1], 'es')).map(([k, v]) => `<option value="${esc(k)}" ${f.pais === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}
+              </select>
+            </div>
+            <div id="filtrosUsuarios" class="filtros-usuarios">${filtrosUsuarios()}</div>
+          </div>
+          <div class="tablewrap"><table class="tabla-usuarios"><thead id="cabezaUsuarios">${cabezaUsuarios()}</thead>
           <tbody id="filasUsuarios">${filasUsuarios()}</tbody></table></div>
           <div class="paginas" id="pieUsuarios">${pieUsuarios()}</div>
         </section>
@@ -2701,9 +2834,9 @@
       clearTimeout(espera);
       espera = setTimeout(repintarUsuarios, 300);
     });
-    $('#filtroUsuarios').addEventListener('change', (e) => { f.filtro = e.target.value; f.pagina = 0; repintarUsuarios(); });
     $('#paisUsuarios').addEventListener('change', (e) => { f.pais = e.target.value; f.pagina = 0; repintarUsuarios(); });
-    $('#ordenUsuarios').addEventListener('change', (e) => { f.orden = e.target.value; f.pagina = 0; repintarUsuarios(); });
+    const t = $('#tamanoUsuarios');
+    if (t) t.addEventListener('change', () => { f.tamano = Number(t.value); f.pagina = 0; repintarUsuarios(); });
   }
 
   async function abrirUsuario(id) {
@@ -2749,6 +2882,7 @@
         ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
         ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.youtubeHabilitado === undefined ? '' : fichaYouTube(u)}
+        ${u.editorHabilitado === undefined ? '' : fichaEditor(u)}
         ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
   }
@@ -4204,22 +4338,49 @@
         }
 
         case 'pagina-usuarios': {
-          estado.filtroUsuarios.pagina = Math.max(0, Number(b.dataset.pagina) || 0);
+          filtroUsuarios().pagina = Math.max(0, Number(b.dataset.pagina) || 0);
+          await repintarUsuarios();
+          const lista = $('#listaUsuarios');
+          if (lista && lista.getBoundingClientRect().top < 0) lista.scrollIntoView({ block: 'start' });
+          break;
+        }
+
+        case 'ordenar-usuarios': {
+          const f = filtroUsuarios(), clave = b.dataset.valor;
+          if (f.orden === clave) f.dir = f.dir === 'asc' ? 'desc' : 'asc';
+          else { f.orden = clave; f.dir = USUARIOS_DE_LA_A.includes(clave) ? 'asc' : 'desc'; }
+          f.pagina = 0;
           await repintarUsuarios();
           break;
         }
 
+        case 'chip-usuarios': {
+          const f = filtroUsuarios(), lista = f[b.dataset.grupo], v = b.dataset.valor;
+          const i = lista.indexOf(v);
+          if (i >= 0) lista.splice(i, 1);
+          else {
+            lista.push(v);
+            const opuesta = OPUESTAS[v];
+            if (opuesta && lista.includes(opuesta)) lista.splice(lista.indexOf(opuesta), 1);
+          }
+          f.pagina = 0;
+          await repintarUsuarios();
+          break;
+        }
+
+        case 'limpiar-usuarios': await filtrarUsuarios({}); break;
+
         case 'ver-admins': {
-          Object.assign(estado.filtroUsuarios, { q: '', filtro: 'admin', pais: '', pagina: 0 });
+          Object.assign(filtroUsuarios(), { q: '', tipos: [], marcas: ['admin'], pais: '', pagina: 0 });
           ir('usuarios');
           break;
         }
 
-        case 'ver-bots': await filtrarUsuarios({ q: '', filtro: 'bot', pais: '' }); break;
+        case 'ver-bots': await filtrarUsuarios({ marcas: ['bot'] }); break;
 
         case 'buscar-ip': {
           cerrarModal();
-          await filtrarUsuarios({ q: b.dataset.ip, filtro: '', pais: '' });
+          await filtrarUsuarios({ q: b.dataset.ip });
           break;
         }
 
@@ -4322,6 +4483,22 @@
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/recomendar?valor=' + dar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
           if (b.dataset.desde === 'lista') await vistaRecomendaciones();
+          else await abrirUsuario(id);
+          break;
+        }
+
+        case 'editor-usuario': {
+          const dar = b.dataset.valor === 'true';
+          const ok = await confirmar(
+            dar ? '¿Dejar que ' + b.dataset.nombre + ' agregue desde la app?' : '¿Quitarle a ' + b.dataset.nombre + ' el permiso de agregar?',
+            dar ? 'Podrá dar de alta creadores, medios y canales de YouTube desde su teléfono. Salen en el directorio en el acto, sin pasar por aquí ni esperar aprobación, y se suscriben a los avisos de sus videos. Lo que agregue lo verás en la sección Editores.'
+              : 'Deja de ver «Agregar al directorio» en la app. Lo que ya agregó se queda en el directorio.',
+            dar ? 'Dar permiso' : 'Quitar permiso', !dar || config.ambiente === 'produccion');
+          if (!ok) break;
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/editor?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (b.dataset.desde === 'lista') await vistaEditores();
           else await abrirUsuario(id);
           break;
         }

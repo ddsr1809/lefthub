@@ -30,9 +30,9 @@ import java.util.function.Function;
 @Service
 public class EtiquetasService {
 
-    static final String CREADOR = "creador";
-    static final String PRODUCTORA = "productora";
-    static final String CANAL = "canal";
+    public static final String CREADOR = "creador";
+    public static final String PRODUCTORA = "productora";
+    public static final String CANAL = "canal";
 
     static final int LARGO_NOMBRE = 30;
 

@@ -67,6 +67,11 @@ Authorization: Bearer <token>
 | `POST` | `/api/anuncios/compra` | Registra una compra de Google Play. Body: `{producto, token}` |
 | `GET` | `/api/recomendaciones` | Los canales que esta cuenta recomendó. 403 si no puede recomendar |
 | `POST` | `/api/recomendaciones` | Recomienda un canal. Body: `{texto, motivo}` |
+| `GET` | `/api/editor` | Lo que esta cuenta agregó al directorio y cuántas altas le quedan hoy. 403 sin permiso |
+| `GET` | `/api/editor/canal?query=` | Busca un canal de YouTube y dice si ya está en el directorio |
+| `POST` | `/api/editor/creadores` | Agrega un creador. Body: `{nombre, descripcion, channelId, etiquetas}` |
+| `POST` | `/api/editor/medios` | Agrega un medio. Body: `{nombre, descripcion, channelId?, etiquetas}` |
+| `POST` | `/api/editor/canales` | Agrega un canal a quien ya está. Body: `{channelId, creadorId \| productoraId, etiquetas}` |
 | `DELETE` | `/api/cuenta` | Borrado definitivo |
 
 ### Moderación
@@ -89,6 +94,8 @@ Authorization: Bearer <token>
 | `POST` | `/api/admin/recomendaciones/borrar` |
 | `POST` | `/api/admin/usuarios/{id}/recomendar?valor=` |
 | `PUT` | `/api/admin/ajustes` (`recomendaciones`: `apagado`, `admins`, `elegidos` o `todos`) |
+| `GET` | `/api/admin/editores` |
+| `POST` | `/api/admin/usuarios/{id}/editor?valor=` |
 
 ### Sin token
 

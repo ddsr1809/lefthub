@@ -18,8 +18,6 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Panel de moderación.
@@ -33,8 +31,6 @@ import java.util.regex.Pattern;
 public class AdminController {
 
     private static final Logger log = LoggerFactory.getLogger(AdminController.class);
-    private static final Pattern ID_CANAL = Pattern.compile("(UC[\\w-]{22})");
-    private static final Pattern HANDLE = Pattern.compile("@([\\w.-]+)");
 
     private final Repositorios.Creadores creadores;
     private final Repositorios.Productoras productoras;
@@ -59,6 +55,7 @@ public class AdminController {
     private final RevisionDeVideos revisionDeVideos;
     private final CifrasDeVideos cifras;
     private final ConsultaDePublicaciones consulta;
+    private final GuardadoDelDirectorio guardado;
 
     public AdminController(Repositorios.Creadores creadores,
                            Repositorios.Productoras productoras,
@@ -74,7 +71,8 @@ public class AdminController {
                            FotosService fotos, PerfilesService perfiles,
                            BorradoService borrado, TitulosDeCanales titulos,
                            RevisionDeVideos revisionDeVideos, CifrasDeVideos cifras,
-                           ConsultaDePublicaciones consulta) {
+                           ConsultaDePublicaciones consulta, GuardadoDelDirectorio guardado) {
+        this.guardado = guardado;
         this.cifras = cifras;
         this.consulta = consulta;
         this.titulos = titulos;
@@ -136,29 +134,7 @@ public class AdminController {
     @PostMapping("/creadores")
     @Transactional
     public Dtos.CreadorGuardado guardar(@Valid @RequestBody Dtos.GuardarCreador peticion) {
-        Creador creador = peticion.id() != null
-                ? creadores.findById(peticion.id()).orElseGet(Creador::new)
-                : new Creador();
-
-        Cambio cambio = servicio.aplicar(creador, peticion);
-
-        // Sincronizar WebSub: bajas de los canales que dejó, altas de los que
-        // tiene, o baja de todos si quedó oculto.
-        String avisoSuscripcion = null;
-        try {
-            canalesService.sincronizarWebSub(cambio);
-        } catch (Exception e) {
-            // El creador queda guardado aunque el hub falle; la renovación
-            // programada vuelve a intentarlo en el siguiente ciclo.
-            log.error("No se pudo sincronizar la suscripción de {}", creador.getId(), e);
-            avisoSuscripcion = e.getMessage();
-        }
-
-        // En producción, copiar a testing. En los demás ambientes no hace
-        // nada. Tampoco lanza: si testing falla, el panel lo avisa y ya.
-        String avisoReplica = replica.enviar(creador);
-
-        return new Dtos.CreadorGuardado(creador.getId(), avisoSuscripcion, avisoReplica);
+        return guardado.guardarCreador(peticion);
     }
 
     @DeleteMapping("/creadores/{id}")
@@ -211,23 +187,7 @@ public class AdminController {
     @PostMapping("/productoras")
     @Transactional
     public Dtos.ProductoraGuardada guardarProductora(@Valid @RequestBody Dtos.GuardarProductora peticion) {
-        Productora productora = peticion.id() != null
-                ? productoras.findById(peticion.id()).orElseGet(Productora::new)
-                : new Productora();
-
-        Cambio cambio = servicioDeProductoras.aplicar(productora, peticion);
-
-        String avisoSuscripcion = null;
-        try {
-            canalesService.sincronizarWebSub(cambio);
-        } catch (Exception e) {
-            log.error("No se pudo sincronizar la suscripción de la productora {}", productora.getId(), e);
-            avisoSuscripcion = e.getMessage();
-        }
-
-        String avisoReplica = replica.enviar(productora);
-
-        return new Dtos.ProductoraGuardada(productora.getId(), avisoSuscripcion, avisoReplica);
+        return guardado.guardarProductora(peticion);
     }
 
     @DeleteMapping("/productoras/{id}")
@@ -276,17 +236,7 @@ public class AdminController {
     @PostMapping("/canales")
     @Transactional
     public Dtos.CanalGuardado guardarCanal(@Valid @RequestBody Dtos.GuardarFichaDeCanal peticion) {
-        CanalesService.Ficha ficha = canalesService.guardarFicha(peticion);
-
-        String avisoSuscripcion = null;
-        try {
-            canalesService.sincronizarWebSub(ficha.cambio());
-        } catch (Exception e) {
-            log.error("No se pudo sincronizar la suscripción del canal {}", ficha.canal().getId(), e);
-            avisoSuscripcion = e.getMessage();
-        }
-
-        return new Dtos.CanalGuardado(ficha.canal().getId(), avisoSuscripcion, copiarDuenos(ficha));
+        return guardado.guardarCanal(peticion);
     }
 
     @DeleteMapping("/canales/{id}")
@@ -295,28 +245,8 @@ public class AdminController {
         CanalesService.Ficha ficha = canalesService.eliminarFicha(id);
 
         darDeBaja(ficha.cambio());
-        copiarDuenos(ficha);
+        guardado.copiarDuenos(ficha);
         return Dtos.RespuestaSimple.de("Canal retirado del directorio.");
-    }
-
-    /**
-     * Un canal no viaja solo a testing: va dentro de su dueño. Aquí se
-     * vuelven a copiar el de ahora y, si cambió, el de antes.
-     *
-     * @return el primer motivo de fallo, o null si todo se copió.
-     */
-    private String copiarDuenos(CanalesService.Ficha ficha) {
-        String aviso = null;
-
-        for (Productora p : productoras.findAllById(ficha.productoras())) {
-            String fallo = replica.enviar(p);
-            if (aviso == null) aviso = fallo;
-        }
-        for (Creador c : creadores.findAllById(ficha.creadores())) {
-            String fallo = replica.enviar(c);
-            if (aviso == null) aviso = fallo;
-        }
-        return aviso;
     }
 
     // -------------------------------------------------------------------------
@@ -406,37 +336,7 @@ public class AdminController {
      */
     @GetMapping("/canal")
     public Dtos.DatosDeCanal buscarCanal(@RequestParam String query) {
-        String entrada = query.trim();
-        if (entrada.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "Escribe un ID de canal, un @handle o una URL.");
-        }
-
-        // WebSub exige el ID canónico: los handles no valen como hub.topic.
-        String channelId;
-        Matcher idDirecto = ID_CANAL.matcher(entrada);
-
-        if (idDirecto.find()) {
-            channelId = idDirecto.group(1);
-        } else {
-            Matcher conArroba = HANDLE.matcher(entrada);
-            String handle = conArroba.find()
-                    ? conArroba.group(1)
-                    : (entrada.startsWith("@") ? entrada.substring(1) : entrada);
-            channelId = youtube.resolverHandle(handle);
-        }
-
-        if (channelId == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "No se encontró ese canal. Prueba con el ID que empieza por UC.");
-        }
-
-        Dtos.DatosDeCanal datos = youtube.detallesDeCanal(channelId);
-        if (datos == null) {
-            throw new ResponseStatusException(HttpStatus.NOT_FOUND,
-                    "El canal existe pero YouTube no devolvió datos.");
-        }
-        return datos;
+        return guardado.buscarCanal(query);
     }
 
     /**
