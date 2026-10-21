@@ -1720,7 +1720,7 @@
       ${ajustes ? tarjetaCortos(ajustes) : ''}
       <section class="panel">
         ${conCifras ? '<div class="panel-body" style="border-bottom:1px solid var(--line)"><p class="hint" style="margin:0">Las cifras son las públicas de YouTube y el servidor las pone al día solo: los videos de los últimos dos días cada media hora, los del último mes cada seis horas y los demás cada tres días. Los directos al aire, cada dos minutos. «Actualizar cifras» las pide ahora para esta lista.</p></div>' : ''}
-        <div class="tablewrap"><table><thead><tr><th></th><th>Video</th><th>Creador</th>${conCifras ? '<th>Vistas</th>' : ''}<th>Estado</th><th>Publicado</th><th></th></tr></thead><tbody>
+        <div class="tablewrap"><table class="tabla-pubs"><thead><tr><th></th><th>Video</th><th>Creador</th>${conCifras ? '<th>Vistas</th>' : ''}<th>Estado</th><th>Publicado</th><th></th></tr></thead><tbody>
       ${lista.length ? lista.map((p) => {
         const [t, c] = ESTADOS_PUB[p.estado] || [p.estado, 'b-mute'];
         const enlace = p.estado === 'moved' && p.destinoUrl ? p.destinoUrl : p.url;
@@ -1729,12 +1729,12 @@
           : `<b>${esc(p.titulo)}</b>`;
         return `<tr>
           <td>${p.miniaturaUrl || conCifras ? `<div class="miniatura">${p.miniaturaUrl ? `<img class="thumb" src="${esc(p.miniaturaUrl)}" alt="" loading="lazy" referrerpolicy="no-referrer">` : '<span class="thumb"></span>'}${conCifras ? etiquetaDuracion(p) : ''}</div>` : ''}</td>
-          <td><div class="clip" style="max-width:380px">${titulo}</div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? '<span class="badge b-warn">Corto</span>' : 'Video'}${p.canalNombre ? ' · ' + esc(p.canalNombre) : ''} · <span class="mono">${esc(p.videoId)}</span></span>${p.reportes ? ` <span class="badge b-warn" title="Veces que lo reportaron como roto">${num(p.reportes)} ${p.reportes === 1 ? 'reporte' : 'reportes'}</span>` : ''}</td>
+          <td><div class="titulo-2">${titulo}</div><span class="muted" style="font-size:13px">${p.enVivo ? 'En vivo' : p.tipo === 'short' ? '<span class="badge b-warn">Corto</span>' : 'Video'}${p.canalNombre ? ' · ' + esc(p.canalNombre) : ''} · <span class="mono">${esc(p.videoId)}</span></span>${p.reportes ? ` <span class="badge b-warn" title="Veces que lo reportaron como roto">${num(p.reportes)} ${p.reportes === 1 ? 'reporte' : 'reportes'}</span>` : ''}</td>
           <td>${esc(p.creadorNombre || '—')}${p.productoraNombre && p.productoraNombre !== p.creadorNombre ? `<div class="muted" style="font-size:12.5px">${esc(p.productoraNombre)}</div>` : ''}</td>
           ${conCifras ? `<td>${celdaCifras(p)}</td>` : ''}
           <td><span class="badge ${c}">${esc(t)}</span>${p.estado === 'moved' ? `<div class="muted" style="font-size:12.5px">a ${esc(PLATAFORMAS[p.destinoPlataforma] || p.destinoPlataforma || '')}</div>` : ''}</td>
           <td class="num" title="${esc(fmtFecha(p.publicadoEn))}">${esc(fmtFecha(p.publicadoEn))}<div class="muted" style="font-size:12.5px">${esc(relativo(p.publicadoEn))}</div></td>
-          <td class="acciones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button>${ajustes && !p.enVivo ? `<button class="btn sm" data-accion="tipo-video" data-video="${esc(p.videoId)}" data-valor="${p.tipo === 'short' ? 'video' : 'short'}">${p.tipo === 'short' ? 'No es corto' : 'Es corto'}</button>` : ''}</td>
+          <td class="acciones"><div class="botones">${enlace ? `<a class="btn sm" href="${esc(enlace)}" target="_blank" rel="noopener">Abrir</a>` : ''}<button class="btn sm" data-accion="mover" data-video="${esc(p.videoId)}">Mover</button>${ajustes && !p.enVivo ? `<button class="btn sm" data-accion="tipo-video" data-video="${esc(p.videoId)}" data-valor="${p.tipo === 'short' ? 'video' : 'short'}">${p.tipo === 'short' ? 'No es corto' : 'Es corto'}</button>` : ''}</div></td>
         </tr>`;
       }).join('') : `<tr><td colspan="${conCifras ? 7 : 6}"><div class="empty">${VACIO_PUB[ajustes ? filtro : 'todos']}</div></td></tr>`}
       </tbody></table></div></section>
