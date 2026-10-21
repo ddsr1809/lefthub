@@ -104,6 +104,14 @@ public class Usuario {
     private boolean recomendarHabilitado = false;
 
     /**
+     * El equipo la eligió desde el panel para ofrecerle "Conectar con
+     * YouTube". Solo cuenta mientras el ajuste 'youtube' esté en "elegidos":
+     * ver AjustesService y V21.
+     */
+    @Column(name = "youtube_habilitado", nullable = false)
+    private boolean youtubeHabilitado = false;
+
+    /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
      * 5.1.1(v).
@@ -233,6 +241,9 @@ public class Usuario {
 
     public boolean isRecomendarHabilitado() { return recomendarHabilitado; }
     public void setRecomendarHabilitado(boolean recomendarHabilitado) { this.recomendarHabilitado = recomendarHabilitado; }
+
+    public boolean isYoutubeHabilitado() { return youtubeHabilitado; }
+    public void setYoutubeHabilitado(boolean youtubeHabilitado) { this.youtubeHabilitado = youtubeHabilitado; }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

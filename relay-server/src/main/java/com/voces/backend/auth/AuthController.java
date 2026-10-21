@@ -189,6 +189,7 @@ public class AuthController {
                 // permiso de recomendar si el equipo se lo había dado.
                 recomendaciones.pasar(anonimo.get().getId(), usuario.getId());
                 if (anonimo.get().isRecomendarHabilitado()) usuario.setRecomendarHabilitado(true);
+                if (anonimo.get().isYoutubeHabilitado()) usuario.setYoutubeHabilitado(true);
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
                 //

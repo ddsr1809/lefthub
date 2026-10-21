@@ -2333,7 +2333,8 @@
       + (u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : '')
       + (u.posibleBot ? ' <span class="badge b-bad">Posible bot</span>' : '')
       + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '')
-      + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '');
+      + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '')
+      + (u.youtubeHabilitado ? ' <span class="badge b-info">YouTube</span>' : '');
   };
 
   // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
@@ -2558,6 +2559,7 @@
         ${rol ? '<div>' + rol + '</div>' : ''}
         ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
         ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
+        ${u.youtubeHabilitado === undefined ? '' : fichaYouTube(u)}
         ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
   }
@@ -2597,17 +2599,43 @@
 
   // El interruptor de "¿Estoy suscrito en YouTube?". Con un servidor anterior
   // a esto no viene en los ajustes, y el panel no enseña la tarjeta.
+  // A quién se ofrece "Conectar con YouTube". Mismo esquema que las
+  // recomendaciones: nadie, administradores, cuentas elegidas o todos.
+  const ALCANCES_YT = {
+    apagado: ['Nadie', 'La app no ofrece conectar YouTube ni consulta nada.'],
+    admins: ['Solo administradores', 'Para probarlo con las cuentas que tienen acceso a este panel.'],
+    elegidos: ['Administradores y cuentas elegidas', 'Además de los administradores, las cuentas que elijas una por una desde su ficha en Usuarios. Úsalo para el revisor de Google.'],
+    todos: ['Todos', 'Cualquier persona que guardó su cuenta con Google. Solo cuando Google haya aprobado la verificación.']
+  };
+
+  // Un servidor 1.0.11 o anterior solo manda el interruptor de sí o no.
+  const alcanceYouTube = (ajustes) => ajustes.youtubeAlcance || (ajustes.youtube ? 'todos' : 'apagado');
+
   function tarjetaYouTube(ajustes) {
-    const on = !!ajustes.youtube;
+    const alcance = alcanceYouTube(ajustes);
+    const encendido = alcance !== 'apagado';
+    const porCuenta = 'youtubeAlcance' in ajustes;
     return `<section class="panel"><div class="panel-head"><h2>Suscripciones de YouTube</h2>
-        <span class="badge ${on ? 'b-ok' : 'b-mute'}">${on ? 'Encendidas' : 'Apagadas'}</span></div>
+        <span class="badge ${encendido ? 'b-ok' : 'b-mute'}">${encendido ? esc(ALCANCES_YT[alcance][0]) : 'Apagadas'}</span></div>
       <div class="panel-body">
-        <label class="check"><input type="checkbox" data-accion="ajuste-youtube" ${on ? 'checked' : ''}> Ofrecer en la app comprobar si la persona está suscrita en YouTube</label>
-        <p class="hint" style="margin:10px 0 0;font-size:13.5px">${on
-          ? 'Quien guardó su cuenta con Google ve el botón «Conectar con YouTube» en Ajustes y, si da permiso, la app le marca en qué canales del directorio está suscrito.'
-          : 'La app no ofrece conectar YouTube ni consulta nada. Las cuentas que ya lo habían conectado dejan de ver las marcas de suscripción hasta que lo enciendas.'}</p>
-        <p class="hint" style="margin:10px 0 0;font-size:13.5px"><span class="badge b-warn">Importante</span> Enciéndelo cuando Google haya aprobado la verificación de OAuth del permiso de YouTube. Antes de eso, Google enseña un aviso de «app no verificada» y solo 100 cuentas en toda la vida del proyecto pueden dar el permiso. Solo funciona en las apps 1.0.6 o posteriores.</p>
+        ${porCuenta
+          ? `<div class="opciones-alcance" role="radiogroup" aria-label="A quién se ofrece conectar YouTube">
+            ${Object.entries(ALCANCES_YT).map(([k, [ti, d]]) => `<label class="check"><input type="radio" name="alcanceYt" data-accion="alcance-youtube" data-valor="${k}" ${alcance === k ? 'checked' : ''}><span><b>${esc(ti)}</b><span class="hint" style="display:block">${esc(d)}</span></span></label>`).join('')}
+          </div>`
+          : `<label class="check"><input type="checkbox" data-accion="ajuste-youtube" ${encendido ? 'checked' : ''}> Ofrecer en la app comprobar si la persona está suscrita en YouTube</label>`}
+        <p class="hint" style="margin:10px 0 0;font-size:13.5px">A quien le llegue, la app le enseña «Conectar con YouTube» en Ajustes (si guardó su cuenta con Google) y, si da permiso, le marca en qué canales del directorio está suscrito. El cambio vale la próxima vez que cada persona abra la app.</p>
+        <p class="hint" style="margin:10px 0 0;font-size:13.5px"><span class="badge b-warn">Importante</span> Hasta que Google apruebe la verificación de OAuth, no elijas «Todos»: Google enseña un aviso de «app no verificada» y solo 100 cuentas en toda la vida del proyecto pueden dar el permiso. Para que el revisor lo pruebe, usa «Administradores y cuentas elegidas» y elige su cuenta en Usuarios. Solo funciona en las apps 1.0.6 o posteriores.</p>
       </div></section>`;
+  }
+
+  /** Bloque de la ficha de una cuenta: ofrecerle o no conectar YouTube. */
+  function fichaYouTube(u) {
+    const nombre = esc(u.email || 'esta cuenta de invitado');
+    return u.youtubeHabilitado
+      ? `<div><button class="btn danger" data-accion="youtube-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Ya no ofrecerle conectar YouTube</button>
+          <p class="hint" style="margin:6px 0 0">Está entre las cuentas elegidas para YouTube (sección Apps).</p></div>`
+      : `<div><button class="btn" data-accion="youtube-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Ofrecerle conectar YouTube</button>
+          <p class="hint" style="margin:6px 0 0">Verá «Conectar con YouTube» en Ajustes de la app mientras en Apps esté elegido «Administradores y cuentas elegidas», si guardó su cuenta con Google.</p></div>`;
   }
 
   async function vistaApps() {
@@ -3664,6 +3692,45 @@
           } finally {
             if (estado.vista === 'publicaciones') await vistaPublicaciones();
           }
+          break;
+        }
+
+        case 'alcance-youtube': {
+          // El botón ya cambió al pulsarlo. Si algo falla o se cancela, se
+          // vuelve a pintar la sección con lo que diga el servidor.
+          const nuevo = b.dataset.valor;
+          const [titulo, detalle] = ALCANCES_YT[nuevo] || [nuevo, ''];
+          try {
+            const seguro = await confirmar(
+              nuevo === 'apagado' ? 'Apagar las suscripciones de YouTube' : 'Suscripciones de YouTube: ' + titulo.toLowerCase(),
+              nuevo === 'apagado'
+                ? 'La app deja de ofrecer conectar YouTube y de consultar las suscripciones. Lo que cada cuenta ya autorizó no se borra.'
+                : nuevo === 'todos'
+                  ? 'Cualquier persona que guardó su cuenta con Google verá «Conectar con YouTube». Hazlo solo si Google ya aprobó la verificación de OAuth: antes de eso aparece el aviso de app no verificada y solo 100 cuentas en toda la vida del proyecto pueden dar el permiso.'
+                  : detalle + ' Verán «Conectar con YouTube» en Ajustes de la app.',
+              nuevo === 'apagado' ? 'Apagar' : 'Cambiar', nuevo === 'apagado' || nuevo === 'todos');
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { youtubeAlcance: nuevo } });
+              toast(nuevo === 'apagado' ? 'Suscripciones de YouTube apagadas.' : 'YouTube se ofrece a: ' + titulo.toLowerCase() + '.');
+            }
+          } finally {
+            if (estado.vista === 'apps') await vistaApps();
+          }
+          break;
+        }
+
+        case 'youtube-usuario': {
+          const dar = b.dataset.valor === 'true';
+          if (!dar) {
+            const ok = await confirmar('¿Dejar de ofrecerle YouTube a ' + b.dataset.nombre + '?',
+              'Si el alcance es «Administradores y cuentas elegidas», deja de ver «Conectar con YouTube» en la app.',
+              'Quitar', false);
+            if (!ok) break;
+          }
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/youtube?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          await abrirUsuario(id);
           break;
         }
 

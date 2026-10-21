@@ -519,7 +519,8 @@ public class DirectorioController {
      */
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
         return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
-                ajustes.youtube(), avisoDeChat.topicDe(usuario.getId()),
+                AjustesService.permite(ajustes.youtube(), usuario.isEsAdmin(), usuario.isYoutubeHabilitado()),
+                avisoDeChat.topicDe(usuario.getId()),
                 RecomendacionesService.puede(ajustes.recomendaciones(),
                         usuario.isEsAdmin(), usuario.isRecomendarHabilitado()));
     }
