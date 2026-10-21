@@ -62,8 +62,9 @@ object ApiRelay {
         .build()
 
     /**
-     * Para el chat: el servidor tiene la consulta abierta hasta 25 segundos
-     * esperando un mensaje. Con el cliente normal se cortaría justo al borde.
+     * Para el chat: con la pantalla abierta, el servidor tiene la consulta
+     * abierta hasta 25 segundos esperando un mensaje. Con el cliente normal
+     * se cortaría justo al borde.
      */
     private val clienteDeEspera = cliente.newBuilder()
         .readTimeout(45, TimeUnit.SECONDS)
@@ -450,32 +451,41 @@ object ApiRelay {
     // -------------------------------------------------------------------------
     // Chat con el equipo
     // -------------------------------------------------------------------------
-    // Solo transporte: llaves públicas y mensajes ya cifrados. Ver chat/.
+    // Con [cuenta] en null, la conversación propia (la de la persona con el
+    // equipo). Con una cuenta, la de esa cuenta vista como administrador: solo
+    // funciona si esta sesión es del equipo.
 
-    /** Al entrar: la conexión con la que seguir y la llave del equipo, si ya está. */
-    data class EntradaChat(val conexion: String, val claveDelEquipo: String?)
+    private fun rutaDelChat(cuenta: String?) =
+        if (cuenta == null) "/api/chat" else "/api/admin/chat/" + URLEncoder.encode(cuenta, "UTF-8")
 
-    suspend fun entrarAlChat(clavePublica: String): EntradaChat {
-        val r = post("/api/chat/entrar", JSONObject().put("clave", clavePublica))
-        return EntradaChat(r.getString("conexion"), r.optStringONull("claveDelOtro"))
-    }
-
-    /** Espera hasta 25 segundos a que llegue algo. Vacía si no llegó nada. */
-    suspend fun eventosDelChat(conexion: String): JSONArray =
+    /**
+     * Los mensajes de la conversación. Con [despues] en 0, los últimos; si no,
+     * los que llegaron después de ese. Con [esperar], si no hay ninguno el
+     * servidor espera hasta 25 segundos a que llegue alguno.
+     */
+    suspend fun mensajesDelChat(cuenta: String?, despues: Long, esperar: Boolean): List<MensajeDelChat> =
         JSONArray(ejecutar(
             Request.Builder()
-                .url(BuildConfig.API_BASE + "/api/chat/eventos?conexion=" + URLEncoder.encode(conexion, "UTF-8"))
+                .url(BuildConfig.API_BASE + rutaDelChat(cuenta) + "/mensajes?despues=$despues&esperar=$esperar")
                 .get(),
-            espera = true
-        ))
+            espera = esperar
+        )).mapJson { mensajeDelChatDe(it) }
 
-    suspend fun enviarAlChat(conexion: String, iv: String, cifrado: String) {
-        post("/api/chat/mensajes", JSONObject().put("conexion", conexion).put("iv", iv).put("cifrado", cifrado))
+    suspend fun escribirAlChat(cuenta: String?, texto: String): MensajeDelChat =
+        mensajeDelChatDe(post(rutaDelChat(cuenta) + "/mensajes", JSONObject().put("texto", texto)))
+
+    /**
+     * Cerró la pantalla del chat, o la app pasó a segundo plano: desde ahora,
+     * lo que llegue trae aviso. [hasta] es el último mensaje que se llegó a
+     * ver, que queda leído.
+     */
+    suspend fun salirDelChat(cuenta: String?, hasta: Long) {
+        post(rutaDelChat(cuenta) + "/salir?hasta=$hasta", null)
     }
 
-    suspend fun salirDelChat(conexion: String) {
-        post("/api/chat/salir", JSONObject().put("conexion", conexion))
-    }
+    /** Solo administradores: las cuentas con chat, la que espera respuesta primero. */
+    suspend fun bandejaDelChat(): List<ConversacionDelChat> =
+        getArray("/api/admin/chat").mapJson { conversacionDelChatDe(it) }
 
     // -------------------------------------------------------------------------
     // Recomendar canales
