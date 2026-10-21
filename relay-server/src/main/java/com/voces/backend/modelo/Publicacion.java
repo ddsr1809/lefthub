@@ -60,6 +60,10 @@ public class Publicacion {
 
     private String duracion;
 
+    /** La misma duración en segundos, para ordenar. La pone setDuracion. Ver V22. */
+    @Column(name = "duracion_segundos")
+    private Integer duracionSegundos;
+
     @Column(nullable = false)
     private String tipo = "video";
 
@@ -168,7 +172,23 @@ public class Publicacion {
     public void setUrl(String url) { this.url = url; }
 
     public String getDuracion() { return duracion; }
-    public void setDuracion(String duracion) { this.duracion = duracion; }
+    public void setDuracion(String duracion) {
+        this.duracion = duracion;
+        this.duracionSegundos = segundosDe(duracion);
+    }
+
+    public Integer getDuracionSegundos() { return duracionSegundos; }
+
+    /** "PT1H2M3S" → 3723. Null si no se sabe o es cero (un directo sin terminar es "P0D"). */
+    public static Integer segundosDe(String iso) {
+        if (iso == null || iso.isBlank()) return null;
+        try {
+            long s = java.time.Duration.parse(iso.trim()).getSeconds();
+            return s > 0 && s <= Integer.MAX_VALUE ? (int) s : null;
+        } catch (Exception e) {
+            return null;
+        }
+    }
 
     public String getTipo() { return tipo; }
 
