@@ -295,6 +295,23 @@ object ApiRelay {
             .filter { it.esCorto == cortos }
 
     /**
+     * «Lo más visto»: los videos con más vistas de todo el directorio,
+     * publicados en las últimas 24 horas (`periodo` = "hoy") o en los últimos
+     * siete días ("semana"). No depende de a quién siga la persona. Cada uno
+     * trae sus vistas.
+     *
+     * Un servidor anterior no tiene la ruta: para la app eso es "nada que mostrar".
+     */
+    suspend fun masVistas(periodo: String, limite: Int = 20): List<Publicacion> = try {
+        getArray("/api/publicaciones/mas-vistas?periodo=$periodo&limite=$limite")
+            .mapJson { publicacionDe(it) }
+            // Por si acaso: los cortos nunca van mezclados.
+            .filterNot { it.esCorto }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
      * Un video por su id, para su ficha. null si el servidor no lo tiene (o
      * es anterior a la ruta): la ficha se arregla con lo que traía el aviso.
      */

@@ -265,7 +265,12 @@ data class Publicacion(
     val productoraId: String? = null,
     val productoraNombre: String? = null,
     /** El canal donde salió: su ficha se abre desde la del video. */
-    val canalId: String? = null
+    val canalId: String? = null,
+    /**
+     * Cuántas vistas tenía en YouTube la última vez que el servidor preguntó.
+     * Solo viene en «Lo más visto»; en Novedades y las fichas es null.
+     */
+    val vistas: Long? = null
 ) {
     val fueMovido: Boolean get() = status == "moved" && !overrideUrl.isNullOrBlank()
 

@@ -168,8 +168,21 @@ public final class Dtos {
             Instant publicadoEn,
             UUID canalId,
             UUID productoraId,
-            String productoraNombre
+            String productoraNombre,
+            /**
+             * Cuántas vistas tenía en YouTube la última vez que se pidieron.
+             * Solo viene en «Lo más visto»; en las demás listas falta, porque
+             * ahí no dice nada.
+             */
+            Long vistas
     ) {
+        /** El mismo video, con sus vistas. */
+        public PublicacionDto conVistas(Long vistas) {
+            return new PublicacionDto(videoId, creadorId, creadorNombre, plataforma, titulo,
+                    miniaturaUrl, url, tipo, enVivo, estado, destinoUrl, destinoPlataforma,
+                    publicadoEn, canalId, productoraId, productoraNombre, vistas);
+        }
+
         /**
          * @param nombreCreador el del creador; en el canal propio de una
          *                      productora, el de la productora, para que quien
@@ -183,7 +196,8 @@ public final class Dtos {
                     p.isEnVivo(), p.getEstado(), p.getDestinoUrl(), p.getDestinoPlataforma(),
                     p.getPublicadoEn(), p.getCanalId(),
                     productora != null ? productora.getId() : null,
-                    productora != null ? productora.getNombre() : null);
+                    productora != null ? productora.getNombre() : null,
+                    null);
         }
     }
 

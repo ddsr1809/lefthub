@@ -717,6 +717,49 @@ persona), `avisosCortos` (si quiere sus avisos) y `cortosDisponibles` (lo que
 decidió el equipo). Las dos de la persona se cambian con `PUT /api/preferencias`. El interruptor es
 `GET`/`PUT /api/admin/ajustes`, y se guarda en la tabla `ajustes` (V8).
 
+## Lo más visto
+
+Novedades tiene un apartado **Lo más visto**: los videos con más vistas de
+**todo el directorio**, los siga la persona o no. Se elige el periodo con dos
+botones:
+
+- **Hoy**: lo publicado en las últimas 24 horas (no desde la medianoche: a las
+  siete de la mañana todavía sale lo de anoche).
+- **Esta semana**: lo publicado en los últimos 7 días.
+
+Cada tarjeta dice en qué lugar va y cuántas vistas tiene («Número 1 · 12 mil
+vistas»), con la misma leyenda de «Nuevo» / «Ya lo abriste» que el resto de
+Novedades. Trae hasta 20 videos.
+
+Reglas que conviene saber:
+
+- **No se mezcla.** La lista de siempre sigue siendo solo de quienes eligió la
+  persona, en orden de tiempo. Lo más visto es un apartado al que se entra a
+  propósito, igual que los videos cortos.
+- **Sale solo de lo que el equipo curó.** No es un ranking de YouTube: son los
+  creadores, canales y medios visibles del directorio. Un creador o medio
+  oculto no aparece.
+- **Sin cortos, sin retirados y sin directos que no han empezado.** Un directo
+  que está al aire sí entra, con las vistas que lleve.
+- **No gasta cuota.** Usa las vistas que el servidor ya guarda para el panel
+  (ver *Cuota de la YouTube Data API*). Las de los videos de los últimos dos
+  días se ponen al día cada media hora, así que el orden va como mucho media
+  hora detrás de YouTube. Un video que todavía no tiene cifras no entra hasta
+  la siguiente pasada. Sin `YOUTUBE_API_KEY` no hay cifras, y el apartado sale
+  vacío.
+- **Aunque no siga a nadie** se puede ver: la pantalla de «Todavía no sigues a
+  nadie» lleva también el botón *Ver lo más visto*.
+- **En la pantalla.** Sin los cortos encendidos, los botones de arriba son
+  *Videos* y *Lo más visto*. Con los cortos encendidos, *Videos* y *Videos
+  cortos* arriba y *Lo más visto* debajo, a lo ancho: tres en una fila no
+  caben con letra grande.
+
+En la API: `GET /api/publicaciones/mas-vistas?periodo=hoy|semana&limite=20`
+(como mucho 30; un periodo que no entiende es `hoy`). Cada video trae además
+`vistas`, que no viene en ninguna otra lista de la app. Una app con un
+servidor anterior recibe 404 y el apartado sale vacío. Al abrir un video desde
+aquí, la campaña es `mas_visto` en vez de `novedades`.
+
 ## "¿Estoy suscrito en YouTube?"
 
 Seguir a un creador en la app y estar suscrito a su canal son cosas distintas. Con la cuenta guardada con Google, la app puede decirle a cada persona en cuáles sí lo está.

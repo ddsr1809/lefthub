@@ -27,6 +27,12 @@ data class EstadoApp(
     val publicaciones: List<Publicacion> = emptyList(),
     /** Los videos cortos, que van en su propio apartado de Novedades. */
     val cortos: List<Publicacion> = emptyList(),
+    /**
+     * «Lo más visto», otro apartado de Novedades: periodo ("hoy" o
+     * "semana") → su lista. Se pide al entrar al apartado; `canalId` es aquí
+     * el periodo.
+     */
+    val masVistas: Map<String, VideosDeCanal> = emptyMap(),
     val perfil: Perfil = Perfil(),
     /** Ya llegó el perfil del servidor al menos una vez: se sabe qué sigue. */
     val perfilCargado: Boolean = false,
@@ -284,6 +290,31 @@ class AppViewModel(
                 videosDondeAparece = VideosDeCanal(creadorId,
                     lista = r2.getOrDefault(e.videosDondeAparece.lista), fallo = r2.isFailure)
             )
+        }
+    }
+
+    /**
+     * Trae lo más visto del periodo. Mientras llega se ve lo que ya había de
+     * ese mismo periodo, y lo del otro periodo se queda guardado para cuando
+     * la persona vuelva a él.
+     */
+    fun cargarMasVistas(periodo: String) = viewModelScope.launch {
+        if (periodo.isBlank()) return@launch
+
+        _estado.update { e ->
+            val previos = e.masVistas[periodo]?.lista.orEmpty()
+            e.copy(masVistas = e.masVistas + (periodo to VideosDeCanal(periodo, cargando = true, lista = previos)))
+        }
+
+        val resultado = runCatching { directorio.masVistas(periodo) }
+
+        _estado.update { e ->
+            val antes = e.masVistas[periodo]?.lista.orEmpty()
+            e.copy(masVistas = e.masVistas + (periodo to VideosDeCanal(
+                canalId = periodo,
+                lista = resultado.getOrDefault(antes),
+                fallo = resultado.isFailure
+            )))
         }
     }
 

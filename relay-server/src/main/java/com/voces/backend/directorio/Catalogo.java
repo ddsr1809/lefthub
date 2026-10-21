@@ -75,6 +75,16 @@ public class Catalogo {
             }
         }
 
+        /** Los ids de todos los canales con su dueño visible: los que la app puede enseñar. */
+        public List<UUID> canalesVivos() {
+            return canales.values().stream().filter(this::vivo).map(Canal::getId).toList();
+        }
+
+        /** Los ids de todos los creadores visibles. */
+        public List<UUID> creadoresVisibles() {
+            return creadores.values().stream().filter(Creador::isActivo).map(Creador::getId).toList();
+        }
+
         /** Los canales de los que el creador es dueño. */
         public List<Canal> canalesDe(UUID creadorId) {
             return porCreador.getOrDefault(creadorId, List.of());

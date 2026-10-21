@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.text.Collator;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -279,6 +280,42 @@ public class DirectorioController {
                 PageRequest.of(0, Math.min(limite, 100)));
 
         return aDtos(lista, vista);
+    }
+
+    /**
+     * «Lo más visto»: los videos con más vistas de todo el directorio entre
+     * lo publicado en las últimas 24 horas (?periodo=hoy) o en los últimos
+     * siete días (?periodo=semana). No depende de a quién siga la persona.
+     *
+     * Es un apartado aparte dentro de Novedades: la lista principal sigue
+     * siendo solo lo de quienes eligió, en orden de tiempo. Las reglas están
+     * en LoMasVisto.
+     *
+     * Cada video trae sus vistas, para que la app las enseñe.
+     */
+    @GetMapping("/publicaciones/mas-vistas")
+    @Transactional(readOnly = true)
+    public List<Dtos.PublicacionDto> masVistas(@RequestParam(defaultValue = "hoy") String periodo,
+                                               @RequestParam(defaultValue = "0") int limite) {
+        Catalogo.Vista vista = catalogo.vista();
+
+        List<UUID> canales = vista.canalesVivos();
+        List<UUID> creadoresVisibles = vista.creadoresVisibles();
+        if (canales.isEmpty() && creadoresVisibles.isEmpty()) return List.of();
+
+        List<Publicacion> lista = publicaciones.masVistas(
+                // La consulta no admite una colección vacía.
+                canales.isEmpty() ? List.of(NINGUNO) : canales,
+                creadoresVisibles.isEmpty() ? List.of(NINGUNO) : creadoresVisibles,
+                LoMasVisto.Periodo.de(periodo).desde(Instant.now()),
+                PageRequest.of(0, LoMasVisto.cuantos(limite)));
+
+        List<Dtos.PublicacionDto> dtos = aDtos(lista, vista);
+        List<Dtos.PublicacionDto> conVistas = new ArrayList<>(dtos.size());
+        for (int i = 0; i < dtos.size(); i++) {
+            conVistas.add(dtos.get(i).conVistas(lista.get(i).getVistas()));
+        }
+        return conVistas;
     }
 
     /**

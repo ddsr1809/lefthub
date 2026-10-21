@@ -532,6 +532,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     cuantosCanales = estado.perfil.canales.size,
                     cortos = estado.cortos,
                     verCortos = estado.perfil.veCortos,
+                    masVistas = estado.masVistas,
+                    onCargarMasVistas = { modelo.cargarMasVistas(it) },
                     abiertos = Abiertos.videos,
                     anuncios = banners.takeIf { conAnuncios },
                     onQuitarAnuncios = irAAjustes,

@@ -101,7 +101,8 @@ internal fun publicacionDe(json: JSONObject): Publicacion {
         tipo = json.optString("tipo", "video"),
         productoraId = json.optStringONull("productoraId"),
         productoraNombre = json.optStringONull("productoraNombre"),
-        canalId = json.optStringONull("canalId")
+        canalId = json.optStringONull("canalId"),
+        vistas = if (json.has("vistas") && !json.isNull("vistas")) json.optLong("vistas") else null
     )
 }
 

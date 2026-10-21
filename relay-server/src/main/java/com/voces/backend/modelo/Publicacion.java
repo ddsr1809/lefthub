@@ -105,7 +105,8 @@ public class Publicacion {
 
     // Las cifras públicas de YouTube, como estaban en `cifrasEn`. Las pone al
     // día CifrasDeVideos; null es que YouTube no las da (el canal las oculta)
-    // o que todavía no se han pedido. Solo las ve el panel.
+    // o que todavía no se han pedido. El panel las ve todas; la app, solo
+    // las vistas y solo en «Lo más visto».
     private Long vistas;
 
     @Column(name = "me_gusta")
