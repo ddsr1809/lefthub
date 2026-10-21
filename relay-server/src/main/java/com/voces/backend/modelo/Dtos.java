@@ -251,6 +251,57 @@ public final class Dtos {
     }
 
     /**
+     * Lo que suman los videos de un creador, un canal o un medio, para el panel.
+     *
+     * @param nombre    null si ya no está en el directorio
+     * @param detalle   de quién es el canal, o "oculto" si no se ve en la app
+     * @param conCifras cuántos de sus videos tienen vistas (los demás aún no se han pedido)
+     * @param ultimo    cuándo publicó el más reciente del periodo
+     */
+    public record TotalDePublicaciones(
+            String por,
+            UUID id,
+            String nombre,
+            String detalle,
+            String fotoUrl,
+            boolean visible,
+            long videos,
+            long conCifras,
+            long vistas,
+            long meGusta,
+            long comentarios,
+            Instant ultimo
+    ) {
+        public static TotalDePublicaciones de(com.voces.backend.directorio.ConsultaDePublicaciones.Total t,
+                                              String por, com.voces.backend.directorio.Catalogo.Vista vista) {
+            String nombre = null, detalle = null, foto = null;
+            boolean visible = false;
+            switch (por) {
+                case "creador" -> {
+                    Creador c = vista.creador(t.id());
+                    if (c != null) { nombre = c.getNombre(); foto = c.getFotoUrl(); visible = c.isActivo(); }
+                }
+                case "medio" -> {
+                    Productora m = vista.productora(t.id());
+                    if (m != null) { nombre = m.getNombre(); foto = m.getLogoUrl(); visible = m.isActivo(); }
+                }
+                default -> {
+                    Canal k = vista.canal(t.id());
+                    if (k != null) {
+                        nombre = k.getNombre() != null && !k.getNombre().isBlank() ? k.getNombre() : k.getHandle();
+                        Creador c = vista.creador(k.getCreadorId());
+                        Productora m = vista.productora(k.getProductoraId());
+                        detalle = c != null ? c.getNombre() : m != null ? m.getNombre() : null;
+                        visible = (c != null && c.isActivo()) || (c == null && m != null && m.isActivo());
+                    }
+                }
+            }
+            return new TotalDePublicaciones(por, t.id(), nombre, detalle, foto, visible,
+                    t.videos(), t.conCifras(), t.vistas(), t.meGusta(), t.comentarios(), t.ultimo());
+        }
+    }
+
+    /**
      * Lo que pasó al pedir cifras a YouTube.
      *
      * @param pedidos      videos por los que se preguntó
