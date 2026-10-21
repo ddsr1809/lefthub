@@ -45,10 +45,13 @@ public class UsuariosAdminController {
     private final Repositorios.Usuarios usuarios;
     private final Repositorios.Creadores creadores;
     private final Repositorios.Reportes reportes;
+    private final ConsultaDeUsuarios consulta;
 
     public UsuariosAdminController(Repositorios.Usuarios usuarios,
                                    Repositorios.Creadores creadores,
-                                   Repositorios.Reportes reportes) {
+                                   Repositorios.Reportes reportes,
+                                   ConsultaDeUsuarios consulta) {
+        this.consulta = consulta;
         this.usuarios = usuarios;
         this.creadores = creadores;
         this.reportes = reportes;
@@ -116,22 +119,43 @@ public class UsuariosAdminController {
     // Listado y detalle
     // -------------------------------------------------------------------------
 
+    /** Tamaños de página que puede pedir el panel. */
+    private static final Set<Integer> TAMANOS = Set.of(25, 50, 100, 200);
+
     /**
-     * @param q         parte del correo o de la IP, o el identificador completo de la cuenta
-     * @param filtro    anonimo | google | apple | admin | bot, o vacío para todos
-     * @param pais      código de dos letras, o vacío para todos
-     * @param orden     "vistos" (última vez que abrió la app) o "nuevos"
-     * @param pagina    empieza en 0
+     * La lista de cuentas, con los filtros que se elijan a la vez y en el orden
+     * de la columna que se toque.
+     *
+     * @param q      parte del correo, de la IP o de la compañía de internet,
+     *               o el identificador completo de una cuenta
+     * @param tipos  anonimo,google,apple separados por comas; vale cualquiera
+     *               de ellos. Vacío = todos
+     * @param marcas admin, bot, persona, siguen, nosiguen, sinanuncios,
+     *               activos7, nuevos7, separados por comas; tiene que cumplir
+     *               todos. Ver ConsultaDeUsuarios.MARCAS
+     * @param filtro el de una versión anterior del panel: un solo tipo o marca
+     * @param pais   código de dos letras, o vacío para todos
+     * @param orden  cuenta | tipo | pais | sigue | alta | visto | bot. También
+     *               "vistos" y "nuevos", de la versión anterior
+     * @param dir    asc | desc. Sin él, la cuenta y el país van de la A a la Z
+     *               y lo demás de más a menos
+     * @param pagina empieza en 0
+     * @param tamano 25, 50, 100 o 200 por página
      */
     @GetMapping
     @Transactional(readOnly = true)
     public Dtos.PaginaUsuarios listar(@RequestParam(defaultValue = "") String q,
+                                      @RequestParam(defaultValue = "") String tipos,
+                                      @RequestParam(defaultValue = "") String marcas,
                                       @RequestParam(defaultValue = "") String filtro,
                                       @RequestParam(defaultValue = "") String pais,
-                                      @RequestParam(defaultValue = "vistos") String orden,
-                                      @RequestParam(defaultValue = "0") int pagina) {
+                                      @RequestParam(defaultValue = "visto") String orden,
+                                      @RequestParam(required = false) String dir,
+                                      @RequestParam(defaultValue = "0") int pagina,
+                                      @RequestParam(defaultValue = "50") int tamano) {
 
         String texto = q.trim().toLowerCase(Locale.ROOT);
+        int porPagina = TAMANOS.contains(tamano) ? tamano : TAMANO_PAGINA;
 
         // Un identificador pegado tal cual va directo a esa cuenta: es lo que
         // se tiene a mano cuando el dato viene de un registro del servidor.
@@ -140,33 +164,43 @@ public class UsuariosAdminController {
             List<Dtos.UsuarioAdminDto> uno = usuarios.findById(id)
                     .map(u -> List.of(Dtos.UsuarioAdminDto.de(u)))
                     .orElse(List.of());
-            return new Dtos.PaginaUsuarios(uno, uno.size(), 0, 1, TAMANO_PAGINA);
+            return new Dtos.PaginaUsuarios(uno, uno.size(), 0, 1, porPagina);
         }
 
-        boolean soloAdmins = "admin".equals(filtro);
-        boolean soloBots = "bot".equals(filtro);
-        String proveedor = Set.of(Usuario.ANONIMO, Usuario.GOOGLE, Usuario.APPLE).contains(filtro)
-                ? filtro : "";
+        List<String> listaDeTipos = new ArrayList<>(separar(tipos));
+        List<String> listaDeMarcas = new ArrayList<>(separar(marcas));
+        // El panel anterior manda un solo `filtro`: tipo o marca.
+        if (!filtro.isBlank()) {
+            if (ConsultaDeUsuarios.TIPOS.contains(filtro)) listaDeTipos.add(filtro);
+            else listaDeMarcas.add(filtro);
+        }
+
+        if ("vistos".equals(orden)) orden = "visto";
+        if ("nuevos".equals(orden)) orden = "alta";
+        boolean ascendente = dir != null ? "asc".equals(dir) : ("cuenta".equals(orden) || "pais".equals(orden));
 
         // % y _ son comodines de LIKE; quitados, el texto se busca literal.
         String limpio = texto.replace("%", "").replace("_", "");
-        String patron = limpio.isEmpty() ? "" : "%" + limpio + "%";
 
-        // El id como segundo criterio hace estable el orden entre páginas
-        // cuando muchas cuentas comparten la misma fecha.
-        Sort criterio = Sort.by(Sort.Direction.DESC, "nuevos".equals(orden) ? "creadoEn" : "vistoEn")
-                .and(Sort.by(Sort.Direction.ASC, "id"));
+        ConsultaDeUsuarios.Pagina resultado = consulta.buscar(
+                new ConsultaDeUsuarios.Filtro(listaDeTipos, listaDeMarcas,
+                        pais.trim().toUpperCase(Locale.ROOT), limpio.isEmpty() ? "" : "%" + limpio + "%"),
+                orden, ascendente, Math.max(pagina, 0), porPagina);
 
-        Page<Usuario> resultado = usuarios.buscar(proveedor, patron,
-                pais.trim().toUpperCase(Locale.ROOT), soloAdmins, soloBots,
-                PageRequest.of(Math.max(pagina, 0), TAMANO_PAGINA, criterio));
-
+        int paginas = (int) Math.max(1, (resultado.total() + porPagina - 1) / porPagina);
         return new Dtos.PaginaUsuarios(
-                resultado.getContent().stream().map(Dtos.UsuarioAdminDto::de).toList(),
-                resultado.getTotalElements(),
-                resultado.getNumber(),
-                Math.max(resultado.getTotalPages(), 1),
-                TAMANO_PAGINA);
+                resultado.usuarios().stream().map(Dtos.UsuarioAdminDto::de).toList(),
+                resultado.total(),
+                Math.max(pagina, 0),
+                paginas,
+                porPagina);
+    }
+
+    private static List<String> separar(String lista) {
+        return Arrays.stream(lista.split(","))
+                .map(x -> x.trim().toLowerCase(Locale.ROOT))
+                .filter(x -> !x.isEmpty())
+                .toList();
     }
 
     /** Una cuenta con los creadores que sigue, para atender a alguien que escribe. */

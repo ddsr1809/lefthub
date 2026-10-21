@@ -405,7 +405,13 @@ public final class Dtos {
              * un canal". Lo decide el equipo desde el panel (ver
              * RecomendacionesService). Una app anterior lo ignora.
              */
-            boolean recomendar
+            boolean recomendar,
+            /**
+             * El equipo la autorizó a agregar creadores, medios y canales desde
+             * la app: Ajustes enseña "Agregar al directorio". Una app anterior
+             * lo ignora.
+             */
+            boolean editor
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -416,7 +422,8 @@ public final class Dtos {
          */
         public static PerfilDto de(Usuario u, boolean cortosDisponibles,
                                    boolean anuncios, boolean compraDisponible,
-                                   boolean youtube, ChatDelPerfil chat, boolean recomendar) {
+                                   boolean youtube, ChatDelPerfil chat, boolean recomendar,
+                                   boolean editor) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
@@ -429,7 +436,7 @@ public final class Dtos {
                     u.isAvisosCortos(),
                     chat.activo(), chat.activo() ? chat.aviso() : null, chat.sinLeer(),
                     chat.avisoEquipo(), chat.equipoSinLeer(),
-                    recomendar);
+                    recomendar, editor);
         }
     }
 
@@ -816,7 +823,9 @@ public final class Dtos {
             /** El equipo la eligió para recomendar canales. */
             boolean recomendarHabilitado,
             /** El equipo la eligió para ofrecerle "Conectar con YouTube". */
-            boolean youtubeHabilitado
+            boolean youtubeHabilitado,
+            /** El equipo la autorizó a agregar al directorio desde la app. */
+            boolean editorHabilitado
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -826,7 +835,7 @@ public final class Dtos {
                     u.isPosibleBot(), u.getMotivoBot(),
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
                     u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
-                    u.isRecomendarHabilitado(), u.isYoutubeHabilitado());
+                    u.isRecomendarHabilitado(), u.isYoutubeHabilitado(), u.isEditorHabilitado());
         }
     }
 

@@ -133,9 +133,45 @@ internal fun perfilDe(json: JSONObject): Perfil {
         esAdmin = json.optBoolean("esAdmin", false),
         chatAvisoEquipo = json.optStringONull("chatAvisoEquipo"),
         chatEquipoSinLeer = json.optLong("chatEquipoSinLeer", 0),
-        recomendar = json.optBoolean("recomendar", false)
+        recomendar = json.optBoolean("recomendar", false),
+        editor = json.optBoolean("editor", false)
     )
 }
+
+internal fun canalEncontradoDe(json: JSONObject) = CanalEncontrado(
+    channelId = json.optString("channelId"),
+    titulo = json.optStringONull("titulo"),
+    fotoUrl = json.optStringONull("fotoUrl"),
+    handle = json.optStringONull("handle"),
+    suscriptores = json.optStringONull("suscriptores"),
+    yaEsDe = json.optStringONull("yaEsDe")
+)
+
+/** Null si el servidor manda un tipo que esta versión no conoce. */
+internal fun agregadoDe(json: JSONObject): Agregado? {
+    val tipo = TipoDeAlta.de(json.optStringONull("tipo")) ?: return null
+    return Agregado(
+        tipo = tipo,
+        id = json.optString("id"),
+        nombre = json.optString("nombre"),
+        mensaje = json.optStringONull("mensaje") ?: "Listo. Ya está en el directorio.",
+        aviso = json.optStringONull("aviso")
+    )
+}
+
+internal fun loQueAgregueDe(json: JSONObject) = LoQueAgregue(
+    quedanHoy = json.optInt("quedanHoy", 0),
+    altas = json.optJSONArray("altas")?.mapJson { a ->
+        TipoDeAlta.de(a.optStringONull("tipo"))?.let { tipo ->
+            AltaDesdeApp(
+                tipo = tipo,
+                id = a.optString("id"),
+                nombre = a.optString("nombre"),
+                creadoEn = a.optStringONull("creadoEn")?.let { runCatching { Instant.parse(it) }.getOrNull() }
+            )
+        }
+    }?.filterNotNull() ?: emptyList()
+)
 
 internal fun mensajeDelChatDe(json: JSONObject) = MensajeDelChat(
     id = json.getLong("id"),

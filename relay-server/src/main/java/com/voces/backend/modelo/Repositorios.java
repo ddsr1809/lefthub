@@ -364,6 +364,9 @@ public final class Repositorios {
         /** Las cuentas que el equipo eligió para recomendar canales. */
         List<Usuario> findByRecomendarHabilitadoTrueOrderByVistoEnDesc();
 
+        /** Las cuentas que el equipo autorizó para agregar al directorio desde la app. */
+        List<Usuario> findByEditorHabilitadoTrueOrderByVistoEnDesc();
+
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
@@ -540,5 +543,18 @@ public final class Repositorios {
         @Modifying
         @Query("update Recomendacion r set r.usuarioId = :a where r.usuarioId = :de")
         void pasar(@Param("de") UUID de, @Param("a") UUID a);
+    }
+
+    public interface AltasDesdeApp extends JpaRepository<AltaDesdeApp, Long> {
+
+        /** Las más recientes de todas, para el panel. */
+        List<AltaDesdeApp> findAllByOrderByCreadoEnDesc(Pageable pagina);
+
+        /** Las de una cuenta, la más nueva primero. */
+        List<AltaDesdeApp> findByUsuarioIdOrderByCreadoEnDesc(UUID usuarioId, Pageable pagina);
+
+        long countByUsuarioIdAndCreadoEnAfter(UUID usuarioId, Instant desde);
+
+        long countByUsuarioId(UUID usuarioId);
     }
 }
