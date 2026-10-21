@@ -1046,6 +1046,24 @@ nadie pueda suscribirse al de otra cuenta ni al del equipo.
 
 ---
 
+## Usuarios en el panel
+
+La lista de cuentas se filtra y se ordena sin salir de la página:
+
+- **Tipo** (Invitados, Google, Apple): se pueden marcar varios; vale cualquiera de ellos.
+- **Solo** (Administradores, Posibles bots, Sin indicio de bot, Siguen a alguien,
+  No siguen a nadie, Sin anuncios, Activos en 7 días, Nuevas en 7 días): si se
+  marcan varias, tiene que cumplirlas todas. Las que se contradicen se desmarcan solas.
+- Cada encabezado (Cuenta, Tipo, Conexión, Bot, Sigue a, Alta, Abrió la app)
+  ordena al tocarlo, y otro toque invierte el orden. "Cuenta" ordena por correo;
+  las cuentas sin correo van al final.
+- La búsqueda mira correo, IP y compañía de internet, o un ID completo; 25, 50,
+  100 o 200 cuentas por página.
+
+En la API: `GET /api/admin/usuarios` con `q`, `tipos`, `marcas`, `pais`,
+`orden`, `dir`, `pagina` y `tamano` (ver `UsuariosAdminController`). El
+parámetro `filtro` de antes sigue funcionando.
+
 ## Cosas que se rompen y cómo notarlo
 
 **Las notificaciones dejan de llegar a los 10 días.** El arrendamiento de WebSub caducó. La renovación corre cada 4 días; en los registros del servidor debe aparecer "Ciclo de renovación terminado". Si no aparece, casi siempre es que el servicio escala a cero y nunca llega a ejecutar la tarea programada.
