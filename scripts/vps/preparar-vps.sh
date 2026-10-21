@@ -134,6 +134,8 @@ crear_env() {
     for clave in DB_CLAVE JWT_SECRETO WEBSUB_SECRETO WEBSUB_TOKEN_CALLBACK TOKEN_INTERNO; do
       poner "$archivo" "$clave" "$(openssl rand -hex 32)"
     done
+    # Y la llave que cifra los mensajes del chat, tambien una por ambiente.
+    poner "$archivo" CHAT_LLAVES "1:$(openssl rand -base64 32)"
     chmod 600 "$archivo"
     echo "    Creado $archivo con secretos nuevos."
   fi
