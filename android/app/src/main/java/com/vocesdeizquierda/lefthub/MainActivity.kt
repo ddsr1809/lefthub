@@ -24,11 +24,14 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
 import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vocesdeizquierda.lefthub.anuncios.Anuncios
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
+import com.vocesdeizquierda.lefthub.chat.BandejaViewModel
 import com.vocesdeizquierda.lefthub.chat.ChatViewModel
 import com.vocesdeizquierda.lefthub.recomendar.RecomendarViewModel
 import com.vocesdeizquierda.lefthub.data.Abiertos
@@ -200,10 +203,16 @@ class MainActivity : ComponentActivity() {
     private fun procesarIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
 
-        // El equipo quiere hablar: al chat. Solo abre la pantalla; la
-        // conversación misma no viaja en el aviso.
+        // Un mensaje del chat: a esa conversación. Solo abre la pantalla; el
+        // mensaje no viaja en el aviso, se lee del servidor.
         if (extras.getString("tipo") == "chat") {
             AvisoTocado.chat.value = true
+            intent.replaceExtras(Bundle())
+            return
+        }
+        // A un administrador: una cuenta le escribió.
+        if (extras.getString("tipo") == "chat_equipo") {
+            AvisoTocado.chatEquipo.value = extras.getString("usuarioId")
             intent.replaceExtras(Bundle())
             return
         }
@@ -358,6 +367,13 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         invitacionCerrada = true
         nav.navigate("chat") { launchSingleTop = true }
     }
+    val chatDelEquipoPendiente by AvisoTocado.chatEquipo.collectAsState()
+    LaunchedEffect(chatDelEquipoPendiente) {
+        val cuenta = chatDelEquipoPendiente ?: return@LaunchedEffect
+        AvisoTocado.chatEquipo.value = null
+        invitacionCerrada = true
+        nav.navigate("chat-equipo/$cuenta") { launchSingleTop = true }
+    }
 
     LaunchedEffect(avisoPendiente) {
         val aviso = avisoPendiente ?: return@LaunchedEffect
@@ -466,7 +482,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             val ruta = actual?.destination?.route
 
             // En el chat, las pestañas sobran: la pantalla es para escribir.
-            if (ruta != "chat") NavigationBar(
+            if (ruta?.startsWith("chat") != true) NavigationBar(
                 containerColor = MaterialTheme.colorScheme.surface,
                 modifier = Modifier.heightIn(min = Tactil.principal + 28.dp)
             ) {
@@ -516,6 +532,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     cuantosCanales = estado.perfil.canales.size,
                     cortos = estado.cortos,
                     verCortos = estado.perfil.veCortos,
+                    masVistas = estado.masVistas,
+                    onCargarMasVistas = { modelo.cargarMasVistas(it) },
                     abiertos = Abiertos.videos,
                     anuncios = banners.takeIf { conAnuncios },
                     onQuitarAnuncios = irAAjustes,
@@ -733,13 +751,52 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             }
 
             composable("chat") {
-                // Del chat solo hay uno a la vez, y vive lo que vive esta
-                // pantalla: al salir de ella se borra todo.
+                // La conversación vive en el servidor; aquí, lo que vive esta
+                // pantalla. Al salir, el número de "sin leer" se pone al día.
                 val modeloChat: ChatViewModel = viewModel()
+                DisposableEffect(Unit) { onDispose { modelo.actualizarPerfil() } }
                 ChatPantalla(
                     modelo = modeloChat,
                     onVolver = {
                         if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
+            // Solo para administradores: la bandeja y cada conversación.
+            composable("chat-equipo") {
+                val bandeja: BandejaViewModel = viewModel()
+                DisposableEffect(Unit) { onDispose { modelo.actualizarPerfil() } }
+                BandejaPantalla(
+                    modelo = bandeja,
+                    onAbrir = { c ->
+                        nav.navigate("chat-equipo/${c.id}?nombre=${android.net.Uri.encode(c.nombre)}")
+                    },
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("ajustes")
+                    }
+                )
+            }
+
+            composable(
+                "chat-equipo/{cuenta}?nombre={nombre}",
+                arguments = listOf(
+                    navArgument("cuenta") { type = NavType.StringType },
+                    navArgument("nombre") { type = NavType.StringType; nullable = true; defaultValue = null }
+                )
+            ) { entrada ->
+                val cuenta = entrada.arguments?.getString("cuenta").orEmpty()
+                // Desde un aviso no se sabe el nombre: el aviso no lo lleva.
+                val nombre = entrada.arguments?.getString("nombre")
+                val conversacion: ChatViewModel = viewModel(
+                    factory = viewModelFactory { initializer { ChatViewModel(cuenta) } }
+                )
+                DisposableEffect(Unit) { onDispose { modelo.actualizarPerfil() } }
+                ChatPantalla(
+                    modelo = conversacion,
+                    titulo = nombre ?: "Chat con una cuenta",
+                    onVolver = {
+                        if (!nav.popBackStack()) nav.navigate("chat-equipo")
                     }
                 )
             }
@@ -759,6 +816,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 AjustesPantalla(
                     estado = estado,
                     onAbrirChat = { nav.navigate("chat") { launchSingleTop = true } },
+                    onAbrirBandeja = { nav.navigate("chat-equipo") { launchSingleTop = true } },
                     onAbrirRecomendar = { nav.navigate("recomendar") { launchSingleTop = true } },
                     onGuardarPreferencia = modelo::guardarPreferencia,
                     onVincularGoogle = { modelo.vincularConGoogle(contexto) },

@@ -10,8 +10,14 @@ import kotlinx.coroutines.flow.MutableStateFlow
 object AvisoTocado {
     val pendiente = MutableStateFlow<VideoDeAviso?>(null)
 
-    /** Se tocó el aviso de que el equipo quiere hablar: hay que abrir el chat. */
+    /** Se tocó el aviso de un mensaje del equipo: hay que abrir el chat. */
     val chat = MutableStateFlow(false)
+
+    /**
+     * A un administrador: se tocó el aviso de que una cuenta escribió. Lleva
+     * el id de esa cuenta, para abrir su conversación.
+     */
+    val chatEquipo = MutableStateFlow<String?>(null)
 
     /**
      * Un aviso del equipo que abre una ficha: la ruta de la navegación

@@ -39,6 +39,8 @@ fun AjustesPantalla(
     onPrivacidadDeAnuncios: () -> Unit = {},
     /** Abre el chat con el equipo. Solo sale si el equipo lo activó. */
     onAbrirChat: () -> Unit = {},
+    /** Solo administradores: abre la bandeja del chat con las cuentas. */
+    onAbrirBandeja: () -> Unit = {},
     /** Abre "Recomendar un canal". Solo sale si el equipo lo permite a esta cuenta. */
     onAbrirRecomendar: () -> Unit = {}
 ) {
@@ -170,13 +172,46 @@ fun AjustesPantalla(
         if (estado.perfil.chat) {
             Seccion("Hablar con el equipo") {
                 Text(
-                    "Escríbele al equipo de Voces y te contestará aquí mismo. La " +
-                        "conversación va cifrada y no se guarda: al salir del chat, se borra.",
+                    "Escríbele al equipo de Voces y te contestará aquí mismo. No hace " +
+                        "falta que estén conectados a la vez: te avisamos cuando te escriban.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = esquema.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = Espacio.md)
                 )
-                BotonGrande(titulo = "Abrir el chat", onClick = onAbrirChat)
+                val sinLeer = estado.perfil.chatSinLeer
+                BotonGrande(
+                    titulo = "Abrir el chat",
+                    subtitulo = when {
+                        sinLeer == 1L -> "Tienes 1 mensaje nuevo del equipo"
+                        sinLeer > 1 -> "Tienes $sinLeer mensajes nuevos del equipo"
+                        else -> null
+                    },
+                    onClick = onAbrirChat
+                )
+            }
+        }
+
+        // --- Chat con las cuentas (equipo) ------------------------------------
+        // Solo para administradores, y solo si el servidor tiene el chat.
+        if (estado.perfil.esAdmin && estado.perfil.chatAvisoEquipo != null) {
+            Seccion("Chat con las cuentas") {
+                Text(
+                    "Contesta desde aquí a las cuentas a las que les activaste el chat. " +
+                        "Lo mismo que en el panel: lo que escribas en un lado se ve en el otro.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier.padding(bottom = Espacio.md)
+                )
+                val pendientes = estado.perfil.chatEquipoSinLeer
+                BotonGrande(
+                    titulo = "Abrir la bandeja",
+                    subtitulo = when {
+                        pendientes == 1L -> "1 conversación espera respuesta"
+                        pendientes > 1 -> "$pendientes conversaciones esperan respuesta"
+                        else -> null
+                    },
+                    onClick = onAbrirBandeja
+                )
             }
         }
 

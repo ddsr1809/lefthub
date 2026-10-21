@@ -90,6 +90,10 @@ class DirectorioRepo(
     suspend fun videosDeCreador(creadorId: String): List<Publicacion> =
         ApiRelay.publicacionesDeCreador(creadorId, parte = "propios")
 
+    /** Lo más visto de todo el directorio: "hoy" o "semana". Se pide al entrar al apartado. */
+    suspend fun masVistas(periodo: String): List<Publicacion> =
+        ApiRelay.masVistas(periodo)
+
     /** Los videos de canales de otros en los que aparece el creador. */
     suspend fun videosDondeAparece(creadorId: String): List<Publicacion> =
         ApiRelay.publicacionesDeCreador(creadorId, parte = "compartidos")

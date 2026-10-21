@@ -40,8 +40,8 @@ android {
         applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
-        versionCode = 113
-        versionName = "1.0.13"
+        versionCode = 114
+        versionName = "1.0.14"
 
         // El client_id de tipo 3 ("web") dentro de google-services.json.
         // Credential Manager lo necesita para que el servidor pueda validar el
@@ -226,6 +226,8 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    // Para que el chat deje de esperar mensajes cuando la app pasa a segundo plano.
+    implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.navigation.compose)
 

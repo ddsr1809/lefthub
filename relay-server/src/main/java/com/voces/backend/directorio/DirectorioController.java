@@ -2,6 +2,7 @@ package com.voces.backend.directorio;
 
 import com.voces.backend.anuncios.TiendaGoogle;
 import com.voces.backend.chat.AvisoDeChat;
+import com.voces.backend.chat.ChatService;
 import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.*;
 import com.voces.backend.push.PushService;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.text.Collator;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashSet;
@@ -49,6 +51,7 @@ public class DirectorioController {
     private final TiendaGoogle tienda;
     private final UltimosVideos ultimosVideos;
     private final AvisoDeChat avisoDeChat;
+    private final ChatService chat;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
@@ -56,9 +59,10 @@ public class DirectorioController {
                                 Repositorios.Usuarios usuarios,
                                 Catalogo catalogo, AjustesService ajustes,
                                 TiendaGoogle tienda, UltimosVideos ultimosVideos,
-                                AvisoDeChat avisoDeChat) {
+                                AvisoDeChat avisoDeChat, ChatService chat) {
         this.ultimosVideos = ultimosVideos;
         this.avisoDeChat = avisoDeChat;
+        this.chat = chat;
         this.creadores = creadores;
         this.productoras = productoras;
         this.publicaciones = publicaciones;
@@ -276,6 +280,42 @@ public class DirectorioController {
                 PageRequest.of(0, Math.min(limite, 100)));
 
         return aDtos(lista, vista);
+    }
+
+    /**
+     * «Lo más visto»: los videos con más vistas de todo el directorio entre
+     * lo publicado en las últimas 24 horas (?periodo=hoy) o en los últimos
+     * siete días (?periodo=semana). No depende de a quién siga la persona.
+     *
+     * Es un apartado aparte dentro de Novedades: la lista principal sigue
+     * siendo solo lo de quienes eligió, en orden de tiempo. Las reglas están
+     * en LoMasVisto.
+     *
+     * Cada video trae sus vistas, para que la app las enseñe.
+     */
+    @GetMapping("/publicaciones/mas-vistas")
+    @Transactional(readOnly = true)
+    public List<Dtos.PublicacionDto> masVistas(@RequestParam(defaultValue = "hoy") String periodo,
+                                               @RequestParam(defaultValue = "0") int limite) {
+        Catalogo.Vista vista = catalogo.vista();
+
+        List<UUID> canales = vista.canalesVivos();
+        List<UUID> creadoresVisibles = vista.creadoresVisibles();
+        if (canales.isEmpty() && creadoresVisibles.isEmpty()) return List.of();
+
+        List<Publicacion> lista = publicaciones.masVistas(
+                // La consulta no admite una colección vacía.
+                canales.isEmpty() ? List.of(NINGUNO) : canales,
+                creadoresVisibles.isEmpty() ? List.of(NINGUNO) : creadoresVisibles,
+                LoMasVisto.Periodo.de(periodo).desde(Instant.now()),
+                PageRequest.of(0, LoMasVisto.cuantos(limite)));
+
+        List<Dtos.PublicacionDto> dtos = aDtos(lista, vista);
+        List<Dtos.PublicacionDto> conVistas = new ArrayList<>(dtos.size());
+        for (int i = 0; i < dtos.size(); i++) {
+            conVistas.add(dtos.get(i).conVistas(lista.get(i).getVistas()));
+        }
+        return conVistas;
     }
 
     /**
@@ -520,9 +560,26 @@ public class DirectorioController {
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
         return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
                 AjustesService.permite(ajustes.youtube(), usuario.isEsAdmin(), usuario.isYoutubeHabilitado()),
-                avisoDeChat.topicDe(usuario.getId()),
+                chatDe(usuario),
                 RecomendacionesService.puede(ajustes.recomendaciones(),
                         usuario.isEsAdmin(), usuario.isRecomendarHabilitado()));
+    }
+
+    /**
+     * El chat en el perfil: si la persona lo tiene y cuántos mensajes del
+     * equipo no ha leído; a un administrador, además, el aviso del equipo y
+     * cuántas conversaciones esperan respuesta. Es lo que lee la app cada
+     * minuto para el número de "sin leer".
+     */
+    private Dtos.ChatDelPerfil chatDe(Usuario usuario) {
+        boolean disponible = chat.disponible();
+        boolean activo = disponible && usuario.isChatHabilitado();
+        boolean equipo = disponible && usuario.isEsAdmin();
+        return new Dtos.ChatDelPerfil(activo,
+                activo ? avisoDeChat.topicDe(usuario.getId()) : null,
+                activo ? chat.sinLeerDeLaPersona(usuario.getId()) : 0,
+                equipo ? avisoDeChat.topicDelEquipo() : null,
+                equipo ? chat.conversacionesSinLeer() : 0);
     }
 
     private Usuario usuarioActual() {

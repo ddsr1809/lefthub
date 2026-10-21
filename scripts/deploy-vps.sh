@@ -67,6 +67,20 @@ if [[ -f "$archivo_imagen" ]]; then
 fi
 compose+=(-p "$proyecto" -f docker-compose.yml)
 
+# La llave del chat (CHAT_LLAVES). Si este ambiente todavia no tiene, se crea
+# aqui, una sola vez: se genera en el VPS y nunca sale de el. No se imprime.
+# Sin ella, el servidor arranca pero el chat no esta disponible.
+if ! grep -qE '^CHAT_LLAVES=.+' "$archivo_env"; then
+  llave="1:$(openssl rand -base64 32)"
+  if grep -q '^CHAT_LLAVES=' "$archivo_env"; then
+    sed -i "s|^CHAT_LLAVES=.*|CHAT_LLAVES=${llave}|" "$archivo_env"
+  else
+    printf '\n# Llave del chat. Creada por deploy-vps.sh. Guarda una copia aparte.\nCHAT_LLAVES=%s\n' "$llave" >> "$archivo_env"
+  fi
+  unset llave
+  echo "Creada la llave del chat (CHAT_LLAVES) en $archivo_env. Guarda una copia aparte: sin ella no se leen los mensajes."
+fi
+
 # La variable exportada tiene prioridad sobre los archivos y permite validar el
 # primer despliegue antes de que exista .env.imagen.
 export SERVIDOR_IMAGEN="$imagen"

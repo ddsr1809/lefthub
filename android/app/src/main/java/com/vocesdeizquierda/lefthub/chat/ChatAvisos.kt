@@ -9,21 +9,24 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
- * El aviso de "el equipo quiere hablar contigo".
+ * Los avisos de "tienes un mensaje" del chat.
  *
- * Llega por un topic de FCM propio de la cuenta, que el servidor saca de un
- * HMAC y manda en el perfil solo si el chat está activado. Aquí se anota a
- * cuál está suscrito este teléfono, para darse de baja cuando el equipo quita
- * el chat o cuando entra otra cuenta: si no, el teléfono seguiría recibiendo
- * los avisos de la cuenta anterior.
+ * Llegan por topics de FCM que el servidor saca de un HMAC y manda en el
+ * perfil: el de la propia conversación (si el equipo le activó el chat) y, a
+ * un administrador, el del equipo (cuando una cuenta le escribe). Aquí se
+ * anota a cuáles está suscrito este teléfono, para darse de baja cuando el
+ * equipo quita el chat o cuando entra otra cuenta: si no, el teléfono seguiría
+ * recibiendo los avisos de la anterior.
  *
- * El aviso no lleva nada de la conversación. Los mensajes no pasan por aquí.
+ * Los avisos no llevan el texto. Los mensajes no pasan por aquí.
  */
 object ChatAvisos {
 
     private const val TAG = "ChatAvisos"
     private const val PREFS = "chat_avisos"
-    private const val CLAVE_TOPIC = "topic"
+    /** Hasta la 1.0.13 había uno solo, con esta clave. */
+    private const val CLAVE_ANTERIOR = "topic"
+    private const val CLAVE_TOPICS = "topics"
 
     private var prefs: SharedPreferences? = null
     private val turno = Mutex()
@@ -34,29 +37,38 @@ object ChatAvisos {
     }
 
     /**
-     * Deja el teléfono suscrito a [topic], o a ninguno si es null. Solo toca
-     * FCM cuando cambia, así que se puede llamar en cada lectura del perfil.
+     * Deja el teléfono suscrito exactamente a [queridos]. Solo toca FCM en lo
+     * que cambió, así que se puede llamar en cada lectura del perfil.
      */
-    suspend fun sincronizar(topic: String?) = turno.withLock {
+    suspend fun sincronizar(queridos: Set<String>) = turno.withLock {
         val p = prefs ?: return@withLock
-        val actual = p.getString(CLAVE_TOPIC, null)
-        if (actual == topic) return@withLock
+        val actuales = (p.getStringSet(CLAVE_TOPICS, null)?.toSet() ?: emptySet()) +
+            listOfNotNull(p.getString(CLAVE_ANTERIOR, null))
+        if (actuales == queridos) return@withLock
 
         val mensajeria = FirebaseMessaging.getInstance()
-        if (actual != null) {
-            val baja = runCatching { mensajeria.unsubscribeFromTopic(actual).await() }
-            // Si no se pudo dar de baja, se queda anotado y se reintenta en
-            // la siguiente lectura del perfil.
-            if (baja.isFailure) {
-                Log.w(TAG, "No se pudo dar de baja del aviso del chat", baja.exceptionOrNull())
-                return@withLock
-            }
-            p.edit().remove(CLAVE_TOPIC).apply()
+        val quedan = actuales.toMutableSet()
+        for (topic in actuales - queridos) {
+            // Si no se pudo dar de baja, se queda anotado y se reintenta en la
+            // siguiente lectura del perfil.
+            runCatching { mensajeria.unsubscribeFromTopic(topic).await() }
+                .onSuccess { quedan -= topic }
+                .onFailure { Log.w(TAG, "No se pudo dar de baja de un aviso del chat", it) }
         }
-        if (topic != null) {
+        for (topic in queridos - actuales) {
             runCatching { mensajeria.subscribeToTopic(topic).await() }
-                .onSuccess { p.edit().putString(CLAVE_TOPIC, topic).apply() }
-                .onFailure { Log.w(TAG, "No se pudo suscribir al aviso del chat", it) }
+                .onSuccess { quedan += topic }
+                .onFailure { Log.w(TAG, "No se pudo suscribir a un aviso del chat", it) }
         }
+        p.edit().remove(CLAVE_ANTERIOR).putStringSet(CLAVE_TOPICS, quedan).apply()
+    }
+
+    /**
+     * FCM renovó el token del teléfono: las suscripciones se perdieron con el
+     * anterior. Se olvida lo anotado y se suscribe otra vez a [queridos].
+     */
+    suspend fun rehacer(queridos: Set<String>) {
+        turno.withLock { prefs?.edit()?.remove(CLAVE_ANTERIOR)?.remove(CLAVE_TOPICS)?.apply() }
+        sincronizar(queridos)
     }
 }

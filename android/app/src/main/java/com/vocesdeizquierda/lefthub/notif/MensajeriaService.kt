@@ -10,6 +10,7 @@ import com.google.firebase.messaging.RemoteMessage
 import com.vocesdeizquierda.lefthub.MainActivity
 import com.vocesdeizquierda.lefthub.R
 import com.vocesdeizquierda.lefthub.LeftVocesApp
+import com.vocesdeizquierda.lefthub.chat.ChatAvisos
 import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.DirectorioRepo
 import kotlinx.coroutines.CoroutineScope
@@ -101,6 +102,8 @@ class MensajeriaService : FirebaseMessagingService() {
                 DirectorioRepo().sincronizarTopics(
                     perfil.favoritos, perfil.productoras, perfil.recibeAvisosCortos, perfil.canales
                 )
+                // Y los del chat: el de la cuenta y, si es del equipo, el de las cuentas.
+                ChatAvisos.rehacer(setOfNotNull(perfil.chatAviso, perfil.chatAvisoEquipo))
 
                 Log.d(TAG, "Suscripciones rehechas: ${perfil.favoritos.size + perfil.productoras.size + perfil.canales.size}")
             }.onFailure { error ->

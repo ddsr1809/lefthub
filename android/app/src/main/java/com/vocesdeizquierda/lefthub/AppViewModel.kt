@@ -27,6 +27,12 @@ data class EstadoApp(
     val publicaciones: List<Publicacion> = emptyList(),
     /** Los videos cortos, que van en su propio apartado de Novedades. */
     val cortos: List<Publicacion> = emptyList(),
+    /**
+     * «Lo más visto», otro apartado de Novedades: periodo ("hoy" o
+     * "semana") → su lista. Se pide al entrar al apartado; `canalId` es aquí
+     * el periodo.
+     */
+    val masVistas: Map<String, VideosDeCanal> = emptyMap(),
     val perfil: Perfil = Perfil(),
     /** Ya llegó el perfil del servidor al menos una vez: se sabe qué sigue. */
     val perfilCargado: Boolean = false,
@@ -287,6 +293,31 @@ class AppViewModel(
         }
     }
 
+    /**
+     * Trae lo más visto del periodo. Mientras llega se ve lo que ya había de
+     * ese mismo periodo, y lo del otro periodo se queda guardado para cuando
+     * la persona vuelva a él.
+     */
+    fun cargarMasVistas(periodo: String) = viewModelScope.launch {
+        if (periodo.isBlank()) return@launch
+
+        _estado.update { e ->
+            val previos = e.masVistas[periodo]?.lista.orEmpty()
+            e.copy(masVistas = e.masVistas + (periodo to VideosDeCanal(periodo, cargando = true, lista = previos)))
+        }
+
+        val resultado = runCatching { directorio.masVistas(periodo) }
+
+        _estado.update { e ->
+            val antes = e.masVistas[periodo]?.lista.orEmpty()
+            e.copy(masVistas = e.masVistas + (periodo to VideosDeCanal(
+                canalId = periodo,
+                lista = resultado.getOrDefault(antes),
+                fallo = resultado.isFailure
+            )))
+        }
+    }
+
     /** Trae los últimos videos de un medio para el mini feed de su ficha. */
     fun cargarVideosDeProductora(productoraId: String) = viewModelScope.launch {
         if (productoraId.isBlank()) return@launch
@@ -338,10 +369,17 @@ class AppViewModel(
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
         directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
-        // El aviso del chat: con el chat activado, el topic de esta cuenta;
-        // si se lo quitan o entra otra cuenta, ninguno.
-        ChatAvisos.sincronizar(p.chatAviso)
+        // Los avisos del chat: el de esta cuenta si tiene el chat, y el del
+        // equipo si es administradora. Si se los quitan o entra otra cuenta,
+        // se da de baja de los que ya no van.
+        ChatAvisos.sincronizar(setOfNotNull(p.chatAviso, p.chatAvisoEquipo))
     }
+
+    /**
+     * Lee el perfil ahora, sin esperar al minuto. Lo usa el chat al cerrarse,
+     * para que el número de mensajes sin leer de Ajustes no se quede viejo.
+     */
+    fun actualizarPerfil() = viewModelScope.launch { refrescarPerfil() }
 
     /** Tras cambiar de cuenta, el perfil en pantalla es de otra persona. */
     private suspend fun recargarPerfil() {

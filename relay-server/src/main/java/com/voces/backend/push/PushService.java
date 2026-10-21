@@ -546,35 +546,40 @@ public class PushService {
     }
 
     /**
-     * Avisa a una cuenta de que el equipo le abrió el chat interno.
+     * Avisa de un mensaje nuevo en el chat: a la persona, cuando le escribe el
+     * equipo, o a los administradores, cuando ella contesta.
      *
-     * El aviso no lleva nada de la conversación: ni texto, ni quién escribe.
-     * Pasa por Google, y lo que se dice en el chat no debe salir de los dos
-     * teléfonos o navegadores. Solo dice que hay alguien esperando y, al
-     * tocarlo, la app abre el chat ({@code tipo = chat}).
+     * El aviso no lleva nada de la conversación: ni el texto ni quién lo
+     * escribió. Pasa por Google, y lo que se dice en el chat no debe salir de
+     * nuestro servidor. Solo dice que hay un mensaje y, en {@code datos}, lo
+     * que la app necesita para abrir esa conversación al tocarlo.
+     *
+     * @param etiqueta un aviso por etiqueta en la bandeja: si llegan varios
+     *                 mensajes, el último reemplaza a los anteriores
      *
      * Devuelve null si FCM aceptó el mensaje, o el motivo del fallo.
      */
-    public String avisarChat(String topic) {
+    public String avisarChat(String topic, String titulo, String cuerpo,
+                             Map<String, String> datos, String etiqueta) {
         ObjectNode mensaje = json.createObjectNode();
         mensaje.put("topic", topic);
 
         ObjectNode notificacion = mensaje.putObject("notification");
-        notificacion.put("title", "El equipo de Voces quiere hablar contigo");
-        notificacion.put("body", "Toca para abrir el chat.");
+        notificacion.put("title", titulo);
+        notificacion.put("body", cuerpo);
 
-        mensaje.putObject("data").put("tipo", "chat");
+        ObjectNode data = mensaje.putObject("data");
+        datos.forEach(data::put);
 
         ObjectNode android = mensaje.putObject("android");
         android.put("priority", "HIGH");
-        // Si el equipo abre y cierra varias veces, un solo aviso en la bandeja.
-        android.putObject("notification").put("channel_id", CANAL_AVISOS).put("tag", "chat");
+        android.putObject("notification").put("channel_id", CANAL_AVISOS).put("tag", etiqueta);
 
         ObjectNode apns = mensaje.putObject("apns");
-        apns.putObject("headers").put("apns-priority", "10").put("apns-collapse-id", "chat");
+        apns.putObject("headers").put("apns-priority", "10").put("apns-collapse-id", etiqueta);
         apns.putObject("payload").putObject("aps").put("sound", "default");
 
-        return enviar(mensaje, "invitación al chat");
+        return enviar(mensaje, "mensaje del chat");
     }
 
     // -------------------------------------------------------------------------

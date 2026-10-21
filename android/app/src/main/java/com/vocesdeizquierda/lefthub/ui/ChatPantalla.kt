@@ -16,32 +16,40 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LifecycleEventEffect
 import com.vocesdeizquierda.lefthub.chat.ChatViewModel
 import com.vocesdeizquierda.lefthub.chat.EstadoChat
-import com.vocesdeizquierda.lefthub.chat.FaseChat
-import com.vocesdeizquierda.lefthub.chat.MensajeChat
+import com.vocesdeizquierda.lefthub.data.MensajeDelChat
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 private val formatoHora = DateTimeFormatter.ofPattern("HH:mm")
+private val formatoDia = DateTimeFormatter.ofPattern("d MMM", Locale.forLanguageTag("es-MX"))
 
 /**
- * El chat con el equipo.
+ * El chat: la persona con el equipo, o un administrador con una cuenta.
  *
- * Mientras está abierta, la pantalla no deja hacer capturas ni sale su
- * contenido en la lista de apps recientes: la conversación no se guarda en
- * ningún sitio, y tampoco debe quedarse en una foto.
+ * Los mensajes se guardan cifrados en el servidor; aquí solo están mientras la
+ * pantalla está abierta. Con la pantalla a la vista llegan al momento; si la
+ * app pasa a segundo plano deja de esperarlos y lo que llegue trae aviso.
+ * Mientras se ve, la pantalla no deja hacer capturas ni sale en apps recientes.
+ *
+ * @param titulo para un administrador, la cuenta con la que habla
  */
 @Composable
 fun ChatPantalla(
     modelo: ChatViewModel,
-    onVolver: () -> Unit
+    onVolver: () -> Unit,
+    titulo: String = "Chat con el equipo"
 ) {
     val estado by modelo.estado.collectAsState()
     val contexto = LocalContext.current
@@ -51,11 +59,15 @@ fun ChatPantalla(
         ventana?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose { ventana?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) }
     }
+    LifecycleEventEffect(Lifecycle.Event.ON_START) { modelo.alVerse() }
+    LifecycleEventEffect(Lifecycle.Event.ON_STOP) { modelo.alOcultarse() }
 
     ChatContenido(
         estado = estado,
+        titulo = titulo,
+        comoEquipo = modelo.comoEquipo,
         onEnviar = modelo::enviar,
-        onReintentar = modelo::entrar,
+        onReintentar = modelo::cargar,
         onVolver = onVolver
     )
 }
@@ -63,6 +75,8 @@ fun ChatPantalla(
 @Composable
 fun ChatContenido(
     estado: EstadoChat,
+    titulo: String,
+    comoEquipo: Boolean,
     onEnviar: (String, () -> Unit) -> Unit,
     onReintentar: () -> Unit,
     onVolver: () -> Unit
@@ -95,23 +109,21 @@ fun ChatContenido(
                 Text("‹ Volver", style = MaterialTheme.typography.labelLarge)
             }
             Text(
-                "Chat con el equipo",
+                titulo,
                 style = MaterialTheme.typography.headlineMedium,
-                color = esquema.onBackground
+                color = esquema.onBackground,
+                modifier = Modifier.semantics { heading() }
             )
-            Text(
-                when (estado.fase) {
-                    FaseChat.ENTRANDO -> "Conectando…"
-                    FaseChat.ESPERANDO -> "Esperando a que alguien del equipo entre."
-                    FaseChat.CONECTADO -> "Conectado. Los mensajes van cifrados."
-                    FaseChat.TERMINADO -> "La conversación terminó."
-                },
-                style = MaterialTheme.typography.bodyLarge,
-                color = esquema.onSurfaceVariant,
-                modifier = Modifier
-                    .padding(top = Espacio.xs)
-                    .semantics { liveRegion = LiveRegionMode.Polite }
-            )
+            if (estado.sinConexion) {
+                Text(
+                    "Sin conexión. Reintentando…",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.error,
+                    modifier = Modifier
+                        .padding(top = Espacio.xs)
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                )
+            }
         }
 
         // --- Mensajes ---------------------------------------------------------
@@ -123,32 +135,55 @@ fun ChatContenido(
                 .weight(1f)
                 .fillMaxWidth()
         ) {
-            // Va dentro de la lista y no fijo arriba: con la letra grande, lo
-            // fijo se comería el espacio de los mensajes.
             item {
-                Column {
+                Text(
+                    if (comoEquipo) "La persona ve tus mensajes como «Equipo de Voces», sin tu correo."
+                    else "Los mensajes se guardan cifrados y solo los lee el equipo de Voces. " +
+                        "Puedes contestar cuando quieras: te avisamos cuando te escriban.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = esquema.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = Espacio.sm)
+                )
+            }
+            if (estado.cargando) {
+                item {
+                    Box(Modifier.fillMaxWidth().padding(Espacio.lg), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator()
+                    }
+                }
+            } else if (estado.mensajes.isEmpty() && estado.terminado == null) {
+                item {
                     Text(
-                        "Nada de esta conversación se guarda: ni en tu teléfono ni en " +
-                            "nuestro servidor. Al salir de esta pantalla, se borra.",
-                        style = MaterialTheme.typography.bodySmall,
+                        if (comoEquipo) "Todavía no se han escrito. Lo que mandes le llega con un aviso."
+                        else "Todavía no hay mensajes. Escribe aquí abajo y el equipo te contestará.",
+                        style = MaterialTheme.typography.bodyLarge,
                         color = esquema.onSurfaceVariant,
                         textAlign = TextAlign.Center,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(bottom = Espacio.sm)
+                        modifier = Modifier.fillMaxWidth().padding(vertical = Espacio.lg)
                     )
-                    CodigoDeSeguridad(estado.codigo)
                 }
             }
-            items(estado.mensajes, key = { it.id }) { BurbujaDeChat(it) }
+            items(estado.mensajes, key = { it.id }) { BurbujaDeChat(it, comoEquipo) }
         }
 
         // --- Escribir ---------------------------------------------------------
         HorizontalDivider(color = esquema.outline)
         Column(Modifier.padding(Espacio.md)) {
-            if (estado.fase == FaseChat.TERMINADO) {
-                BotonGrande("Volver a entrar al chat", onClick = onReintentar)
-                BotonGrande("Salir", variante = VarianteBoton.SECUNDARIO, onClick = onVolver)
+            val motivo = estado.terminado
+            if (motivo != null) {
+                Text(
+                    motivo,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = esquema.onSurfaceVariant,
+                    modifier = Modifier
+                        .padding(bottom = Espacio.md)
+                        .semantics { liveRegion = LiveRegionMode.Polite }
+                )
+                BotonGrande("Volver a intentar", variante = VarianteBoton.SECUNDARIO, onClick = onReintentar)
+                BotonGrande("Salir", onClick = onVolver)
             } else {
                 CajaDeMensaje(estado, texto, { texto = it }, onEnviar)
             }
@@ -164,13 +199,12 @@ private fun CajaDeMensaje(
     onEnviar: (String, () -> Unit) -> Unit
 ) {
     val esquema = MaterialTheme.colorScheme
-    val listo = estado.fase == FaseChat.CONECTADO
 
     OutlinedTextField(
         value = texto,
         onValueChange = { onTexto(it.take(ChatViewModel.MAX_TEXTO)) },
-        label = { Text(if (listo) "Escribe tu mensaje" else "Espera a que el equipo entre") },
-        enabled = listo && !estado.enviando,
+        label = { Text("Escribe tu mensaje") },
+        enabled = !estado.enviando && !estado.cargando,
         textStyle = MaterialTheme.typography.bodyLarge,
         maxLines = 5,
         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
@@ -188,89 +222,64 @@ private fun CajaDeMensaje(
     }
     BotonGrande(
         titulo = if (estado.enviando) "Enviando…" else "Enviar",
-        habilitado = listo && !estado.enviando && texto.isNotBlank(),
+        habilitado = !estado.enviando && !estado.cargando && texto.isNotBlank(),
         onClick = { onEnviar(texto) { onTexto("") } },
         modifier = Modifier.padding(top = Espacio.sm)
     )
 }
 
-/**
- * Las 8 cifras que el equipo ve también en su pantalla. Si coinciden, la
- * conversación es solo entre los dos.
- */
-@Composable
-private fun CodigoDeSeguridad(codigo: String?) {
-    if (codigo == null) return
-    val esquema = MaterialTheme.colorScheme
-    Column(
-        modifier = Modifier
-            .padding(bottom = Espacio.sm)
-            .fillMaxWidth()
-            .background(esquema.surface, RoundedCornerShape(12.dp))
-            .padding(Espacio.md)
-            .semantics(mergeDescendants = true) {
-                contentDescription = "Código de seguridad: ${codigo.toCharArray().joinToString(" ")}. " +
-                    "Si el equipo te dice el mismo, nadie más puede leer esta conversación."
-            }
-    ) {
-        Text("Código de seguridad", style = MaterialTheme.typography.bodySmall, color = esquema.onSurfaceVariant)
-        Text(
-            codigo,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            color = esquema.onSurface
-        )
-        Text(
-            "Si alguien del equipo te dice el mismo número, nadie más puede leer esta conversación.",
-            style = MaterialTheme.typography.bodySmall,
-            color = esquema.onSurfaceVariant
-        )
-    }
+/** "14:05" si es de hoy; "3 oct · 14:05" si no. */
+internal fun cuandoDelChat(m: MensajeDelChat): String {
+    val local = m.creadoEn.atZone(ZoneId.systemDefault())
+    val hora = formatoHora.format(local)
+    return if (local.toLocalDate() == LocalDate.now()) hora else formatoDia.format(local) + " · " + hora
 }
 
 @Composable
-private fun BurbujaDeChat(m: MensajeChat) {
+private fun BurbujaDeChat(m: MensajeDelChat, comoEquipo: Boolean) {
     val esquema = MaterialTheme.colorScheme
-    if (m.nota) {
-        Text(
-            m.texto,
-            style = MaterialTheme.typography.bodySmall,
-            color = esquema.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = Espacio.xs)
-        )
-        return
+    // Del lado de quien mira: la persona ve los suyos a la derecha; un
+    // administrador, los del equipo.
+    val mio = m.deAdmin == comoEquipo
+    val cuando = cuandoDelChat(m)
+    val quien: String? = when {
+        mio && comoEquipo && m.autor != null && m.autor != "Tú" -> m.autor
+        mio || comoEquipo -> null
+        else -> m.autor ?: "Equipo de Voces"
     }
+    val estadoLeido = if (mio) (if (m.leidoEn != null) " · Leído" else " · Enviado") else ""
 
-    val hora = formatoHora.format(m.hora.atZone(ZoneId.systemDefault()))
-    Box(Modifier.fillMaxWidth(), contentAlignment = if (m.mio) Alignment.CenterEnd else Alignment.CenterStart) {
+    Box(Modifier.fillMaxWidth(), contentAlignment = if (mio) Alignment.CenterEnd else Alignment.CenterStart) {
         Column(
             modifier = Modifier
                 .fillMaxWidth(0.85f)
-                .wrapContentWidth(if (m.mio) Alignment.End else Alignment.Start)
+                .wrapContentWidth(if (mio) Alignment.End else Alignment.Start)
                 .background(
-                    if (m.mio) esquema.primary else esquema.surface,
+                    if (mio) esquema.primary else esquema.surface,
                     RoundedCornerShape(16.dp)
                 )
                 .padding(horizontal = Espacio.md, vertical = Espacio.sm)
                 .semantics(mergeDescendants = true) {
-                    contentDescription = (if (m.mio) "Tú" else "El equipo") + ", a las $hora: ${m.texto}"
+                    contentDescription = (if (mio) "Tú" else (quien ?: "La persona")) +
+                        ", $cuando$estadoLeido: ${m.texto}"
                 }
         ) {
-            if (!m.mio) {
-                Text("Equipo de Voces", style = MaterialTheme.typography.bodySmall, color = esquema.onSurfaceVariant)
+            if (quien != null) {
+                Text(
+                    quien,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (mio) esquema.onPrimary.copy(alpha = 0.85f) else esquema.onSurfaceVariant
+                )
             }
             Text(
                 m.texto,
                 style = MaterialTheme.typography.bodyLarge,
-                color = if (m.mio) esquema.onPrimary else esquema.onSurface
+                color = if (mio) esquema.onPrimary else esquema.onSurface
             )
             Text(
-                hora,
+                cuando + estadoLeido,
                 style = MaterialTheme.typography.bodySmall,
-                color = (if (m.mio) esquema.onPrimary else esquema.onSurfaceVariant).copy(alpha = 0.8f),
+                color = (if (mio) esquema.onPrimary else esquema.onSurfaceVariant).copy(alpha = 0.8f),
                 modifier = Modifier.align(Alignment.End)
             )
         }

@@ -46,6 +46,21 @@ comprobar_requisitos() {
   command -v python3 >/dev/null || fallo "Falta python3 (se usa para servir el panel)."
 }
 
+# La llave que cifra los mensajes del chat. Un .env.local de antes del chat
+# guardado no la tiene: se le agrega sin tocar lo demás.
+poner_llave_del_chat() {
+  [ -n "$(valor CHAT_LLAVES)" ] && return 0
+  command -v openssl >/dev/null || fallo "Falta openssl (se usa para generar los secretos)."
+  local llave
+  llave="1:$(openssl rand -base64 32)"
+  if grep -q '^CHAT_LLAVES=' "$ENV"; then
+    sed -i "s|^CHAT_LLAVES=.*|CHAT_LLAVES=$llave|" "$ENV"
+  else
+    printf '\nCHAT_LLAVES=%s\n' "$llave" >> "$ENV"
+  fi
+  paso "Agregué la llave del chat (CHAT_LLAVES) a relay-server/.env.local"
+}
+
 # La primera vez crea el .env.local con los secretos ya generados.
 preparar_env() {
   [ -f "$ENV" ] && return 0
@@ -55,6 +70,7 @@ preparar_env() {
   for clave in DB_CLAVE JWT_SECRETO WEBSUB_SECRETO WEBSUB_TOKEN_CALLBACK TOKEN_INTERNO; do
     sed -i "s|^$clave=.*|$clave=$(openssl rand -hex 32)|" "$ENV"
   done
+  poner_llave_del_chat
   cliente="$(grep -oE "[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com" "$RAIZ/admin/config.js" | head -n 1 || true)"
   [ -n "$cliente" ] && sed -i "s|^GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=$cliente|" "$ENV"
 
@@ -140,6 +156,7 @@ apagar() {
 levantar() {
   comprobar_requisitos
   preparar_env
+  poner_llave_del_chat
   revisar_env
 
   local puerto api

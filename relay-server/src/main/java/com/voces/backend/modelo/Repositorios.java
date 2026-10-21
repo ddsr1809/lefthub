@@ -253,6 +253,33 @@ public final class Repositorios {
                 """)
         List<Publicacion> delCanal(@Param("canal") UUID canal, Pageable pagina);
 
+        /**
+         * Lo más visto de todo el directorio entre lo publicado desde
+         * `desde`, para el apartado «Lo más visto» de Novedades. Solo de los
+         * canales visibles (`canales`) o, si el video perdió su canal, de un
+         * creador visible (`creadores`); ninguna de las dos puede llegar
+         * vacía.
+         *
+         * Sin cortos ni retirados, y sin los directos que aún no empiezan:
+         * todavía no tienen vistas. Los que nunca han tenido cifras tampoco,
+         * porque no hay con qué ordenarlos.
+         */
+        @Query("""
+                select p from Publicacion p
+                where (p.canalId in :canales or (p.canalId is null and p.creadorId in :creadores))
+                  and p.plataforma = 'youtube'
+                  and p.estado <> 'removed'
+                  and p.tipo <> 'short'
+                  and p.directo <> 'programado'
+                  and p.vistas is not null
+                  and p.publicadoEn >= :desde
+                order by p.vistas desc, p.publicadoEn desc
+                """)
+        List<Publicacion> masVistas(@Param("canales") Collection<UUID> canales,
+                                    @Param("creadores") Collection<UUID> creadores,
+                                    @Param("desde") Instant desde,
+                                    Pageable pagina);
+
         @Modifying
         @Query("update Publicacion p set p.reportes = p.reportes + 1 where p.videoId = :videoId")
         void sumarReporte(@Param("videoId") String videoId);
@@ -438,6 +465,57 @@ public final class Repositorios {
         void borrarDeUsuario(@Param("usuario") UUID usuario);
 
         long countByUsuarioId(UUID usuarioId);
+    }
+
+    public interface MensajesChat extends JpaRepository<MensajeChat, Long> {
+
+        /** Los últimos de una conversación, del más nuevo al más viejo. */
+        List<MensajeChat> findByUsuarioIdOrderByIdDesc(UUID usuarioId, Pageable pagina);
+
+        /** Los que llegaron después de ese, en orden. */
+        List<MensajeChat> findByUsuarioIdAndIdGreaterThanOrderByIdAsc(UUID usuarioId, long despues, Pageable pagina);
+
+        /**
+         * Los que todavía no ha leído un lado. {@code deAdmin} es quién los
+         * escribió: los del equipo los lee la persona, y al revés.
+         */
+        long countByUsuarioIdAndDeAdminAndLeidoEnIsNull(UUID usuarioId, boolean deAdmin);
+
+        /** Todos los mensajes de las personas que ningún administrador ha leído. */
+        long countByDeAdminFalseAndLeidoEnIsNull();
+
+        /** Cuántas conversaciones tienen algo de la persona sin leer. */
+        @Query("select count(distinct m.usuarioId) from MensajeChat m where m.deAdmin = false and m.leidoEn is null")
+        long conversacionesSinLeer();
+
+        /** Marca como leídos los que escribió el otro lado, hasta ese mensaje. */
+        @Modifying
+        @Query("""
+                update MensajeChat m set m.leidoEn = :ahora
+                where m.usuarioId = :usuario and m.deAdmin = :deAdmin
+                  and m.leidoEn is null and m.id <= :hasta
+                """)
+        int marcarLeidos(@Param("usuario") UUID usuario, @Param("deAdmin") boolean deAdmin,
+                         @Param("hasta") long hasta, @Param("ahora") Instant ahora);
+
+        /**
+         * Una fila por conversación que tiene mensajes: la cuenta, el id y la
+         * fecha del último, y cuántos de la persona no ha leído el equipo.
+         */
+        @Query(value = """
+                select usuario_id, max(id) as ultimo_id, max(creado_en) as ultimo_en,
+                       count(*) filter (where not de_admin and leido_en is null) as sin_leer
+                from mensajes_chat
+                group by usuario_id
+                """, nativeQuery = true)
+        List<Object[]> resumenPorConversacion();
+
+        @Modifying
+        @Query("delete from MensajeChat m where m.usuarioId = :usuario")
+        int borrarConversacion(@Param("usuario") UUID usuario);
+
+        /** Toda la conversación, para pasarla a otra cuenta al fundir dos. */
+        List<MensajeChat> findByUsuarioIdOrderByIdAsc(UUID usuarioId);
     }
 
     public interface Recomendaciones extends JpaRepository<Recomendacion, Long> {

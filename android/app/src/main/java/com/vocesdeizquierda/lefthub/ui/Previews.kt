@@ -525,6 +525,35 @@ private fun PreviaAjustesConSesion() {
 }
 
 // -----------------------------------------------------------------------------
+// Lo más visto
+// -----------------------------------------------------------------------------
+
+/**
+ * Dos tarjetas de «Lo más visto»: el lugar y las vistas van arriba, en
+ * negrita. La segunda ya se abrió, para ver que las dos marcas conviven.
+ */
+@VistaPreviaTemas
+@VistaPreviaAccesible
+@Composable
+private fun PreviaLoMasVisto() {
+    Marco {
+        Column(Modifier.padding(Espacio.md)) {
+            TarjetaPublicacion(
+                publicacion = publicaciones.first().copy(vistas = 12_480L),
+                onAbrir = {},
+                puesto = 1
+            )
+            TarjetaPublicacion(
+                publicacion = publicaciones.last().copy(vistas = 1_530L),
+                onAbrir = {},
+                abierto = true,
+                puesto = 2
+            )
+        }
+    }
+}
+
+// -----------------------------------------------------------------------------
 // Anuncios
 // -----------------------------------------------------------------------------
 
