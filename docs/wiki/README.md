@@ -49,3 +49,5 @@ Voces Izquierda (proyecto LeftHub) es un directorio curado de creadores de conte
 Directorio de creadores, canales y medios con etiquetas; Novedades con videos, cortos opcionales y «Lo más visto»; seguir creadores, medios o canales sueltos; notificaciones push; ficha del video; «¿Estoy suscrito en YouTube?»; anuncios AdMob con compra o folio para quitarlos; chat con el equipo; recomendaciones de canales; editores desde la app; stickers para WhatsApp y otras apps; avisos del equipo; mantenimiento y baja de versiones.
 
 El `README.md` de la raíz conserva partes del diseño original (carpeta `server/`, Cloud Run, Firebase Hosting). Esta wiki describe lo que realmente corre hoy. Al cambiar algo importante, actualiza la página que corresponda en el mismo commit.
+
+La pestaña Wiki de GitHub es una copia de esta carpeta tal como está en `master`. Se publica con `bash scripts/publicar-wiki.sh` (`--prueba` para ver antes qué cambiaría); no se edita allá.
