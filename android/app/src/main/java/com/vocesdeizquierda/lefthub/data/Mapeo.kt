@@ -134,9 +134,27 @@ internal fun perfilDe(json: JSONObject): Perfil {
         chatAvisoEquipo = json.optStringONull("chatAvisoEquipo"),
         chatEquipoSinLeer = json.optLong("chatEquipoSinLeer", 0),
         recomendar = json.optBoolean("recomendar", false),
-        editor = json.optBoolean("editor", false)
+        editor = json.optBoolean("editor", false),
+        stickers = json.optBoolean("stickers", false)
     )
 }
+
+internal fun paqueteDeStickersDe(json: JSONObject) = PaqueteDeStickers(
+    id = json.getString("id"),
+    creadorId = json.getString("creadorId"),
+    creador = json.optString("creador", ""),
+    nombre = json.optString("nombre", ""),
+    animado = json.optBoolean("animado", false),
+    version = json.optInt("version", 1),
+    icono = json.getString("icono"),
+    stickers = json.optJSONArray("stickers")?.mapJson {
+        StickerDelPaquete(
+            id = it.getString("id"),
+            emojis = it.optJSONArray("emojis").mapJsonStrings(),
+            imagen = it.getString("imagen")
+        )
+    } ?: emptyList()
+)
 
 internal fun canalEncontradoDe(json: JSONObject) = CanalEncontrado(
     channelId = json.optString("channelId"),

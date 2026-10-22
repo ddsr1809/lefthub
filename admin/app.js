@@ -280,7 +280,8 @@
     avisoPreset: null,      // con qué abrir Avisos (desde la ficha de un video)
     chatAbierto: null,      // la conversación del chat que se abre al entrar a la sección
     filtroUsuarios: { q: '', tipos: [], marcas: [], pais: '', orden: 'visto', dir: 'desc', pagina: 0, tamano: 50 },
-    filtroRecs: 'pendientes' // pendientes | revisadas | todas
+    filtroRecs: 'pendientes', // pendientes | revisadas | todas
+    stickers: null          // lo último que dijo /api/admin/stickers
   };
 
   const VISTAS = {
@@ -294,6 +295,7 @@
     reportes: vistaReportes,
     recomendaciones: vistaRecomendaciones,
     editores: vistaEditores,
+    stickers: vistaStickers,
     avisos: vistaAvisos,
     anuncios: vistaAnuncios,
     apps: vistaApps,
@@ -2286,6 +2288,302 @@
   }
 
   // ---------------------------------------------------------------------------
+  // Stickers
+  // ---------------------------------------------------------------------------
+  // Paquetes de stickers de los creadores. La app los baja del servidor y los
+  // manda a WhatsApp como paquete, o uno por uno a Telegram, Signal,
+  // Messenger... Empiezan apagados para todos, administradores incluidos:
+  // quién los ve se decide aquí, con el mismo esquema que las recomendaciones.
+  const ALCANCES_STICKERS = {
+    apagado: ['Nadie', 'La app no enseña el apartado Stickers a nadie, tampoco a los administradores.'],
+    admins: ['Solo administradores', 'Para probarlos con las cuentas que tienen acceso a este panel.'],
+    elegidos: ['Administradores y cuentas elegidas', 'Además de los administradores, las cuentas que elijas una por una desde su ficha en Usuarios.'],
+    todos: ['Todos', 'Cualquier persona que use la app.']
+  };
+
+  // Lo que pide WhatsApp. El servidor lo vuelve a revisar al recibirlo.
+  const STK = { lado: 512, ladoIcono: 96, fijo: 100 * 1024, animado: 500 * 1024, icono: 50 * 1024, maximo: 30 };
+
+  // Las imágenes piden sesión, así que no se pueden poner en un <img> tal
+  // cual: se bajan con el token y se enseñan desde la memoria del navegador.
+  // La dirección lleva la versión del paquete, así que una copia nunca se queda vieja.
+  const imagenesConSesion = new Map();
+
+  async function blobConSesion(ruta) {
+    if (imagenesConSesion.has(ruta)) return imagenesConSesion.get(ruta).blob;
+    const r = await fetch(BASE + ruta, { headers: { Authorization: 'Bearer ' + ((sesion && sesion.token) || ''), 'X-App-Plataforma': 'panel' } });
+    if (!r.ok) throw new ErrorApi('No se pudo bajar la imagen.', r.status);
+    const blob = await r.blob();
+    imagenesConSesion.set(ruta, { blob, url: URL.createObjectURL(blob) });
+    return blob;
+  }
+
+  async function pintarImagenesConSesion(raiz) {
+    await Promise.all($$('img[data-src]', raiz).map(async (img) => {
+      const ruta = img.dataset.src;
+      try {
+        await blobConSesion(ruta);
+        img.src = imagenesConSesion.get(ruta).url;
+        img.removeAttribute('data-src');
+      } catch (e) { img.alt = 'No se pudo cargar'; }
+    }));
+  }
+
+  function aBase64(blob) {
+    return new Promise((ok, mal) => {
+      const r = new FileReader();
+      r.onload = () => ok(String(r.result).split(',')[1] || '');
+      r.onerror = () => mal(new Error('No se pudo leer el archivo.'));
+      r.readAsDataURL(blob);
+    });
+  }
+
+  // ¿Es un WebP animado? Lo dice la marca de animación de su cabecera VP8X.
+  async function esWebpAnimado(archivo) {
+    const b = new Uint8Array(await archivo.slice(0, 32).arrayBuffer());
+    const txt = (i) => String.fromCharCode(b[i], b[i + 1], b[i + 2], b[i + 3]);
+    return b.length >= 21 && txt(0) === 'RIFF' && txt(8) === 'WEBP' && txt(12) === 'VP8X' && (b[20] & 0x02) !== 0;
+  }
+
+  async function abrirImagen(blob) {
+    try { return await createImageBitmap(blob); } catch (e) {
+      throw new Error('No se pudo abrir «' + (blob.name || 'la imagen') + '». Usa PNG, JPG o WebP.');
+    }
+  }
+
+  /**
+   * Dibuja la imagen centrada en un cuadrado de `lado`, sin recortarla y con
+   * fondo transparente, y la guarda en `tipo` bajando la calidad hasta que
+   * pese menos de `pesoMaximo`.
+   */
+  async function cuadrar(blob, lado, tipo, pesoMaximo) {
+    const img = await abrirImagen(blob);
+    const lienzo = document.createElement('canvas');
+    lienzo.width = lienzo.height = lado;
+    const ctx = lienzo.getContext('2d');
+    const escala = Math.min(lado / img.width, lado / img.height);
+    const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, Math.round((lado - w) / 2), Math.round((lado - h) / 2), w, h);
+    if (img.close) img.close();
+    const calidades = tipo === 'image/png' ? [undefined] : [0.92, 0.85, 0.75, 0.65, 0.55, 0.45, 0.35];
+    for (const calidad of calidades) {
+      const salida = await new Promise((ok) => lienzo.toBlob(ok, tipo, calidad));
+      // Safari no sabe crear WebP: devuelve un PNG sin decir nada.
+      if (!salida || salida.type !== tipo) throw new Error('Este navegador no sabe crear imágenes WebP. Usa Chrome, Edge o Firefox.');
+      if (salida.size <= pesoMaximo) return salida;
+    }
+    throw new Error('No pudimos dejar «' + (blob.name || 'la imagen') + '» por debajo de ' + Math.round(pesoMaximo / 1024) + ' KB. Prueba con una imagen más sencilla.');
+  }
+
+  /** Deja un archivo listo para ser sticker: WebP de 512 × 512 que pese lo que permite WhatsApp. */
+  async function prepararSticker(archivo) {
+    if (await esWebpAnimado(archivo)) {
+      // Una animación no se puede rehacer en el navegador: va tal cual y el
+      // servidor dice si mide, pesa y dura lo que debe.
+      if (archivo.size > STK.animado) throw new Error('«' + archivo.name + '» pesa ' + Math.round(archivo.size / 1024) + ' KB y un sticker animado no puede pasar de 500 KB.');
+      return { blob: archivo, animado: true };
+    }
+    if (archivo.type === 'image/webp' && archivo.size <= STK.fijo) {
+      const img = await abrirImagen(archivo);
+      const exacto = img.width === STK.lado && img.height === STK.lado;
+      if (img.close) img.close();
+      if (exacto) return { blob: archivo, animado: false };
+    }
+    return { blob: await cuadrar(archivo, STK.lado, 'image/webp', STK.fijo), animado: false, gif: archivo.type === 'image/gif' };
+  }
+
+  /** El ícono de la bandeja de WhatsApp: 96 × 96, PNG (o WebP si el PNG pesa demasiado). */
+  async function prepararIcono(blob) {
+    const png = await cuadrar(blob, STK.ladoIcono, 'image/png', Infinity);
+    return png.size <= STK.icono ? png : cuadrar(blob, STK.ladoIcono, 'image/webp', STK.icono);
+  }
+
+  async function vistaStickers() {
+    let d;
+    try {
+      [d] = await Promise.all([api('/api/admin/stickers'), cargarCreadores()]);
+    } catch (e) {
+      if (e.estado === 404) {
+        main.innerHTML = '<div class="head"><div><h1>Stickers</h1></div></div><div class="panel"><div class="empty">Este servidor todavía no tiene stickers. Actualízalo para usarlos.</div></div>';
+        return;
+      }
+      throw e;
+    }
+    if (estado.vista !== 'stickers') return;
+    estado.stickers = d;
+    pintarStickers();
+  }
+
+  function pintarStickers() {
+    const d = estado.stickers;
+    const alcance = d.alcance || 'apagado';
+    const encendido = alcance !== 'apagado';
+    const cuenta = (u) => u.email || 'Cuenta de invitado ' + String(u.id).slice(0, 8);
+    const creadores = (estado.creadores || []).slice().sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
+    const publicados = d.paquetes.filter((p) => p.publicado).length;
+
+    main.innerHTML = `
+      <div class="head"><div><h1>Stickers</h1><p class="sub">Paquetes de stickers de los creadores. La app los baja del servidor y la persona los agrega a WhatsApp o los manda uno por uno por Telegram, Signal, Messenger o cualquier otra app. No van dentro de la app: se guardan en el teléfono mientras la app esté instalada.</p></div></div>
+      <div class="stack">
+        <section class="panel"><div class="panel-head"><h2>Quién los ve</h2>
+            <span class="badge ${encendido ? 'b-ok' : 'b-mute'}">${encendido ? esc(ALCANCES_STICKERS[alcance][0]) : 'Apagados'}</span></div>
+          <div class="panel-body">
+            <div class="opciones-alcance" role="radiogroup" aria-label="Quién ve los stickers">
+              ${Object.entries(ALCANCES_STICKERS).map(([k, [ti, de]]) => `<label class="check"><input type="radio" name="alcanceStk" data-accion="alcance-stickers" data-valor="${k}" ${alcance === k ? 'checked' : ''}><span><b>${esc(ti)}</b><span class="hint" style="display:block">${esc(de)}</span></span></label>`).join('')}
+            </div>
+            <p class="reparto-titulo" style="margin:16px 0 8px">Cuentas elegidas <span class="muted">· ${plural(d.elegidas.length, 'cuenta', 'cuentas')}</span></p>
+            ${d.elegidas.length ? '<ul class="lista-simple">' + d.elegidas.map((u) => `<li><span class="clip"><b>${esc(cuenta(u))}</b>${u.esAdmin ? ' <span class="badge b-warn">Admin</span>' : ''} <span class="muted" style="font-size:12.5px">· abrió la app ${esc(relativo(u.vistoEn))}</span></span><button class="btn sm danger" data-accion="stickers-usuario" data-desde="lista" data-id="${esc(u.id)}" data-valor="false" data-nombre="${esc(cuenta(u))}">Quitar</button></li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Ninguna todavía.</p>'}
+            <p class="hint" style="margin:10px 0 0">Las cuentas elegidas solo cuentan con «Administradores y cuentas elegidas». Para elegir una, búscala en <button class="link" data-ir="usuarios">Usuarios</button>, ábrela con «Ver» y pulsa «Darle los stickers». El cambio vale la próxima vez que cada persona abra la app. Solo funciona en la app de Android 1.0.15 o posterior.</p>
+          </div></section>
+
+        <section class="panel"><div class="panel-head"><h2>Paquete nuevo</h2><span class="muted" style="font-size:13px">${plural(d.paquetes.length, 'paquete', 'paquetes')} · ${plural(publicados, 'publicado', 'publicados')}</span></div>
+          <div class="panel-body">
+            ${creadores.length ? `<div class="form">
+              <div><label class="hint" for="stkCreador">Creador</label>
+                <select class="input" id="stkCreador" style="margin-top:6px">${creadores.map((c) => `<option value="${esc(c.id)}">${esc(c.nombre)}${c.activo ? '' : ' (oculto)'}</option>`).join('')}</select></div>
+              <div><label class="hint" for="stkNombre">Nombre del paquete <span class="opcional">si lo dejas vacío, el del creador</span></label>
+                <input class="input" id="stkNombre" maxlength="128" style="margin-top:6px"></div>
+            </div>
+            <div class="toolbar" style="margin-top:12px"><button class="btn primary" data-accion="crear-paquete">Crear paquete</button></div>
+            <p class="hint" style="margin:10px 0 0">Cada paquete lleva de 3 a 30 stickers, todos fijos o todos animados, y un ícono. Si un creador tiene más de 30, hazle otro paquete.</p>`
+              : '<p class="hint" style="margin:0">Primero agrega creadores al directorio.</p>'}
+          </div></section>
+
+        ${d.paquetes.length ? d.paquetes.map(tarjetaPaquete).join('') : '<div class="panel"><div class="empty">Todavía no hay paquetes. Crea el primero arriba.</div></div>'}
+      </div>`;
+    pintarImagenesConSesion(main);
+  }
+
+  function tarjetaPaquete(p) {
+    const n = p.stickers.length;
+    const id = esc(p.id);
+    const tipo = n ? (p.animado ? 'Animados' : 'Fijos') : 'Vacío';
+    return `<section class="panel" id="paq-${id}">
+      <div class="panel-head">
+        <div style="min-width:0"><h2 style="margin:0" class="clip">${esc(p.nombre)}</h2>
+          <span class="muted" style="font-size:13px">de <b>${esc(p.creador || 'un creador borrado')}</b></span>
+          ${p.creadorActivo ? '' : ' <span class="badge b-warn">Creador oculto: no sale en la app</span>'}</div>
+        <div class="chips">${p.publicado ? '<span class="badge b-ok">Publicado</span>' : '<span class="badge b-mute">Sin publicar</span>'}
+          <span class="badge b-info">${tipo}</span><span class="badge b-mute">${n} / ${STK.maximo}</span></div>
+      </div>
+      <div class="panel-body stickers-cuerpo">
+        <div class="stickers-icono">
+          <div class="sticker-celda icono">${p.conIcono ? `<img data-src="/api/stickers/paquetes/${id}/icono?v=${p.version}" alt="Ícono del paquete">` : '<span class="hint">Sin ícono</span>'}</div>
+          <div style="display:flex;flex-direction:column;gap:6px">
+            <span class="hint">Ícono de la bandeja de WhatsApp (96 × 96)${p.iconoPeso ? ' · ' + Math.round(p.iconoPeso / 1024) + ' KB' : ''}</span>
+            <span class="toolbar">
+              <label class="btn sm">Subir ícono<input type="file" accept="image/png,image/webp,image/jpeg" data-subir="icono" data-id="${id}" hidden></label>
+              ${n ? `<button class="btn sm" data-accion="icono-desde-sticker" data-id="${id}">Usar el primer sticker</button>` : ''}
+            </span>
+          </div>
+        </div>
+        ${p.falta.length ? `<div class="aviso-mal">${p.falta.map(esc).join(' ')}</div>` : ''}
+        ${n ? `<ul class="stickers-rejilla">${p.stickers.map((s, i) => `<li class="sticker-celda">
+            <img data-src="/api/stickers/${esc(s.id)}/imagen?v=${p.version}" alt="Sticker ${i + 1}" loading="lazy">
+            <button class="link sticker-emojis" data-accion="emojis-sticker" data-id="${esc(s.id)}" data-emojis="${esc(s.emojis)}" title="Cambiar los emojis">${esc(s.emojis)}</button>
+            <span class="sticker-pie">
+              <button class="btn sm" data-accion="mover-sticker" data-paquete="${id}" data-id="${esc(s.id)}" data-dir="-1" ${i === 0 ? 'disabled' : ''} aria-label="Mover antes">←</button>
+              <span class="hint">${Math.round(s.peso / 1024)} KB</span>
+              <button class="btn sm" data-accion="mover-sticker" data-paquete="${id}" data-id="${esc(s.id)}" data-dir="1" ${i === n - 1 ? 'disabled' : ''} aria-label="Mover después">→</button>
+              <button class="btn sm danger" data-accion="quitar-sticker" data-id="${esc(s.id)}" aria-label="Quitar este sticker">✕</button>
+            </span></li>`).join('')}</ul>` : ''}
+        ${n < STK.maximo ? `<div class="toolbar">
+            <label class="btn ${n < 3 ? 'primary' : ''}">Agregar stickers<input type="file" multiple accept="image/webp,image/png,image/jpeg,image/gif" data-subir="stickers" data-id="${id}" hidden></label>
+            <label class="hint" style="display:flex;gap:6px;align-items:center">Emojis de los que subas <input class="input" style="width:110px" id="emo-${id}" value="😀" maxlength="40"></label>
+          </div>
+          <p class="hint" style="margin:0">PNG, JPG o WebP: el panel los deja en 512 × 512 y en WebP de hasta 100 KB, sin recortarlos. Los animados súbelos ya en WebP animado de 512 × 512, hasta 500 KB y 10 segundos. Un GIF se sube como sticker fijo, con su primer cuadro. Tocando los emojis de cada sticker los cambias: WhatsApp los usa para sugerirlo al escribir.</p>` : ''}
+        <div class="toolbar" style="justify-content:flex-end">
+          <button class="btn sm" data-accion="renombrar-paquete" data-id="${id}" data-nombre="${esc(p.nombre)}">Renombrar</button>
+          <button class="btn sm ${p.publicado ? '' : 'primary'}" data-accion="publicar-paquete" data-id="${id}" data-valor="${!p.publicado}" ${!p.publicado && p.falta.length ? 'disabled title="Antes complétalo"' : ''}>${p.publicado ? 'Despublicar' : 'Publicar'}</button>
+          <button class="btn sm danger" data-accion="borrar-paquete" data-id="${id}" data-nombre="${esc(p.nombre)}">Borrar paquete</button>
+        </div>
+      </div></section>`;
+  }
+
+  /** Pone el paquete que devolvió el servidor en su sitio y repinta. */
+  function paqueteActualizado(p) {
+    const lista = estado.stickers.paquetes;
+    const i = lista.findIndex((x) => x.id === p.id);
+    if (i >= 0) lista[i] = p; else lista.push(p);
+    if (estado.vista === 'stickers') pintarStickers();
+  }
+
+  async function subirIcono(paqueteId, blob) {
+    const r = await api('/api/admin/stickers/paquetes/' + encodeURIComponent(paqueteId) + '/icono', { metodo: 'PUT', cuerpo: { datos: await aBase64(blob) } });
+    paqueteActualizado(r.paquete);
+    return r;
+  }
+
+  async function subirStickers(paqueteId, archivos) {
+    const emojis = ($('#emo-' + paqueteId) || {}).value || '';
+    let subidos = 0, primero = null, gif = false;
+    const errores = [];
+    for (const archivo of archivos) {
+      try {
+        const listo = await prepararSticker(archivo);
+        const r = await api('/api/admin/stickers/paquetes/' + encodeURIComponent(paqueteId) + '/stickers',
+          { metodo: 'POST', cuerpo: { datos: await aBase64(listo.blob), emojis } });
+        paqueteActualizado(r.paquete);
+        subidos++;
+        primero = primero || listo.blob;
+        gif = gif || !!listo.gif;
+      } catch (e) {
+        errores.push(archivo.name + ': ' + e.message);
+        // Lleno: los que siguen tampoco caben.
+        if (/30 stickers/.test(e.message)) break;
+      }
+    }
+    // Sin ícono todavía: se hace solo con el primero que entró.
+    const p = estado.stickers.paquetes.find((x) => x.id === paqueteId);
+    if (primero && p && !p.conIcono) {
+      try { await subirIcono(paqueteId, await prepararIcono(primero)); } catch (e) { errores.push('Ícono: ' + e.message); }
+    }
+    if (errores.length) {
+      abrirModal(subidos ? 'Algunos no se subieron' : 'No se subió ninguno',
+        (subidos ? '<p style="margin:0 0 10px">' + esc(plural(subidos, 'sticker subido', 'stickers subidos')) + '.</p>' : '')
+        + '<ul class="borrado-lista">' + errores.map((m) => '<li>' + esc(m) + '</li>').join('') + '</ul>', [{ texto: 'Entendido' }]);
+    } else if (subidos) {
+      toast(plural(subidos, 'sticker subido', 'stickers subidos') + (gif ? '. Los GIF quedaron como stickers fijos.' : '.'));
+    }
+  }
+
+  // Los archivos que se eligen en un paquete: el ícono o los stickers.
+  main.addEventListener('change', async (e) => {
+    const campo = e.target.closest('input[type=file][data-subir]');
+    if (!campo || !campo.files || !campo.files.length) return;
+    const archivos = Array.from(campo.files);
+    const { id, subir } = campo.dataset;
+    const boton = campo.closest('label');
+    if (boton) boton.classList.add('ocupado');
+    campo.disabled = true;
+    try {
+      if (subir === 'icono') {
+        const r = await subirIcono(id, await prepararIcono(archivos[0]));
+        toast(r.mensaje || 'Ícono guardado.');
+      } else {
+        toast('Subiendo ' + plural(archivos.length, 'sticker', 'stickers') + '…');
+        await subirStickers(id, archivos);
+      }
+    } catch (err) {
+      if (err.estado !== 401 && err.estado !== 403) toast(err.message, true);
+    } finally {
+      if (campo.isConnected) { campo.disabled = false; campo.value = ''; }
+      if (boton && boton.isConnected) boton.classList.remove('ocupado');
+    }
+  });
+
+  /** Bloque de la ficha de una cuenta: darle o no los stickers. */
+  function fichaStickers(u) {
+    const nombre = esc(u.email || 'esta cuenta de invitado');
+    return u.stickersHabilitado
+      ? `<div><button class="btn danger" data-accion="stickers-usuario" data-id="${esc(u.id)}" data-valor="false" data-nombre="${nombre}">Quitarle los stickers</button>
+          <p class="hint" style="margin:6px 0 0">Está entre las cuentas elegidas para los stickers (sección <button class="link" data-ir="stickers">Stickers</button>).</p></div>`
+      : `<div><button class="btn" data-accion="stickers-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${nombre}">Darle los stickers</button>
+          <p class="hint" style="margin:6px 0 0">Verá el apartado Stickers en la app mientras en Stickers esté elegido «Administradores y cuentas elegidas».</p></div>`;
+  }
+
+  // ---------------------------------------------------------------------------
   // Avisos del equipo
   // ---------------------------------------------------------------------------
   // Lo que el equipo manda a mano: un medio o un canal nuevo, un video
@@ -2594,7 +2892,8 @@
       + (u.chatHabilitado ? ' <span class="badge b-info">Chat</span>' : '')
       + (u.recomendarHabilitado ? ' <span class="badge b-info">Recomienda</span>' : '')
       + (u.youtubeHabilitado ? ' <span class="badge b-info">YouTube</span>' : '')
-      + (u.editorHabilitado ? ' <span class="badge b-warn">Editor</span>' : '');
+      + (u.editorHabilitado ? ' <span class="badge b-warn">Editor</span>' : '')
+      + (u.stickersHabilitado ? ' <span class="badge b-info">Stickers</span>' : '');
   };
 
   // El servidor guarda el código de dos letras; el nombre lo pone el navegador.
@@ -2883,6 +3182,7 @@
         ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.youtubeHabilitado === undefined ? '' : fichaYouTube(u)}
         ${u.editorHabilitado === undefined ? '' : fichaEditor(u)}
+        ${u.stickersHabilitado === undefined ? '' : fichaStickers(u)}
         ${u.sinAnuncios === undefined ? '' : `<div><button class="btn ${u.sinAnuncios ? 'danger' : ''}" data-accion="sin-anuncios-usuario" data-id="${esc(u.id)}" data-valor="${u.sinAnuncios ? 'false' : 'true'}" data-origen="${esc(u.sinAnunciosOrigen || '')}" data-nombre="${esc(u.email || 'esta cuenta de invitado')}">${u.sinAnuncios ? 'Devolverle los anuncios' : 'Quitarle los anuncios'}</button></div>`}
       </div>`, [{ texto: 'Cerrar' }]);
   }
@@ -4500,6 +4800,146 @@
           toast(r.mensaje || 'Listo.');
           if (b.dataset.desde === 'lista') await vistaEditores();
           else await abrirUsuario(id);
+          break;
+        }
+
+        case 'alcance-stickers': {
+          // El botón ya cambió al pulsarlo. Si algo falla o se cancela, se
+          // vuelve a pintar la sección con lo que diga el servidor.
+          const nuevo = b.dataset.valor;
+          const [titulo, detalle] = ALCANCES_STICKERS[nuevo] || [nuevo, ''];
+          try {
+            const seguro = await confirmar(
+              nuevo === 'apagado' ? 'Apagar los stickers' : 'Stickers: ' + titulo.toLowerCase(),
+              nuevo === 'apagado'
+                ? 'La app deja de enseñar el apartado Stickers y el servidor deja de entregarlos. Lo que cada persona ya agregó a WhatsApp se queda en su WhatsApp.'
+                : detalle + ' Verán el apartado Stickers la próxima vez que abran la app, con los paquetes publicados.',
+              nuevo === 'apagado' ? 'Apagar' : 'Cambiar', nuevo === 'apagado' || (nuevo === 'todos' && config.ambiente === 'produccion'));
+            if (seguro) {
+              await api('/api/admin/ajustes', { metodo: 'PUT', cuerpo: { stickers: nuevo } });
+              toast(nuevo === 'apagado' ? 'Stickers apagados.' : 'Stickers para: ' + titulo.toLowerCase() + '.');
+            }
+          } finally {
+            if (estado.vista === 'stickers') await vistaStickers();
+          }
+          break;
+        }
+
+        case 'stickers-usuario': {
+          const dar = b.dataset.valor === 'true';
+          if (!dar) {
+            const ok = await confirmar('¿Quitarle los stickers a ' + b.dataset.nombre + '?',
+              'Si el alcance es «Administradores y cuentas elegidas», deja de ver el apartado Stickers en la app. Lo que ya agregó a WhatsApp se queda.',
+              'Quitar', false);
+            if (!ok) break;
+          }
+          b.disabled = true;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/stickers?valor=' + dar, { metodo: 'POST' });
+          toast(r.mensaje || 'Listo.');
+          if (b.dataset.desde === 'lista') await vistaStickers();
+          else await abrirUsuario(id);
+          break;
+        }
+
+        case 'crear-paquete': {
+          const creadorId = $('#stkCreador').value;
+          if (!creadorId) { toast('Elige de qué creador es.', true); break; }
+          b.disabled = true;
+          const r = await api('/api/admin/stickers/paquetes', { metodo: 'POST', cuerpo: { creadorId, nombre: $('#stkNombre').value.trim() } });
+          paqueteActualizado(r.paquete);
+          toast(r.mensaje || 'Paquete creado.');
+          const nuevo = document.getElementById('paq-' + r.paquete.id);
+          if (nuevo) nuevo.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        }
+
+        case 'renombrar-paquete': {
+          abrirModal('Renombrar el paquete',
+            '<label class="hint" for="stkRenombrar">Nombre</label><input class="input" id="stkRenombrar" maxlength="128" style="margin-top:6px" value="' + esc(b.dataset.nombre) + '">'
+            + '<p class="hint" style="margin:8px 0 0">Es el nombre que enseñan la app y WhatsApp. Quien ya lo agregó verá el nuevo cuando la app lo vuelva a mandar.</p>', [
+              { texto: 'Cancelar' },
+              { texto: 'Guardar', tipo: 'primary', alPulsar: async () => {
+                const r = await api('/api/admin/stickers/paquetes/' + encodeURIComponent(id), { metodo: 'PUT', cuerpo: { nombre: $('#stkRenombrar').value } });
+                paqueteActualizado(r.paquete);
+                toast(r.mensaje || 'Guardado.');
+              } }
+            ]);
+          break;
+        }
+
+        case 'publicar-paquete': {
+          const publicar = b.dataset.valor === 'true';
+          if (!publicar || config.ambiente === 'produccion') {
+            const ok = await confirmar(publicar ? '¿Publicar el paquete?' : '¿Despublicar el paquete?',
+              publicar ? 'Lo verán en la app quienes tengan los stickers, la próxima vez que entren al apartado.'
+                : 'Deja de salir en la app. Quien ya lo agregó a WhatsApp lo conserva.',
+              publicar ? 'Publicar' : 'Despublicar', !publicar);
+            if (!ok) break;
+          }
+          b.disabled = true;
+          const r = await api('/api/admin/stickers/paquetes/' + encodeURIComponent(id), { metodo: 'PUT', cuerpo: { publicado: publicar } });
+          paqueteActualizado(r.paquete);
+          toast(r.mensaje || 'Listo.');
+          break;
+        }
+
+        case 'borrar-paquete': {
+          const ok = await confirmar('¿Borrar «' + b.dataset.nombre + '»?',
+            'Se borran el paquete y todos sus stickers, y deja de salir en la app. No se puede deshacer. Quien ya lo agregó a WhatsApp lo conserva.',
+            'Borrar', true);
+          if (!ok) break;
+          b.disabled = true;
+          const r = await api('/api/admin/stickers/paquetes/' + encodeURIComponent(id), { metodo: 'DELETE' });
+          estado.stickers.paquetes = estado.stickers.paquetes.filter((p) => p.id !== id);
+          pintarStickers();
+          toast(r.mensaje || 'Paquete borrado.');
+          break;
+        }
+
+        case 'emojis-sticker': {
+          abrirModal('Emojis del sticker',
+            '<label class="hint" for="stkEmojis">De 1 a 3 emojis, separados por un espacio</label><input class="input" id="stkEmojis" maxlength="40" style="margin-top:6px;font-size:20px" value="' + esc(b.dataset.emojis) + '">'
+            + '<p class="hint" style="margin:8px 0 0">WhatsApp los usa para sugerir el sticker cuando alguien escribe ese emoji.</p>', [
+              { texto: 'Cancelar' },
+              { texto: 'Guardar', tipo: 'primary', alPulsar: async () => {
+                const r = await api('/api/admin/stickers/' + encodeURIComponent(id), { metodo: 'PUT', cuerpo: { emojis: $('#stkEmojis').value } });
+                paqueteActualizado(r.paquete);
+                toast(r.mensaje || 'Guardado.');
+              } }
+            ]);
+          break;
+        }
+
+        case 'mover-sticker': {
+          const p = estado.stickers.paquetes.find((x) => x.id === b.dataset.paquete);
+          if (!p) break;
+          const ids = p.stickers.map((s) => s.id);
+          const i = ids.indexOf(id), j = i + Number(b.dataset.dir);
+          if (i < 0 || j < 0 || j >= ids.length) break;
+          [ids[i], ids[j]] = [ids[j], ids[i]];
+          b.disabled = true;
+          const r = await api('/api/admin/stickers/paquetes/' + encodeURIComponent(p.id) + '/orden', { metodo: 'PUT', cuerpo: { ids } });
+          paqueteActualizado(r.paquete);
+          break;
+        }
+
+        case 'quitar-sticker': {
+          const ok = await confirmar('¿Quitar este sticker?', 'Se borra del paquete. Si el paquete está publicado y se queda con menos de 3, se despublica hasta que vuelva a tenerlos.', 'Quitar', true);
+          if (!ok) break;
+          b.disabled = true;
+          const r = await api('/api/admin/stickers/' + encodeURIComponent(id), { metodo: 'DELETE' });
+          paqueteActualizado(r.paquete);
+          toast(r.mensaje || 'Quitado.');
+          break;
+        }
+
+        case 'icono-desde-sticker': {
+          const p = estado.stickers.paquetes.find((x) => x.id === id);
+          if (!p || !p.stickers.length) break;
+          b.disabled = true;
+          const blob = await blobConSesion('/api/stickers/' + p.stickers[0].id + '/imagen?v=' + p.version);
+          const r = await subirIcono(id, await prepararIcono(blob));
+          toast(r.mensaje || 'Ícono guardado.');
           break;
         }
 

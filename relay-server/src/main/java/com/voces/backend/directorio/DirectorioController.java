@@ -555,8 +555,8 @@ public class DirectorioController {
      * El perfil lleva también lo que decide el equipo: si hay videos cortos,
      * si hay anuncios y si se pueden comprar. Así la app se entera de todo
      * con la misma lectura, la que ya hace al abrirse. También si tiene el
-     * chat con el equipo y si puede recomendar canales, que dependen de la
-     * cuenta.
+     * chat con el equipo, si puede recomendar canales y si ve los stickers,
+     * que dependen de la cuenta.
      */
     private Dtos.PerfilDto perfilDe(Usuario usuario) {
         return Dtos.PerfilDto.de(usuario, ajustes.cortos(), ajustes.anuncios(), tienda.lista(),
@@ -564,7 +564,8 @@ public class DirectorioController {
                 chatDe(usuario),
                 RecomendacionesService.puede(ajustes.recomendaciones(),
                         usuario.isEsAdmin(), usuario.isRecomendarHabilitado()),
-                EditorService.puede(usuario));
+                EditorService.puede(usuario),
+                AjustesService.permite(ajustes.stickers(), usuario.isEsAdmin(), usuario.isStickersHabilitado()));
     }
 
     /**

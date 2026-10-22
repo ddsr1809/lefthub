@@ -25,6 +25,10 @@
         <package android:name="com.instagram.barcelona" />    <!-- Threads -->
         <package android:name="org.telegram.messenger" />
         <package android:name="com.spotify.music" />
+        <!-- Stickers: para saber si hay WhatsApp y preguntarle si ya tiene
+             un paquete. -->
+        <package android:name="com.whatsapp" />
+        <package android:name="com.whatsapp.w4b" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
@@ -59,6 +63,28 @@
                 <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
         </service>
+
+        <!-- Stickers para WhatsApp. WhatsApp lee por aquí los paquetes que se
+             le agregan desde la app (ver stickers/ProveedorDeStickers.kt).
+             El permiso de lectura es de WhatsApp: solo él puede leerlo. -->
+        <provider
+            android:name=".stickers.ProveedorDeStickers"
+            android:authorities="${applicationId}.stickers"
+            android:enabled="true"
+            android:exported="true"
+            android:readPermission="com.whatsapp.sticker.READ" />
+
+        <!-- Para mandar un sticker suelto a Telegram, Signal, Messenger...
+             Solo deja ver la carpeta de los stickers bajados. -->
+        <provider
+            android:name=".stickers.ArchivosDeStickers"
+            android:authorities="${applicationId}.archivos"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/archivos_compartidos" />
+        </provider>
 
         <!-- AdMob. El ID de la app sale de build.gradle.kts, uno por sabor. Sin
              esta línea la biblioteca de anuncios tumba la app al arrancar. -->

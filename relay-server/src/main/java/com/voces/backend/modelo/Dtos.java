@@ -411,7 +411,12 @@ public final class Dtos {
              * la app: Ajustes enseña "Agregar al directorio". Una app anterior
              * lo ignora.
              */
-            boolean editor
+            boolean editor,
+            /**
+             * Esta cuenta ve el apartado de Stickers. Lo decide el alcance del
+             * panel (ver stickers/StickersService). Una app anterior lo ignora.
+             */
+            boolean stickers
     ) {
         /**
          * {@code favoritos} lleva a los creadores y también a las productoras
@@ -423,7 +428,7 @@ public final class Dtos {
         public static PerfilDto de(Usuario u, boolean cortosDisponibles,
                                    boolean anuncios, boolean compraDisponible,
                                    boolean youtube, ChatDelPerfil chat, boolean recomendar,
-                                   boolean editor) {
+                                   boolean editor, boolean stickers) {
             List<UUID> seguidos = new ArrayList<>(u.getFavoritos());
             u.getProductorasSeguidas().forEach(p -> { if (!seguidos.contains(p)) seguidos.add(p); });
 
@@ -436,7 +441,7 @@ public final class Dtos {
                     u.isAvisosCortos(),
                     chat.activo(), chat.activo() ? chat.aviso() : null, chat.sinLeer(),
                     chat.avisoEquipo(), chat.equipoSinLeer(),
-                    recomendar, editor);
+                    recomendar, editor, stickers);
         }
     }
 
@@ -586,13 +591,15 @@ public final class Dtos {
      *                        panel anterior.
      * @param youtubeAlcance  a quién se ofrece "Conectar con YouTube": apagado
      *                        | admins | elegidos | todos.
+     * @param stickers        quién ve los stickers: apagado | admins |
+     *                        elegidos | todos.
      */
     public record AjustesDto(boolean cortos, boolean anuncios, boolean youtube, String recomendaciones,
-                             String youtubeAlcance) {}
+                             String youtubeAlcance, String stickers) {}
 
     /** Lo que se cambia de los ajustes. Lo que no viene no se toca. */
     public record CambiarAjustes(Boolean cortos, Boolean anuncios, Boolean youtube, String recomendaciones,
-                                 String youtubeAlcance) {}
+                                 String youtubeAlcance, String stickers) {}
 
     // -------------------------------------------------------------------------
     // Anuncios: quitarlos con una compra o con un folio de regalo
@@ -825,7 +832,9 @@ public final class Dtos {
             /** El equipo la eligió para ofrecerle "Conectar con YouTube". */
             boolean youtubeHabilitado,
             /** El equipo la autorizó a agregar al directorio desde la app. */
-            boolean editorHabilitado
+            boolean editorHabilitado,
+            /** El equipo la eligió para ver los stickers. */
+            boolean stickersHabilitado
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -835,7 +844,8 @@ public final class Dtos {
                     u.isPosibleBot(), u.getMotivoBot(),
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
                     u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
-                    u.isRecomendarHabilitado(), u.isYoutubeHabilitado(), u.isEditorHabilitado());
+                    u.isRecomendarHabilitado(), u.isYoutubeHabilitado(), u.isEditorHabilitado(),
+                    u.isStickersHabilitado());
         }
     }
 

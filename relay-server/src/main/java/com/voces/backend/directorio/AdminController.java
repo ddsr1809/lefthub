@@ -603,7 +603,8 @@ public class AdminController {
     public Dtos.AjustesDto ajustes() {
         String youtube = ajustes.youtube();
         return new Dtos.AjustesDto(ajustes.cortos(), ajustes.anuncios(),
-                AjustesService.RECOMENDAR_TODOS.equals(youtube), ajustes.recomendaciones(), youtube);
+                AjustesService.RECOMENDAR_TODOS.equals(youtube), ajustes.recomendaciones(), youtube,
+                ajustes.stickers());
     }
 
     /** Solo cambia lo que llega; lo demás se queda como estaba. */
@@ -625,6 +626,13 @@ public class AdminController {
                         "Quién puede recomendar: apagado, admins, elegidos o todos.");
             }
             ajustes.ponerRecomendaciones(peticion.recomendaciones());
+        }
+        if (peticion.stickers() != null) {
+            if (!AjustesService.alcanceValido(peticion.stickers())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "Quién ve los stickers: apagado, admins, elegidos o todos.");
+            }
+            ajustes.ponerStickers(peticion.stickers());
         }
         return ajustes();
     }

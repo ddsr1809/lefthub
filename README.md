@@ -760,6 +760,87 @@ En la API: `GET /api/publicaciones/mas-vistas?periodo=hoy|semana&limite=20`
 servidor anterior recibe 404 y el apartado sale vacío. Al abrir un video desde
 aquí, la campaña es `mas_visto` en vez de `novedades`.
 
+## Stickers
+
+La app de Android tiene un apartado **Stickers**, con su propia pestaña, aparte
+de Novedades: la lista de creadores que tienen stickers y, al tocar uno, sus
+paquetes. Desde ahí la persona agrega un paquete entero a **WhatsApp** o manda
+un sticker suelto por **Telegram, Signal, Messenger** o cualquier otra app.
+
+**Empieza apagado para todos, administradores incluidos.** Se enciende en el
+panel, sección *Stickers*, con el mismo esquema que las recomendaciones:
+*Nadie*, *Solo administradores*, *Administradores y cuentas elegidas* o
+*Todos*. Las cuentas se eligen una por una desde su ficha en *Usuarios*
+(«Darle los stickers»); sirve también para cuentas de invitado. Mientras una
+cuenta no los vea, el servidor no le da ni la lista ni las imágenes (403): no
+basta con que la app esconda la pestaña.
+
+### Cómo se suben
+
+En el panel, *Stickers > Paquete nuevo*: se elige el creador y se le suben los
+stickers. Lo que pide WhatsApp, y el servidor revisa al recibirlo:
+
+- **De 3 a 30 stickers por paquete**, todos fijos o todos animados. Si un
+  creador tiene más, se le hace otro paquete.
+- **Cada sticker: WebP de 512 × 512.** Fijo hasta 100 KB; animado hasta 500
+  KB, 10 segundos y sin cuadros de menos de 8 ms. El panel convierte solo los
+  PNG, JPG y WebP fijos (los centra sin recortarlos, con fondo transparente, y
+  baja la calidad hasta que quepan); un GIF entra como sticker fijo con su
+  primer cuadro. Los animados se suben ya hechos en WebP animado. Convertir
+  necesita Chrome, Edge o Firefox: Safari no sabe crear WebP.
+- **De 1 a 3 emojis por sticker.** WhatsApp los usa para sugerirlo al
+  escribir. Sin ninguno, va 😀.
+- **Un ícono de 96 × 96** (PNG o WebP, hasta 50 KB) para la bandeja de
+  WhatsApp. Al subir el primer sticker el panel lo hace solo con él; se puede
+  cambiar.
+
+Un paquete se ve en la app solo si está **publicado**, completo y su creador
+está visible. Si se quitan stickers hasta quedar menos de 3, se despublica
+solo. Cada cambio sube la *versión* del paquete: la app lo vuelve a bajar y
+WhatsApp vuelve a pedir las imágenes.
+
+### En el teléfono
+
+Los stickers **no van dentro de la app**. Se bajan del servidor la primera vez
+que se abren los de un creador y se guardan en la carpeta privada de la app
+(`files/stickers/`), que Android borra al desinstalarla. Mientras la versión no
+cambie, no se vuelven a bajar. Si la red se corta a medias, se queda la copia
+anterior entera.
+
+- **WhatsApp** (y WhatsApp Business) lee los paquetes por un *ContentProvider*
+  con el contrato que publica WhatsApp para apps de stickers
+  (`stickers/ProveedorDeStickers.kt`); solo WhatsApp puede leerlo. El botón
+  dice «Ya está en tu WhatsApp» si WhatsApp contesta que ya lo tiene.
+- **Telegram, Signal, Messenger y las demás** no dejan que otra app les agregue
+  un paquete, así que a esas se les manda cada sticker suelto, como imagen
+  WebP, desde el selector de Android. Telegram y Signal lo enseñan como
+  sticker.
+- Un paquete que el equipo despublica o borra deja de salir en la app, pero no
+  se borra del teléfono: quien ya lo agregó a WhatsApp lo conserva.
+
+Lo que queda en la base (V25): `usuarios.stickers_habilitado`,
+`paquetes_stickers` con su ícono en `paquetes_iconos`, y `stickers` con sus
+bytes en `stickers_datos`. Las imágenes van aparte para que listar no las lea.
+Los paquetes son de un creador y se borran con él. **No se copian entre
+ambientes**: los de pruebas y los de producción se suben por separado.
+
+En la API:
+
+- `GET /api/stickers`: los paquetes publicados, con las direcciones de sus
+  imágenes (`/api/stickers/{id}/imagen?v=` y
+  `/api/stickers/paquetes/{id}/icono?v=`), que también piden sesión.
+- `GET /api/perfil` trae `stickers`: si la cuenta ve el apartado.
+- Panel: `GET /api/admin/stickers`; `POST /api/admin/stickers/paquetes`;
+  `PUT` y `DELETE /api/admin/stickers/paquetes/{id}`;
+  `PUT /api/admin/stickers/paquetes/{id}/icono`;
+  `POST /api/admin/stickers/paquetes/{id}/stickers`;
+  `PUT /api/admin/stickers/paquetes/{id}/orden`; `PUT` y
+  `DELETE /api/admin/stickers/{id}`; `POST /api/admin/usuarios/{id}/stickers?valor=`.
+  Las imágenes se mandan en base64 dentro del JSON. El alcance se cambia con
+  `PUT /api/admin/ajustes` y `{"stickers": "apagado|admins|elegidos|todos"}`.
+
+La app de iPhone todavía no tiene el apartado: ignora `stickers` del perfil.
+
 ## "¿Estoy suscrito en YouTube?"
 
 Seguir a un creador en la app y estar suscrito a su canal son cosas distintas. Con la cuenta guardada con Google, la app puede decirle a cada persona en cuáles sí lo está.
@@ -1092,6 +1173,7 @@ El proyecto está completo de punta a punta, pero estas piezas quedaron fuera a 
 - **Pruebas automatizadas** más allá de las que ya hay: falta cubrir el enriquecimiento, el envío de push y los controladores con MockMvc.
 - **Sign in with Apple en Android.** Se puede, vía flujo web, pero añade complejidad y en Android casi nadie lo usa.
 - **Tests de interfaz** en ambas apps.
+- **Stickers en iPhone.** iOS no deja que otra app agregue paquetes a WhatsApp como Android; habría que mandarlos uno por uno.
 
 ---
 

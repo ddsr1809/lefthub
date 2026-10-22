@@ -388,3 +388,17 @@ th button.orden:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .resumen-filtros b{color:var(--ink)}
 .paginas select.input{padding:4px 8px}
 #listaUsuarios .toolbar .buscar{width:420px}
+
+/* Stickers */
+.stickers-cuerpo{display:flex;flex-direction:column;gap:14px}
+.stickers-icono{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.stickers-rejilla{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(136px,1fr));gap:10px}
+.sticker-celda{display:flex;flex-direction:column;align-items:center;gap:6px;padding:8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-2)}
+/* Cuadros de fondo para que se note la transparencia. */
+.sticker-celda img{width:112px;height:112px;object-fit:contain;border-radius:var(--radius-sm);background:conic-gradient(var(--line) 25%,transparent 0 50%,var(--line) 0 75%,transparent 0) 0 0/16px 16px}
+.sticker-celda.icono{width:76px;height:76px;justify-content:center;padding:4px;flex:none}
+.sticker-celda.icono img{width:64px;height:64px}
+.sticker-emojis{font-size:19px;line-height:1.2}
+.sticker-pie{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center}
+.sticker-pie .btn{padding:3px 8px}
+label.btn.ocupado{opacity:.6;pointer-events:none}
