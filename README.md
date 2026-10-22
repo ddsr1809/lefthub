@@ -2,6 +2,8 @@
 
 Una app que avisa cuando publican los creadores que sigues y te lleva a la app oficial donde está el video. **No reproduce contenido, no aloja nada y no hace scraping.**
 
+> **Wiki del proyecto:** [`docs/wiki/`](docs/wiki/README.md) describe lo que corre hoy en producción (arquitectura, servidor, apps, panel, infraestructura, pipeline y operación). Algunas partes de este README son del diseño original.
+
 El nombre "Relé" es un marcador de posición: cámbialo por el que prefieras, pero que no contenga "YouTube", "Tube" ni nada parecido. Es un requisito de las guías de marca de Google.
 
 ---
