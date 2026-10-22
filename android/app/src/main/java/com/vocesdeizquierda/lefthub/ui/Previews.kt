@@ -38,6 +38,10 @@ import com.vocesdeizquierda.lefthub.agregar.Dueno
 import com.vocesdeizquierda.lefthub.agregar.EstadoAgregar
 import com.vocesdeizquierda.lefthub.data.AltaDesdeApp
 import com.vocesdeizquierda.lefthub.data.CanalEncontrado
+import com.vocesdeizquierda.lefthub.data.PaqueteDeStickers
+import com.vocesdeizquierda.lefthub.data.StickerDelPaquete
+import com.vocesdeizquierda.lefthub.stickers.Bajada
+import com.vocesdeizquierda.lefthub.stickers.EstadoStickers
 import com.vocesdeizquierda.lefthub.data.LoQueAgregue
 import com.vocesdeizquierda.lefthub.data.TipoDeAlta
 
@@ -731,6 +735,49 @@ private fun PreviaAgregarCanalRepetido() {
             duenos = duenosDeEjemplo, etiquetas = emptyList(),
             onElegir = {}, onBuscar = {}, onOlvidarCanal = {}, onAgregar = { _, _, _, _ -> },
             onVerFicha = {}, onVolver = {}
+        )
+    }
+}
+
+// --- Stickers --------------------------------------------------------------
+
+private fun paqueteDeEjemplo(id: String, creadorId: String, creador: String, nombre: String, cuantos: Int) =
+    PaqueteDeStickers(
+        id = id, creadorId = creadorId, creador = creador, nombre = nombre, icono = "/icono",
+        stickers = (1..cuantos).map { StickerDelPaquete(id = "$id-$it", emojis = listOf("😀"), imagen = "/s/$it") }
+    )
+
+private val paquetesDeEjemplo = listOf(
+    paqueteDeEjemplo("p1", "c1", "Rosa Luna", "Rosa Luna", 12),
+    paqueteDeEjemplo("p2", "c1", "Rosa Luna", "Rosa Luna en directo", 5),
+    paqueteDeEjemplo("p3", "c2", "Juan Pérez", "Juan Pérez", 8)
+)
+
+@Preview(name = "Stickers", showBackground = true, heightDp = 700)
+@Composable
+private fun PreviaStickers() {
+    Marco {
+        StickersPantalla(
+            estado = EstadoStickers(cargando = false, paquetes = paquetesDeEjemplo),
+            creadores = emptyList(),
+            onAbrirCreador = {}, onReintentar = {}
+        )
+    }
+}
+
+/** Uno ya bajado, con WhatsApp, y otro bajándose. Sin imágenes: en la vista previa no hay archivos. */
+@Preview(name = "Stickers de un creador", showBackground = true, heightDp = 1100,
+    uiMode = Configuration.UI_MODE_NIGHT_YES)
+@Composable
+private fun PreviaStickersDeCreador() {
+    Marco {
+        StickersDeCreadorPantalla(
+            nombre = "Rosa Luna", foto = null,
+            paquetes = paquetesDeEjemplo.take(2),
+            bajadas = mapOf("p1" to Bajada(lista = true), "p2" to Bajada(bajando = true, van = 2, de = 6)),
+            imagen = { _, _ -> null },
+            hayWhatsApp = true, enWhatsApp = setOf("p1"), cargando = false,
+            onReintentar = {}, onAgregarAWhatsApp = {}, onMandar = {}, onVolver = {}
         )
     }
 }

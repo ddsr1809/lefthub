@@ -553,6 +553,37 @@ object ApiRelay {
             .put("productoraId", productoraId ?: JSONObject.NULL)
             .put("etiquetas", JSONArray(etiquetas))))
 
+    // -------------------------------------------------------------------------
+    // Stickers
+    // -------------------------------------------------------------------------
+    // Si esta cuenta no los ve (el equipo los apagó), el servidor contesta 403.
+
+    suspend fun stickers(): List<PaqueteDeStickers> =
+        getArray("/api/stickers").mapJson { paqueteDeStickersDe(it) }
+
+    /**
+     * Los bytes de un archivo del servidor que pide sesión: la imagen de un
+     * sticker o el ícono de su paquete. [ruta] es relativa al servidor, tal
+     * como la manda la lista de stickers.
+     */
+    suspend fun archivo(ruta: String): ByteArray = withContext(Dispatchers.IO) {
+        val actual = token ?: throw IOException("No hay sesión activa.")
+        val peticion = Request.Builder()
+            .url(BuildConfig.API_BASE + ruta)
+            .get()
+            .header("X-App-Version", BuildConfig.VERSION_NAME)
+            .header("X-App-Plataforma", "android")
+            .header("Authorization", "Bearer $actual")
+            .build()
+        cliente.newCall(peticion).execute().use { respuesta ->
+            if (!respuesta.isSuccessful) {
+                Log.w(TAG, "Respuesta ${respuesta.code} de ${respuesta.request.url}")
+                throw ErrorHttp(respuesta.code, "No se pudo bajar el sticker.")
+            }
+            respuesta.body?.bytes()?.takeIf { it.isNotEmpty() } ?: throw IOException("El servidor mandó un archivo vacío.")
+        }
+    }
+
     private fun agregado(json: JSONObject): Agregado =
         agregadoDe(json) ?: throw IOException("El servidor contestó algo que esta versión de la app no entiende.")
 

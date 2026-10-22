@@ -10,9 +10,9 @@ import java.time.Instant;
 /**
  * Los ajustes generales que el equipo cambia desde el panel.
  *
- * Son cuatro: si la app muestra los videos cortos (Shorts), si muestra
- * anuncios, si ofrece comprobar las suscripciones de YouTube y quién puede
- * recomendar canales. Se leen de la base cada vez, sin caché: es una consulta por clave
+ * Son cinco: si la app muestra los videos cortos (Shorts), si muestra
+ * anuncios, si ofrece comprobar las suscripciones de YouTube, quién puede
+ * recomendar canales y quién ve los stickers. Se leen de la base cada vez, sin caché: es una consulta por clave
  * primaria, y así un cambio en el panel vale desde la siguiente petición, sin
  * reiniciar nada.
  */
@@ -161,6 +161,38 @@ public class AjustesService {
             throw new IllegalArgumentException("Alcance desconocido: " + alcance);
         }
         Ajuste ajuste = ajustes.findById(RECOMENDACIONES).orElseGet(() -> new Ajuste(RECOMENDACIONES));
+        ajuste.setValor(alcance);
+        ajuste.setActualizadoEn(Instant.now());
+        ajustes.save(ajuste);
+    }
+
+    // -------------------------------------------------------------------------
+    // Stickers
+    // -------------------------------------------------------------------------
+
+    /** Quién ve el apartado de Stickers. Sin fila en la tabla, nadie. */
+    static final String STICKERS = "stickers";
+
+    /**
+     * Quién ve los stickers: apagado, admins, elegidos o todos.
+     *
+     * Apagado (lo normal mientras nadie lo encienda), la app no enseña el
+     * apartado a nadie, tampoco a los administradores, y el servidor no
+     * entrega ni la lista ni las imágenes. Un valor que no se reconoce cuenta
+     * como apagado.
+     */
+    @Transactional(readOnly = true)
+    public String stickers() {
+        String valor = ajustes.findById(STICKERS).map(Ajuste::getValor).orElse(RECOMENDAR_APAGADO);
+        return alcanceValido(valor) ? valor : RECOMENDAR_APAGADO;
+    }
+
+    @Transactional
+    public void ponerStickers(String alcance) {
+        if (!alcanceValido(alcance)) {
+            throw new IllegalArgumentException("Alcance desconocido: " + alcance);
+        }
+        Ajuste ajuste = ajustes.findById(STICKERS).orElseGet(() -> new Ajuste(STICKERS));
         ajuste.setValor(alcance);
         ajuste.setActualizadoEn(Instant.now());
         ajustes.save(ajuste);

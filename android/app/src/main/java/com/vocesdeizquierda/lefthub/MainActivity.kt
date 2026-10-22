@@ -47,8 +47,14 @@ import com.vocesdeizquierda.lefthub.data.FichaDeVideo
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
+import com.vocesdeizquierda.lefthub.stickers.AlmacenDeStickers
+import com.vocesdeizquierda.lefthub.stickers.Compartir
+import com.vocesdeizquierda.lefthub.stickers.StickersViewModel
 import com.vocesdeizquierda.lefthub.ui.*
+import android.content.ActivityNotFoundException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
 
@@ -432,11 +438,19 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
 
     // El Directorio va primero y es donde se abre la app: ahí están, arriba,
     // los que acaban de publicar.
-    val destinos = listOf(
-        "directorio" to "Directorio",
-        "novedades" to "Novedades",
-        "ajustes" to "Ajustes"
-    )
+    val destinos = buildList {
+        add("directorio" to "Directorio")
+        add("novedades" to "Novedades")
+        // Su propia pestaña, aparte de Novedades. Solo si el equipo los
+        // encendió para esta cuenta desde el panel.
+        if (estado.perfil.stickers) add("stickers" to "Stickers")
+        add("ajustes" to "Ajustes")
+    }
+
+    // Los stickers: la lista de creadores y la de cada uno comparten lo ya
+    // pedido y lo ya bajado. Pedirlo no carga nada: carga al entrar.
+    val modeloStickers: StickersViewModel = viewModel()
+    val estadoStickers by modeloStickers.estado.collectAsState()
 
     LaunchedEffect(estado.mensaje) {
         estado.mensaje?.let {
@@ -495,6 +509,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         selected = ruta == destino ||
                             (destino == "directorio" && ruta != null && FICHAS.any { ruta.startsWith(it) }) ||
                             (destino == "novedades" && ruta != null && ruta.startsWith(FICHA_DE_VIDEO)) ||
+                            (destino == "stickers" && ruta != null && ruta.startsWith("stickers/")) ||
                             // Se entra desde Ajustes: su pestaña sigue marcada.
                             (destino == "ajustes" && (ruta == "recomendar" || ruta == "agregar")),
                         onClick = {
@@ -749,6 +764,84 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         ficha.publicacion?.let { modelo.reportarEnlace(it.videoId, it.creatorId.ifBlank { null }) }
                     },
                     anuncio = anuncio
+                )
+            }
+
+            composable("stickers") {
+                // Cada vez que se entra: lo que el equipo publicó desde la última vez.
+                LaunchedEffect(Unit) { modeloStickers.cargar() }
+                StickersPantalla(
+                    estado = estadoStickers,
+                    creadores = estado.creadores,
+                    onAbrirCreador = { nav.navigate("stickers/$it") },
+                    onReintentar = { modeloStickers.cargar() }
+                )
+            }
+
+            composable(
+                "stickers/{creadorId}",
+                arguments = listOf(navArgument("creadorId") { type = NavType.StringType })
+            ) { entrada ->
+                val id = entrada.arguments?.getString("creadorId").orEmpty()
+                // Si Android cerró la app y la rehizo, la lista se perdió.
+                LaunchedEffect(id) { if (estadoStickers.paquetes.isEmpty()) modeloStickers.cargar() }
+                val paquetes = estadoStickers.deCreador(id)
+                // Al entrar, se bajan al teléfono los que falten.
+                LaunchedEffect(id, paquetes) { modeloStickers.bajarDeCreador(id) }
+
+                val whatsapps = remember { Compartir.whatsappsInstalados(contexto) }
+                // Qué paquetes dice WhatsApp que ya tiene. Se vuelve a
+                // preguntar al volver de agregar uno.
+                var enWhatsApp by remember { mutableStateOf(emptySet<String>()) }
+                var preguntarAWhatsApp by remember { mutableIntStateOf(0) }
+                val bajados = paquetes.filter { estadoStickers.bajadas[it.id]?.lista == true }.map { it.id }
+                LaunchedEffect(bajados, preguntarAWhatsApp) {
+                    enWhatsApp = withContext(Dispatchers.IO) {
+                        bajados.filter { p -> whatsapps.any { Compartir.yaEstaEnWhatsApp(contexto, p, it) } }.toSet()
+                    }
+                }
+
+                val alcance = rememberCoroutineScope()
+                val avisar: (String) -> Unit = { texto -> alcance.launch { snackbar.showSnackbar(texto) } }
+                // WhatsApp solo acepta la petición si se abre esperando
+                // respuesta: así sabe qué app se la hace.
+                val pantallaDeWhatsApp = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult()
+                ) { respuesta ->
+                    preguntarAWhatsApp++
+                    val motivo = respuesta.data?.getStringExtra(Compartir.ERROR_DE_WHATSAPP)
+                    if (respuesta.resultCode != Activity.RESULT_OK && !motivo.isNullOrBlank()) {
+                        avisar("WhatsApp no aceptó el paquete: $motivo")
+                    }
+                }
+
+                val delDirectorio = modelo.creador(id)
+                StickersDeCreadorPantalla(
+                    nombre = delDirectorio?.name ?: paquetes.firstOrNull()?.creador ?: "este creador",
+                    foto = delDirectorio?.photoUrl,
+                    paquetes = paquetes,
+                    bajadas = estadoStickers.bajadas,
+                    imagen = { paquete, sticker -> AlmacenDeStickers.imagen(contexto, paquete, sticker) },
+                    hayWhatsApp = whatsapps.isNotEmpty(),
+                    enWhatsApp = enWhatsApp,
+                    cargando = estadoStickers.cargando,
+                    onReintentar = { modeloStickers.bajar(it) },
+                    onAgregarAWhatsApp = { p ->
+                        // Con un solo WhatsApp, directo a él; con los dos, Android pregunta.
+                        try {
+                            pantallaDeWhatsApp.launch(Compartir.agregarAWhatsApp(p.id, p.nombre, whatsapps.singleOrNull()))
+                        } catch (e: ActivityNotFoundException) {
+                            avisar("Tu WhatsApp no deja agregar stickers desde otras apps. Actualízalo desde Google Play.")
+                        }
+                    },
+                    onMandar = { archivo ->
+                        try {
+                            contexto.startActivity(Compartir.mandarSticker(contexto, archivo))
+                        } catch (e: ActivityNotFoundException) {
+                            avisar("No hay ninguna app en tu teléfono para mandar el sticker.")
+                        }
+                    },
+                    onVolver = { if (!nav.popBackStack()) nav.navigate("stickers") }
                 )
             }
 

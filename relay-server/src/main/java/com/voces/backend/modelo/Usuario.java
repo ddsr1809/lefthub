@@ -120,6 +120,14 @@ public class Usuario {
     private boolean editorHabilitado = false;
 
     /**
+     * El equipo la eligió desde el panel para ver los stickers. Solo cuenta
+     * mientras el ajuste 'stickers' esté en "elegidos": ver
+     * stickers/StickersService y V25.
+     */
+    @Column(name = "stickers_habilitado", nullable = false)
+    private boolean stickersHabilitado = false;
+
+    /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
      * 5.1.1(v).
@@ -255,6 +263,9 @@ public class Usuario {
 
     public boolean isEditorHabilitado() { return editorHabilitado; }
     public void setEditorHabilitado(boolean editorHabilitado) { this.editorHabilitado = editorHabilitado; }
+
+    public boolean isStickersHabilitado() { return stickersHabilitado; }
+    public void setStickersHabilitado(boolean stickersHabilitado) { this.stickersHabilitado = stickersHabilitado; }
 
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }

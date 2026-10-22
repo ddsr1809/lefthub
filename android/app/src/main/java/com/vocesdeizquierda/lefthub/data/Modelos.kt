@@ -431,7 +431,12 @@ data class Perfil(
      * app, sin aprobación: Ajustes enseña "Agregar al directorio". Un
      * servidor anterior no lo manda, y entonces es que no.
      */
-    val editor: Boolean = false
+    val editor: Boolean = false,
+    /**
+     * Ve el apartado de Stickers. Lo decide el equipo desde el panel. Un
+     * servidor anterior no lo manda, y entonces es que no.
+     */
+    val stickers: Boolean = false
 ) {
     /**
      * La app ofrece y hace la comprobación de YouTube: esta compilación la
@@ -691,4 +696,27 @@ data class AltaDesdeApp(
 data class LoQueAgregue(
     val quedanHoy: Int = 0,
     val altas: List<AltaDesdeApp> = emptyList()
+)
+
+/**
+ * Un paquete de stickers de un creador, como lo da el servidor. Las
+ * direcciones son relativas al servidor y llevan la versión: si el equipo
+ * cambia algo en el panel, cambia la versión y la app lo vuelve a bajar.
+ */
+data class PaqueteDeStickers(
+    val id: String,
+    val creadorId: String,
+    /** El nombre del creador. WhatsApp lo enseña como "publicado por". */
+    val creador: String,
+    val nombre: String,
+    val animado: Boolean = false,
+    val version: Int = 1,
+    val icono: String,
+    val stickers: List<StickerDelPaquete> = emptyList()
+)
+
+data class StickerDelPaquete(
+    val id: String,
+    val emojis: List<String> = emptyList(),
+    val imagen: String
 )

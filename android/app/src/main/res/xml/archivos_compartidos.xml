@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Lo único que la app comparte con otras apps: los stickers bajados
+     (files/stickers/). Ver stickers/Compartir.kt. -->
+<paths>
+    <files-path name="stickers" path="stickers/" />
+</paths>
