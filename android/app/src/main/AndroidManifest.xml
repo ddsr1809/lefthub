@@ -9,6 +9,13 @@
     <!-- Android 13 en adelante exige pedir el permiso en tiempo de ejecucion.
          Sin el, las notificaciones no aparecen y la app pierde su razon de ser. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- El identificador de publicidad, para los anuncios de AdMob. La
+         biblioteca de anuncios ya lo trae, pero Google Play exige verlo en el
+         manifiesto de la app cuando la declaracion de ID de publicidad dice
+         que se usa; sin el, en Android 13 o mas llega como una cadena de ceros
+         y Play no deja publicar la version. Va escrito aqui para no depender
+         de lo que fusione cada version de la biblioteca. -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
 
     <!-- Android 11 en adelante oculta que apps hay instaladas. Sin este bloque,
          resolveActivity() devuelve null aunque YouTube este instalado, y

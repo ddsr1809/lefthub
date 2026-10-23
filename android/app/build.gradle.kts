@@ -84,7 +84,7 @@ android {
         applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
-        versionCode = 120
+        versionCode = 121
         versionName = "1.1.0"
 
         // El client_id de tipo 3 ("web") dentro de google-services.json.
