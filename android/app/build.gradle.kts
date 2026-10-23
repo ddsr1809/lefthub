@@ -40,8 +40,8 @@ android {
         applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
-        versionCode = 117
-        versionName = "1.0.17"
+        versionCode = 118
+        versionName = "1.0.18"
 
         // El client_id de tipo 3 ("web") dentro de google-services.json.
         // Credential Manager lo necesita para que el servidor pueda validar el
