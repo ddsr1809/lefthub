@@ -60,6 +60,16 @@ class ConsultaDeUsuariosTest {
     }
 
     @Test
+    @DisplayName("La llave de la app: con error junta mala, fuera de hora y repetida; sin datos es que no hay registro")
+    void marcasDeLlave() {
+        Consulta c = ConsultaDeUsuarios.armar(new Filtro(List.of(), List.of("firmamala", "checkfalta"), "", ""), "visto", false, AHORA);
+        assertTrue(c.jpql().contains("u.llaveAppCheck = 'falta'"), c.jpql());
+        assertTrue(c.jpql().contains("u.llaveFirma in ('mala', 'hora', 'repetida')"), c.jpql());
+        assertTrue(ConsultaDeUsuarios.armar(new Filtro(List.of(), List.of("llavesindatos"), "", ""), "visto", false, AHORA)
+                .jpql().contains(" where u.llaveVistaEn is null order by"));
+    }
+
+    @Test
     @DisplayName("Una marca desconocida no llega a la consulta")
     void marcaDesconocida() {
         Consulta c = ConsultaDeUsuarios.armar(new Filtro(List.of(), List.of("borrar", "admin"), "", ""), "visto", false, AHORA);

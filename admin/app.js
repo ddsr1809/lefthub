@@ -2949,8 +2949,36 @@
     ['siguen', 'Siguen a alguien'], ['nosiguen', 'No siguen a nadie'], ['sinanuncios', 'Sin anuncios'],
     ['activos7', 'Activos en 7 días'], ['nuevos7', 'Nuevas en 7 días']
   ];
+  // La llave de la app en la última petición de cada cuenta (ver Apps → Llave de la app).
+  const MARCAS_LLAVE = [
+    ['firmaok', 'Firma bien'], ['firmafalta', 'Sin firma'], ['firmamala', 'Firma con error'],
+    ['checkok', 'App Check bien'], ['checkfalta', 'Sin App Check'], ['checkmalo', 'App Check con error'],
+    ['llavesindatos', 'Sin datos de llave']
+  ];
   // Las que se contradicen: marcar una desmarca la otra.
   const OPUESTAS = { bot: 'persona', persona: 'bot', siguen: 'nosiguen', nosiguen: 'siguen' };
+  // Y las que se excluyen en grupo: una cuenta solo está en uno de cada grupo.
+  const EXCLUYENTES = [
+    ['firmaok', 'firmafalta', 'firmamala', 'llavesindatos'],
+    ['checkok', 'checkfalta', 'checkmalo', 'llavesindatos']
+  ];
+
+  // Cómo llegó la última petición de una cuenta: [texto, clase de la insignia].
+  const ESTADO_FIRMA = {
+    ok: ['Firma bien', 'b-ok'], falta: ['Sin firma', 'b-mute'], mala: ['Firma con error', 'b-bad'],
+    hora: ['Firma con la hora desviada', 'b-warn'], repetida: ['Firma repetida', 'b-bad']
+  };
+  const ESTADO_CHECK = {
+    ok: ['App Check bien', 'b-ok'], falta: ['Sin App Check', 'b-mute'], malo: ['App Check con error', 'b-bad'],
+    sin_verificar: ['App Check sin verificar', 'b-mute']
+  };
+
+  /** Las insignias de la llave de una cuenta. Vacío si el servidor no lo dice o no hay datos. */
+  function insigniasLlave(u) {
+    if (!u || !u.llaveVistaEn) return '';
+    const una = (mapa, v) => (v && mapa[v] ? `<span class="badge ${mapa[v][1]}">${esc(mapa[v][0])}</span>` : '');
+    return una(ESTADO_FIRMA, u.llaveFirma) + ' ' + una(ESTADO_CHECK, u.llaveAppCheck);
+  }
   const COLUMNAS_USUARIOS = [['cuenta', 'Cuenta'], ['tipo', 'Tipo'], ['pais', 'Conexión'], ['bot', 'Bot'],
     ['sigue', 'Sigue a'], ['alta', 'Alta'], ['visto', 'Abrió la app']];
   const USUARIOS_DE_LA_A = ['cuenta', 'tipo', 'pais'];
@@ -2997,7 +3025,7 @@
         ? 'Ninguna cuenta coincide. <button class="link" data-accion="limpiar-usuarios">Quitar los filtros</button>' : 'Todavía no hay cuentas.'}</div></td></tr>`;
     }
     return pag.usuarios.map((u) => `<tr>
-      <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b>${u.sinAnuncios ? ' <span class="badge b-mute" title="No ve anuncios">Sin anuncios</span>' : ''}</div><span class="mono muted">${esc(u.id)}</span></td>
+      <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b>${u.sinAnuncios ? ' <span class="badge b-mute" title="No ve anuncios">Sin anuncios</span>' : ''}</div><span class="mono muted">${esc(u.id)}</span>${u.llaveVistaEn ? `<div class="insignias-llave" title="Su última petición, ${esc(relativo(u.llaveVistaEn))}${u.appVersion ? ' · app ' + esc(u.appVersion) : ''}">${insigniasLlave(u)}</div>` : ''}</td>
       <td>${badgeProveedor(u, true)}</td>
       <td>${u.pais || u.red ? `<div>${esc(nombrePais(u.pais) || '—')}</div><div class="muted clip" style="font-size:12.5px;max-width:220px" title="${esc(u.red || '')}">${esc(u.red || '')}</div>` : '<span class="muted">—</span>'}</td>
       <td>${u.posibleBot ? `<span class="badge b-bad" title="${esc(u.motivoBot || '')}">Posible bot</span>` : '<span class="muted">—</span>'}</td>
@@ -3023,6 +3051,8 @@
         ${TIPOS_USUARIO.map((t) => chip('tipos', t, f.tipos.includes(t[0]))).join('')}</div>
       <div class="fila-chips"><span class="etiqueta-chips" title="Tiene que cumplir todas las marcadas">Solo</span>
         ${MARCAS_USUARIO.map((m) => chip('marcas', m, f.marcas.includes(m[0]))).join('')}</div>
+      <div class="fila-chips"><span class="etiqueta-chips" title="Cómo llegó su última petición: con la firma de la llave de la app y con App Check (Apps → Llave de la app)">Llave</span>
+        ${MARCAS_LLAVE.map((m) => chip('marcas', m, f.marcas.includes(m[0]))).join('')}</div>
       <div class="resumen-filtros"><span>${pag ? `<b>${num(pag.total)}</b> ${pag.total === 1 ? 'cuenta coincide' : 'cuentas coinciden'}` : ''}${f.tipos.length > 1 ? ' · de cualquiera de los tipos marcados' : ''}${f.marcas.length > 1 ? ' · con todas las marcas elegidas' : ''}</span>
         ${hayFiltrosUsuarios(f) ? '<button class="link" data-accion="limpiar-usuarios">Quitar los filtros</button>' : ''}</div>`;
   }
@@ -3170,6 +3200,9 @@
           <dt>País</dt><dd>${u.pais ? esc(nombrePais(u.pais)) : '<span class="muted">—</span>'}</dd>
           <dt>Compañía de internet</dt><dd>${u.red ? esc(u.red) + (u.asn ? ' <span class="muted mono">AS' + esc(u.asn) + '</span>' : '') : '<span class="muted">—</span>'}</dd>
           <dt>Aplicación</dt><dd class="mono">${u.agente ? esc(u.agente) : '<span class="muted">—</span>'}</dd>
+          <dt>Llave de la app</dt><dd>${u.llaveVistaEn
+            ? insigniasLlave(u) + ` <span class="muted">en su última petición, ${esc(relativo(u.llaveVistaEn))}</span>`
+            : '<span class="muted">Sin datos: no ha usado la app desde que se mira</span>'}</dd>
           <dt>Versión de la app</dt><dd>${u.appVersion ? esc(nombrePlataforma(u.appPlataforma) + ' ' + u.appVersion) : '<span class="muted">Sin identificar</span>'}</dd>
           <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
           <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
@@ -3299,6 +3332,23 @@
       </div>`;
   }
 
+  /** Quién trae la llave y quién no: cuántas cuentas en cada estado, y el botón para verlas. */
+  function resumenLlavePorCuenta(c) {
+    const grupo = (titulo, mapa, conteos, marcas) => {
+      const filas = Object.entries(mapa).map(([k, [texto, clase]]) => [k, texto, clase, (conteos || {})[k] || 0]).filter((x) => x[3] > 0);
+      if (!filas.length) return `<div><b>${esc(titulo)}</b><p class="hint" style="margin:4px 0 0">Ninguna cuenta con datos todavía.</p></div>`;
+      return `<div><b>${esc(titulo)}</b><ul class="lista-simple" style="margin-top:6px">${filas.map(([k, texto, clase, n]) =>
+        `<li><span><span class="badge ${clase}">${esc(texto)}</span></span><span>${num(n)} ${n === 1 ? 'cuenta' : 'cuentas'} ${marcas[k] ? `<button class="btn sm" data-accion="ver-llave" data-marca="${marcas[k]}">Ver</button>` : ''}</span></li>`).join('')}</ul></div>`;
+    };
+    const marcasFirma = { ok: 'firmaok', falta: 'firmafalta', mala: 'firmamala', hora: 'firmamala', repetida: 'firmamala' };
+    const marcasCheck = { ok: 'checkok', falta: 'checkfalta', malo: 'checkmalo' };
+    return `<div class="llave-bloque" style="margin-top:14px">
+        <b>Por cuenta</b>
+        <p class="hint" style="margin:4px 0 8px;font-size:13.5px">De las ${num(c.activas)} cuentas que abrieron la app en ${c.dias} días: cómo llegó la última petición de cada una. Se pone al día cada minuto.${c.sinDatos ? ` ${num(c.sinDatos)} no tienen datos todavía (no han usado la app desde que se mira). <button class="link" data-accion="ver-llave" data-marca="llavesindatos">Verlas</button>` : ''}</p>
+        <div class="dos">${grupo('Firma', ESTADO_FIRMA, c.porFirma, marcasFirma)}${grupo('App Check', ESTADO_CHECK, c.porAppCheck, marcasCheck)}</div>
+      </div>`;
+  }
+
   function tarjetaLlave(ll) {
     const h = ll.horas || [];
     const suma = (campo) => h.reduce((s, x) => s + (x[campo] || 0), 0);
@@ -3310,6 +3360,7 @@
       <div class="panel-body">
         <p class="hint" style="margin:0;font-size:13.5px">Que solo la app oficial hable con el servidor. Cada petición de la app trae dos pruebas; aquí se ve cuántas las traen bien y qué se hace con las que no. El panel, el webhook de YouTube y entrar con Google no las necesitan. El cambio vale en medio minuto.</p>
         <p class="hint" style="margin:8px 0 0;font-size:13.5px"><span class="badge b-warn">Antes de exigir</span> deja unos días en «Solo avisar», publica la app 1.0.18 o posterior y espera a que casi todas salgan «Bien». Las versiones anteriores no traen ninguna de las dos: al exigir, ven la pantalla de «actualiza la app».</p>
+        ${ll.cuentas ? resumenLlavePorCuenta(ll.cuentas) : ''}
         ${bloqueLlave('firma', 'Firma con la llave de la app',
           'La llave va dentro de la app. Frena a scripts y bots que llaman a la API sin la app, pero alguien decidido puede sacarla del APK.', ll.firma, firma)}
         ${bloqueLlave('appCheck', 'App Check (Play Integrity)',
@@ -4736,6 +4787,9 @@
             lista.push(v);
             const opuesta = OPUESTAS[v];
             if (opuesta && lista.includes(opuesta)) lista.splice(lista.indexOf(opuesta), 1);
+            EXCLUYENTES.filter((g) => g.includes(v)).forEach((g) => g.forEach((otra) => {
+              if (otra !== v && lista.includes(otra)) lista.splice(lista.indexOf(otra), 1);
+            }));
           }
           f.pagina = 0;
           await repintarUsuarios();
@@ -4751,6 +4805,7 @@
         }
 
         case 'ver-bots': await filtrarUsuarios({ marcas: ['bot'] }); break;
+        case 'ver-llave': await filtrarUsuarios({ marcas: ['activos7', b.dataset.marca] }); break;
 
         case 'buscar-ip': {
           cerrarModal();
