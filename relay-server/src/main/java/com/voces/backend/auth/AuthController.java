@@ -4,6 +4,7 @@ import com.voces.backend.acceso.RegistroDeAcceso;
 import com.voces.backend.chat.ChatService;
 import com.voces.backend.config.SeguridadConfig;
 import com.voces.backend.cuenta.AppleService;
+import com.voces.backend.directorio.VideosVistos;
 import com.voces.backend.modelo.Dtos;
 import com.voces.backend.modelo.Repositorios;
 import com.voces.backend.modelo.Usuario;
@@ -54,11 +55,13 @@ public class AuthController {
     private final Repositorios.Compras compras;
     private final Repositorios.Recomendaciones recomendaciones;
     private final ChatService chat;
+    private final VideosVistos vistos;
 
     public AuthController(Repositorios.Usuarios usuarios, ServicioJwt jwt,
                           VerificadorIdentidad verificador, AppleService apple,
                           RegistroDeAcceso accesos, Repositorios.Compras compras,
-                          Repositorios.Recomendaciones recomendaciones, ChatService chat) {
+                          Repositorios.Recomendaciones recomendaciones, ChatService chat,
+                          VideosVistos vistos) {
         this.usuarios = usuarios;
         this.jwt = jwt;
         this.verificador = verificador;
@@ -67,6 +70,7 @@ public class AuthController {
         this.compras = compras;
         this.recomendaciones = recomendaciones;
         this.chat = chat;
+        this.vistos = vistos;
     }
 
     /**
@@ -234,6 +238,8 @@ public class AuthController {
                 // vez para la cuenta que se queda, que hereda también el chat.
                 chat.pasar(anonimo.get().getId(), usuario.getId());
                 if (anonimo.get().isChatHabilitado()) usuario.setChatHabilitado(true);
+                // Y los videos que abrió o marcó como vistos en este teléfono.
+                vistos.pasar(anonimo.get().getId(), usuario.getId());
                 // El dispositivo pasa a apuntar a la cuenta buena y la anónima
                 // desaparece: dejarla suelta acumularía cuentas huérfanas.
                 //

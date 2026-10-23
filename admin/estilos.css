@@ -402,3 +402,7 @@ th button.orden:focus-visible{outline:2px solid var(--accent);outline-offset:2px
 .sticker-pie{display:flex;align-items:center;gap:4px;flex-wrap:wrap;justify-content:center}
 .sticker-pie .btn{padding:3px 8px}
 label.btn.ocupado{opacity:.6;pointer-events:none}
+
+/* Las insignias de la llave de la app, debajo de la cuenta en la lista de Usuarios. */
+.insignias-llave{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
+.insignias-llave .badge{font-size:11.5px}

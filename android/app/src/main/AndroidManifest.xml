@@ -56,6 +56,27 @@
             </intent-filter>
         </activity>
 
+        <!-- «Escribir al equipo», desde el menú del ícono: una ventanita para
+             mandar un mensaje al chat sin entrar a la app. Va en su propia
+             tarea (taskAffinity vacía) para que al cerrarse no se lleve la app
+             si estaba abierta detrás, y no sale en recientes. No hace falta
+             abrirla a otras apps: el atajo lo lanza el sistema en nombre de
+             esta. -->
+        <activity
+            android:name=".atajos.EscribirAlEquipoActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask"
+            android:windowSoftInputMode="adjustResize"
+            android:theme="@style/Theme.Relay.Ventana" />
+
+        <!-- El botón «Responder» de los avisos del chat, en el teléfono y en el
+             reloj. Solo lo llama la propia app, a través del aviso. -->
+        <receiver
+            android:name=".notif.RespuestaDelChat"
+            android:exported="false" />
+
         <service
             android:name=".notif.MensajeriaService"
             android:exported="false">

@@ -218,6 +218,24 @@ public class Usuario {
     @Column(name = "app_plataforma")
     private String appPlataforma;
 
+    // --- Llave de la app -----------------------------------------------------
+    // Cómo llegó su última petición: con la firma de la llave de la app y con
+    // el token de App Check, o sin ellos. Los escribe solo
+    // seguridad/RegistroDeLlaves, por su cuenta y una vez por minuto: por eso
+    // Hibernate nunca los toca al guardar la cuenta (no pisaría lo último con
+    // lo que leyó antes). Ver V27.
+
+    /** ok | falta | mala | hora | repetida. Null = sin datos todavía. */
+    @Column(name = "llave_firma", insertable = false, updatable = false)
+    private String llaveFirma;
+
+    /** ok | falta | malo | sin_verificar. Null = sin datos todavía. */
+    @Column(name = "llave_app_check", insertable = false, updatable = false)
+    private String llaveAppCheck;
+
+    @Column(name = "llave_vista_en", insertable = false, updatable = false)
+    private Instant llaveVistaEn;
+
     @Column(name = "posible_bot", nullable = false)
     private boolean posibleBot = false;
 
@@ -361,6 +379,10 @@ public class Usuario {
 
     public String getAppPlataforma() { return appPlataforma; }
     public void setAppPlataforma(String appPlataforma) { this.appPlataforma = appPlataforma; }
+
+    public String getLlaveFirma() { return llaveFirma; }
+    public String getLlaveAppCheck() { return llaveAppCheck; }
+    public Instant getLlaveVistaEn() { return llaveVistaEn; }
 
     public boolean isPosibleBot() { return posibleBot; }
     public void setPosibleBot(boolean posibleBot) { this.posibleBot = posibleBot; }

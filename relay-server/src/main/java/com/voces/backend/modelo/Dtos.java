@@ -453,6 +453,21 @@ public final class Dtos {
                                Boolean avisosCortos) {}
 
     // -------------------------------------------------------------------------
+    // Videos vistos (ver directorio/VistosController)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Lo que la persona ya abrió o marcó como visto.
+     *
+     * @param videos todos, del más reciente al más viejo
+     * @param aMano  los que marcó con "Ya lo vi": un subconjunto de videos
+     */
+    public record Vistos(List<String> videos, List<String> aMano) {}
+
+    /** Varios videos de una vez, todos abiertos o todos marcados a mano. */
+    public record MarcarVistos(List<String> videos, Boolean aMano) {}
+
+    // -------------------------------------------------------------------------
     // Suscripciones de YouTube del usuario
     // -------------------------------------------------------------------------
 
@@ -834,7 +849,15 @@ public final class Dtos {
             /** El equipo la autorizó a agregar al directorio desde la app. */
             boolean editorHabilitado,
             /** El equipo la eligió para ver los stickers. */
-            boolean stickersHabilitado
+            boolean stickersHabilitado,
+            /**
+             * Cómo llegó su última petición (ver seguridad/RegistroDeLlaves):
+             * la firma (ok, falta, mala, hora, repetida), App Check (ok,
+             * falta, malo, sin_verificar) y cuándo. Null = sin datos.
+             */
+            String llaveFirma,
+            String llaveAppCheck,
+            Instant llaveVistaEn
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -845,7 +868,7 @@ public final class Dtos {
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
                     u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
                     u.isRecomendarHabilitado(), u.isYoutubeHabilitado(), u.isEditorHabilitado(),
-                    u.isStickersHabilitado());
+                    u.isStickersHabilitado(), u.getLlaveFirma(), u.getLlaveAppCheck(), u.getLlaveVistaEn());
         }
     }
 

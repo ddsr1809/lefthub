@@ -29,8 +29,9 @@ class MensajeriaService : FirebaseMessagingService() {
     private val alcance = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
-     * Solo se ejecuta con la app ABIERTA. En segundo plano, los mensajes con
-     * bloque `notification` los pinta el sistema sin pasar por aquí.
+     * Con la app ABIERTA, para todos. En segundo plano, los mensajes con
+     * bloque `notification` los pinta el sistema sin pasar por aquí; los de
+     * solo datos (los del chat) sí pasan.
      *
      * Con la app en primer plano FCM no muestra nada por su cuenta: si este
      * método se limita a registrar, el aviso llega y se pierde en silencio.
@@ -39,6 +40,15 @@ class MensajeriaService : FirebaseMessagingService() {
      */
     override fun onMessageReceived(mensaje: RemoteMessage) {
         Log.d(TAG, "Aviso en primer plano: ${mensaje.data["videoId"]}")
+
+        // Los del chat los pinta siempre la app, con «Responder» (también en
+        // el reloj). Desde la 1.0.19 llegan solo con datos, así que pasan por
+        // aquí aunque la app esté cerrada.
+        val tipo = mensaje.data["tipo"]
+        if (tipo == "chat" || tipo == "chat_equipo") {
+            AvisoDelChat.mostrar(this, mensaje.data, mensaje.notification?.title, mensaje.notification?.body)
+            return
+        }
 
         val aviso = mensaje.notification ?: return
         val gestor = getSystemService(NotificationManager::class.java) ?: return

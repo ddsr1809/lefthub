@@ -582,6 +582,37 @@ public class PushService {
         return enviar(mensaje, "mensaje del chat");
     }
 
+    /**
+     * El mismo aviso del chat, sin bloque de notificación: solo datos. Así no
+     * lo pinta el sistema sino la app, que le pone el botón «Responder» (el
+     * que también se usa desde el reloj). Va solo a Android, a un topic al que
+     * solo se suscribe la app que sabe pintarlo (ver
+     * AvisoDeChat.respondeDesdeElAviso).
+     *
+     * Los datos llevan el título, el texto y la etiqueta que en
+     * {@link #avisarChat} van en la notificación. Tampoco aquí va nada de la
+     * conversación.
+     *
+     * Devuelve null si FCM aceptó el mensaje, o el motivo del fallo.
+     */
+    public String avisarChatSoloDatos(String topic, String titulo, String cuerpo,
+                                      Map<String, String> datos, String etiqueta) {
+        ObjectNode mensaje = json.createObjectNode();
+        mensaje.put("topic", topic);
+
+        ObjectNode data = mensaje.putObject("data");
+        datos.forEach(data::put);
+        data.put("titulo", titulo);
+        data.put("cuerpo", cuerpo);
+        data.put("etiqueta", etiqueta);
+
+        // Prioridad alta: sin ella un mensaje solo de datos espera a que el
+        // teléfono despierte, y el aviso llegaría tarde.
+        mensaje.putObject("android").put("priority", "HIGH");
+
+        return enviar(mensaje, "mensaje del chat (para responder)");
+    }
+
     // -------------------------------------------------------------------------
 
     private static String destinoDe(ObjectNode mensaje) {
