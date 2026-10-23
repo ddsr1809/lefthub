@@ -18,6 +18,8 @@ import org.springframework.stereotype.Service;
 
 import java.net.URI;
 import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -121,11 +123,16 @@ public class VerificadorAppCheck {
             nuevo.setJWSKeySelector(new JWSVerificationKeySelector<>(JWSAlgorithm.RS256, claves));
             // La audiencia trae el número y el nombre del proyecto: basta con
             // que esté el número. El emisor tiene que ser exactamente este.
+            //
+            // HashSet y no Set.of: nimbus pregunta si la lista contiene null
+            // (para saber si acepta tokens sin audiencia), y un Set.of lanza
+            // NullPointerException ante esa pregunta. Con Set.of, todo token
+            // salía MALO, también los buenos.
             nuevo.setJWTClaimsSetVerifier(new DefaultJWTClaimsVerifier<>(
-                    Set.of("projects/" + proyecto),
+                    new HashSet<>(List.of("projects/" + proyecto)),
                     new JWTClaimsSet.Builder().issuer("https://firebaseappcheck.googleapis.com/" + proyecto).build(),
-                    Set.of("sub", "exp"),
-                    null));
+                    new HashSet<>(List.of("sub", "exp")),
+                    new HashSet<>()));
             procesador = nuevo;
             return nuevo;
         }
