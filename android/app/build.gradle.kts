@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -21,6 +23,48 @@ val firma = Properties().apply {
 val hayFirma = !firma.getProperty("archivo").isNullOrBlank()
 
 // -----------------------------------------------------------------------------
+// Llave de la app
+// -----------------------------------------------------------------------------
+// Cada petición al servidor va firmada con esta llave (ver
+// seguridad/FirmaDeApp.kt). Es la APP_LLAVES del .env de cada servidor, y vive
+// también fuera de git, en firma.properties:
+//
+//   llave_app_pruebas=1:BASE64       (la de .env.test)
+//   llave_app_produccion=1:BASE64    (la de .env.prod)
+//   llave_app_developer=1:BASE64     (opcional, la de .env.local)
+//
+// Si el servidor tiene varias ("1:...,2:..."), se puede pegar la línea entera:
+// la app firma con la de número más alto. Sin llave, la app sale sin firma y
+// el servidor solo la deja pasar mientras la firma no se exija en el panel.
+//
+// Dentro del APK la llave va mezclada con un valor que sale del applicationId,
+// para que no aparezca tal cual. No la vuelve secreta: ver FirmaDeApp.kt.
+//
+// Base64 y MessageDigest van importados arriba: dentro de este archivo,
+// "java" es la extensión de Java de Gradle, y java.util.Base64 no se encuentra.
+fun llaveDeApp(sabor: String, idDeApp: String): Pair<Int, String> {
+    val valor = firma.getProperty("llave_app_$sabor")?.trim().orEmpty()
+    if (valor.isEmpty()) {
+        if (sabor == "produccion") {
+            println("AVISO: firma.properties no tiene llave_app_produccion: la app de producción sale SIN firma. " +
+                "Si el panel exige la firma, esta app no podrá entrar al servidor.")
+        }
+        return 0 to ""
+    }
+    val (numero, base64) = valor.split(",").map { it.trim() }.filter { it.isNotEmpty() }.map { parte ->
+        val dos = parte.indexOf(':')
+        require(dos > 0) { "llave_app_$sabor en firma.properties va como número:base64 (copia APP_LLAVES del servidor)" }
+        parte.substring(0, dos).trim().toInt() to parte.substring(dos + 1).trim()
+    }.maxBy { it.first }
+    val llave = Base64.getDecoder().decode(base64)
+    require(llave.size == 32) { "llave_app_$sabor tiene ${llave.size} bytes y deben ser 32" }
+    val mascara = MessageDigest.getInstance("SHA-256")
+        .digest("lefthub-app|$idDeApp".toByteArray(Charsets.UTF_8))
+    val oculta = ByteArray(32) { (llave[it].toInt() xor mascara[it].toInt()).toByte() }
+    return numero to Base64.getEncoder().encodeToString(oculta)
+}
+
+// -----------------------------------------------------------------------------
 // Anuncios (AdMob)
 // -----------------------------------------------------------------------------
 // Estos dos son los identificadores DE PRUEBA que publica Google. Con ellos
@@ -40,8 +84,8 @@ android {
         applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
-        versionCode = 117
-        versionName = "1.0.17"
+        versionCode = 118
+        versionName = "1.0.18"
 
         // El client_id de tipo 3 ("web") dentro de google-services.json.
         // Credential Manager lo necesita para que el servidor pueda validar el
@@ -104,6 +148,10 @@ android {
             buildConfigField("String", "API_BASE", "\"http://localhost:8080\"")
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
 
+            val (idLlave, llave) = llaveDeApp("developer", "com.vocesdeizquierda.lefthub.developer")
+            buildConfigField("int", "APP_LLAVE_ID", "$idLlave")
+            buildConfigField("String", "APP_LLAVE", "\"$llave\"")
+
             manifestPlaceholders["admobAppId"] = admobAppDePrueba
             buildConfigField("String", "ADMOB_BANNER", "\"$admobBannerDePrueba\"")
         }
@@ -117,6 +165,10 @@ android {
             buildConfigField("String", "API_BASE", "\"https://testapp.vocesdeizquierda.com\"")
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
 
+            val (idLlave, llave) = llaveDeApp("pruebas", "com.vocesdeizquierda.lefthub.pruebas")
+            buildConfigField("int", "APP_LLAVE_ID", "$idLlave")
+            buildConfigField("String", "APP_LLAVE", "\"$llave\"")
+
             manifestPlaceholders["admobAppId"] = admobAppDePrueba
             buildConfigField("String", "ADMOB_BANNER", "\"$admobBannerDePrueba\"")
         }
@@ -126,6 +178,10 @@ android {
             // Sin sufijo: este es el applicationId de verdad, el que va a Play.
             // Tiene que coincidir con RELAY_URL_PUBLICA de .env.prod en el VPS.
             buildConfigField("String", "API_BASE", "\"https://leftapp.vocesdeizquierda.com\"")
+
+            val (idLlave, llave) = llaveDeApp("produccion", "com.vocesdeizquierda.lefthub")
+            buildConfigField("int", "APP_LLAVE_ID", "$idLlave")
+            buildConfigField("String", "APP_LLAVE", "\"$llave\"")
 
             // "¿Estoy suscrito en YouTube?" viene incluido, pero se enciende y se
             // apaga desde el panel (Apps > Suscripciones de YouTube), sin
@@ -154,6 +210,14 @@ android {
             buildConfigField("String", "ADMOB_BANNER",
                 "\"${if (admobApp.isBlank()) "" else admobBanner}\"")
         }
+    }
+
+    // App Check: pruebas y produccion comparten el proveedor de Play Integrity
+    // (src/playIntegrity); developer tiene el suyo, de depuración
+    // (src/developer). Ver seguridad/ProveedorAppCheck.kt.
+    sourceSets {
+        getByName("pruebas").java.srcDir("src/playIntegrity/java")
+        getByName("produccion").java.srcDir("src/playIntegrity/java")
     }
 
     signingConfigs {
@@ -242,6 +306,9 @@ dependencies {
     // ahora en el servidor propio.
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
+    // App Check: que solo la app original hable con el servidor.
+    implementation(libs.firebase.appcheck.playintegrity)
+    "developerImplementation"(libs.firebase.appcheck.debug)
 
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)

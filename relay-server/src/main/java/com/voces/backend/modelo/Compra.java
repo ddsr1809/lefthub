@@ -1,10 +1,13 @@
 package com.voces.backend.modelo;
 
+import com.voces.backend.seguridad.Cifrado;
+import com.voces.backend.seguridad.CifradorDeDatos;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
@@ -33,11 +36,20 @@ public class Compra {
     @Column(nullable = false)
     private String producto;
 
-    /** El comprobante que da Google Play a la app. Uno por compra. */
+    /**
+     * El comprobante que da Google Play a la app. Uno por compra. Cifrado en
+     * la base: con él se consulta la compra en Google. Para reconocer uno que
+     * vuelve a llegar está tokenHuella, que es la que no se puede repetir.
+     */
     @Column(nullable = false, columnDefinition = "text")
+    @Convert(converter = Cifrado.Comprobante.class)
     private String token;
 
-    /** El número de pedido del recibo: GPA.1234-5678-9012-34567. */
+    @Column(name = "token_huella")
+    private String tokenHuella;
+
+    /** El número de pedido del recibo: GPA.1234-5678-9012-34567. Cifrado. */
+    @Convert(converter = Cifrado.Orden.class)
     private String orden;
 
     @Column(name = "comprado_en")
@@ -59,7 +71,12 @@ public class Compra {
     public void setProducto(String producto) { this.producto = producto; }
 
     public String getToken() { return token; }
-    public void setToken(String token) { this.token = token; }
+    public void setToken(String token) {
+        this.token = token;
+        this.tokenHuella = CifradorDeDatos.huellaSiSePuede(token, CifradorDeDatos.COMPROBANTE);
+    }
+
+    public String getTokenHuella() { return tokenHuella; }
 
     public String getOrden() { return orden; }
     public void setOrden(String orden) { this.orden = orden; }

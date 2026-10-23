@@ -68,20 +68,33 @@ class ConsultaDeUsuariosTest {
     }
 
     @Test
-    @DisplayName("País y búsqueda van como parámetros; la búsqueda mira correo, IP y compañía")
+    @DisplayName("País y búsqueda van como parámetros; sin huellas, la búsqueda mira solo la compañía")
     void paisYTexto() {
         Consulta c = ConsultaDeUsuarios.armar(new Filtro(List.of(), List.of(), "MX", "%telcel%"), "visto", false, AHORA);
-        assertTrue(c.jpql().contains(" where u.pais = :pais and (lower(u.email) like :texto or u.ip like :texto"
-                + " or lower(u.red) like :texto) order by"), c.jpql());
+        assertTrue(c.jpql().contains(" where u.pais = :pais and (lower(u.red) like :texto) order by"), c.jpql());
         assertEquals("MX", c.parametros().get("pais"));
         assertEquals("%telcel%", c.parametros().get("texto"));
     }
 
     @Test
-    @DisplayName("Cada columna ordena por su dato; lo que no lo tiene (un invitado sin correo) va al final")
+    @DisplayName("El correo y la IP, cifrados, se buscan por su huella exacta")
+    void correoEIpPorHuella() {
+        Consulta c = ConsultaDeUsuarios.armar(
+                new Filtro(List.of(), List.of(), "", "%ana@x.mx%", "h-correo", "h-ip"), "visto", false, AHORA);
+        assertTrue(c.jpql().contains(" where (u.emailHuella = :huellaCorreo or u.ipHuella = :huellaIp"
+                + " or lower(u.red) like :texto) order by"), c.jpql());
+        assertEquals("h-correo", c.parametros().get("huellaCorreo"));
+        assertEquals("h-ip", c.parametros().get("huellaIp"));
+        assertFalse(c.jpql().contains("u.email "), "nunca se compara la columna cifrada");
+        assertFalse(c.jpql().contains("lower(u.email)"));
+    }
+
+    @Test
+    @DisplayName("Cada columna ordena por su dato; lo que no lo tiene va al final")
     void ordenes() {
         assertTrue(ConsultaDeUsuarios.armar(TODO, "cuenta", true, AHORA).jpql()
-                .contains("order by case when lower(u.email) is null then 1 else 0 end, lower(u.email) asc"));
+                .contains("order by case when u.proveedor is null then 1 else 0 end, u.proveedor asc"),
+                "el correo está cifrado: la columna Cuenta agrupa por cómo entra");
         assertTrue(ConsultaDeUsuarios.armar(TODO, "bot", false, AHORA).jpql()
                 .contains("case when u.posibleBot = true then 1 else 0 end desc"), "los posibles bots primero");
         assertTrue(ConsultaDeUsuarios.armar(TODO, "sigue", false, AHORA).jpql().contains("size(u.favoritos) desc"));

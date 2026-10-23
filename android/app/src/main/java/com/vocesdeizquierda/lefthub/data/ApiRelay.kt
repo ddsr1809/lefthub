@@ -1,5 +1,6 @@
 package com.vocesdeizquierda.lefthub.data
 
+import com.vocesdeizquierda.lefthub.seguridad.InterceptorDeFirma
 import android.content.Context
 import android.content.SharedPreferences
 import android.net.ConnectivityManager
@@ -56,9 +57,12 @@ object ApiRelay {
     private const val CLAVE_TOKEN = "token"
     private const val CLAVE_DISPOSITIVO = "device_id"
 
+    // Cada petición lleva la firma con la llave de la app y el token de App
+    // Check: el servidor solo atiende a la app original (seguridad/).
     private val cliente = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
+        .addInterceptor(InterceptorDeFirma)
         .build()
 
     /**
@@ -231,6 +235,19 @@ object ApiRelay {
     suspend fun renovar(): Sesion? = runCatching {
         guardarSesion(post("/api/auth/renovar", null))
     }.getOrNull()
+
+    /**
+     * Le pide al servidor que desligue este teléfono de la cuenta guardada,
+     * antes de olvidar el token. Sin esto, la sesión invisible que viene
+     * después devolvía la misma cuenta de Google: "Cerrar sesión" no cerraba
+     * nada. Si falla (sin red, o un servidor anterior a esta ruta) se sigue
+     * igual: lo peor es lo de antes.
+     */
+    suspend fun salir() {
+        if (!haySesion) return
+        runCatching { post("/api/auth/salir", null) }
+            .onFailure { Log.w(TAG, "No se pudo desligar el teléfono de la cuenta: ${it.message}") }
+    }
 
     fun cerrarSesion() {
         token = null

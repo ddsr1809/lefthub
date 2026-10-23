@@ -1,5 +1,6 @@
 package com.voces.backend.directorio;
 
+import com.voces.backend.seguridad.CifradorDeDatos;
 import com.voces.backend.directorio.CanalesService.Cambio;
 import com.voces.backend.config.SeguridadConfig;
 import com.voces.backend.modelo.*;
@@ -700,7 +701,12 @@ public class AdminController {
     @PostMapping("/administradores")
     @Transactional
     public Dtos.RespuestaSimple nombrar(@RequestParam String correo) {
-        Usuario usuario = usuarios.findByEmail(correo)
+        // El correo está cifrado en la base: se busca por su huella. Si lo
+        // tienen dos cuentas (Google y Apple), vale la que entró más
+        // recientemente.
+        String huella = CifradorDeDatos.actual().huella(correo, CifradorDeDatos.CORREO);
+        Usuario usuario = usuarios.findByEmailHuella(huella == null ? "" : huella).stream()
+                .max(java.util.Comparator.comparing(Usuario::getVistoEn))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
                         "Ese correo no tiene cuenta todavía. Pide que entre una vez primero."));
 

@@ -1,5 +1,7 @@
 package com.voces.backend.directorio;
 
+import com.voces.backend.seguridad.EstadoDeSesiones;
+import com.voces.backend.seguridad.CifradorDeDatos;
 import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.Creador;
 import com.voces.backend.modelo.Dtos;
@@ -46,12 +48,15 @@ public class UsuariosAdminController {
     private final Repositorios.Creadores creadores;
     private final Repositorios.Reportes reportes;
     private final ConsultaDeUsuarios consulta;
+    private final EstadoDeSesiones estados;
 
     public UsuariosAdminController(Repositorios.Usuarios usuarios,
                                    Repositorios.Creadores creadores,
                                    Repositorios.Reportes reportes,
-                                   ConsultaDeUsuarios consulta) {
+                                   ConsultaDeUsuarios consulta,
+                                   EstadoDeSesiones estados) {
         this.consulta = consulta;
+        this.estados = estados;
         this.usuarios = usuarios;
         this.creadores = creadores;
         this.reportes = reportes;
@@ -182,9 +187,17 @@ public class UsuariosAdminController {
         // % y _ son comodines de LIKE; quitados, el texto se busca literal.
         String limpio = texto.replace("%", "").replace("_", "");
 
+        // El correo y la IP están cifrados: se encuentran escritos completos,
+        // por su huella. La compañía de internet se sigue buscando por trozos.
+        String exacto = texto.trim();
+        CifradorDeDatos cifrador = CifradorDeDatos.actual();
+        String huellaCorreo = exacto.contains("@") ? cifrador.huella(exacto, CifradorDeDatos.CORREO) : null;
+        String huellaIp = exacto.isEmpty() || exacto.contains("@") ? null : cifrador.huella(exacto, CifradorDeDatos.IP);
+
         ConsultaDeUsuarios.Pagina resultado = consulta.buscar(
                 new ConsultaDeUsuarios.Filtro(listaDeTipos, listaDeMarcas,
-                        pais.trim().toUpperCase(Locale.ROOT), limpio.isEmpty() ? "" : "%" + limpio + "%"),
+                        pais.trim().toUpperCase(Locale.ROOT), limpio.isEmpty() ? "" : "%" + limpio.toLowerCase(Locale.ROOT) + "%",
+                        huellaCorreo == null ? "" : huellaCorreo, huellaIp == null ? "" : huellaIp),
                 orden, ascendente, Math.max(pagina, 0), porPagina);
 
         int paginas = (int) Math.max(1, (resultado.total() + porPagina - 1) / porPagina);
@@ -225,11 +238,11 @@ public class UsuariosAdminController {
     /**
      * Da o quita el rol. Antes, quitarlo exigía una sentencia SQL a mano.
      *
-     * El rol viaja dentro del token de sesión, así que el cambio surte efecto
-     * cuando esa persona vuelve a entrar. Ojo al quitarlo: un token ya emitido
-     * sigue valiendo hasta que caduca (relay.jwt.dias-validez). El panel lo
-     * guarda solo mientras el navegador está abierto, pero quien lo haya
-     * copiado conserva el acceso hasta entonces.
+     * Darlo surte efecto cuando esa persona vuelve a entrar con Google o
+     * Apple: el rol tiene que venir en el token. Quitarlo surte efecto al
+     * momento: FiltroJwt comprueba el rol en la base en cada petición (ver
+     * seguridad/EstadoDeSesiones), así que un token ya emitido deja de abrir
+     * el panel.
      */
     @PostMapping("/{id}/admin")
     @Transactional
@@ -248,12 +261,37 @@ public class UsuariosAdminController {
         }
 
         usuario.setEsAdmin(valor);
+        estados.olvidar(id);
         log.info("Rol de administrador {} a {} por {}",
                 valor ? "otorgado" : "retirado", usuario.getId(), Sesion.exigir());
 
         return Dtos.RespuestaSimple.de(valor
                 ? "Listo. Pide a esa persona que cierre sesión y vuelva a entrar."
-                : "Rol retirado. Si tiene el panel abierto, su sesión sigue valiendo hasta que la cierre o caduque.");
+                : "Rol retirado. Ya no puede usar el panel, aunque lo tenga abierto.");
+    }
+
+    /**
+     * Cierra todas las sesiones de una cuenta: los tokens emitidos hasta
+     * ahora dejan de valer al momento, y su teléfono deja de estar ligado a
+     * ella. Para un teléfono perdido o robado, o una sesión de administrador
+     * que se sospecha copiada. Esa persona vuelve a entrar con Google o Apple
+     * y lo recupera todo.
+     *
+     * A una cuenta de invitado no: sin teléfono ligado no tendría forma de
+     * recuperarla.
+     */
+    @PostMapping("/{id}/cerrar-sesiones")
+    @Transactional
+    public Dtos.RespuestaSimple cerrarSesiones(@PathVariable UUID id) {
+        Usuario usuario = buscar(id);
+        if (usuario.esAnonimo()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Una cuenta de invitado solo vive en su teléfono: cerrarle la sesión la dejaría perdida.");
+        }
+        usuario.cerrarSesiones(Instant.now());
+        estados.olvidar(id);
+        log.info("Sesiones de {} cerradas desde el panel por {}", id, Sesion.exigir());
+        return Dtos.RespuestaSimple.de("Sesiones cerradas. Para volver a entrar tendrá que usar Google o Apple.");
     }
 
     // -------------------------------------------------------------------------

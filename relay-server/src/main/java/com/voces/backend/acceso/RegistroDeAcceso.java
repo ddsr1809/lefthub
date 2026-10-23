@@ -92,7 +92,7 @@ public class RegistroDeAcceso {
      * último valor pasará a ser la IP de ese proxy y habrá que leer su
      * cabecera propia.
      */
-    static String ipDelCliente(HttpServletRequest peticion) {
+    public static String ipDelCliente(HttpServletRequest peticion) {
         String directa = peticion.getRemoteAddr();
         String reenviada = peticion.getHeader("X-Forwarded-For");
 

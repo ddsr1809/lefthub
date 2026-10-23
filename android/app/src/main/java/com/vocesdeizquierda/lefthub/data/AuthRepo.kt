@@ -159,6 +159,7 @@ class AuthRepo {
             CredentialManager.create(contexto)
                 .clearCredentialState(ClearCredentialStateRequest())
         }
+        ApiRelay.salir()         // que el teléfono deje de abrir esta cuenta
         ApiRelay.cerrarSesion()
         iniciarSesionInvisible() // la app nunca se queda sin sesión
     }

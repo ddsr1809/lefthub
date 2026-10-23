@@ -113,6 +113,12 @@ cp firma.properties.example firma.properties
 Edita `firma.properties` con la ruta del `.jks`, el alias (`voces`) y la clave.
 Ese archivo no se sube a git.
 
+En el mismo archivo van las llaves de la app (`llave_app_pruebas`,
+`llave_app_produccion`): la `APP_LLAVES` de `.env.test` y `.env.prod` del VPS.
+Con ellas cada petición sale firmada; sin ellas la app no puede entrar al
+servidor si el panel exige la firma. Ver `docs/wiki/seguridad.md`, «Llave de
+la app».
+
 **3. Registrar la huella en Google Cloud.** La variante de producción cambió de
 llave, así que su huella SHA-1 también:
 

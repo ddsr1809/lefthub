@@ -25,8 +25,47 @@ public record RelayProperties(
         @DefaultValue Compras compras,
         @DefaultValue Servidor servidor,
         @DefaultValue Apps apps,
-        @DefaultValue Chat chat
+        @DefaultValue Chat chat,
+        @DefaultValue Datos datos,
+        @DefaultValue LlaveDeApp llaveDeApp
 ) {
+
+    /**
+     * Que solo la app original hable con la API. Ver seguridad/FiltroDeApp.
+     * Qué se hace con lo que no pasa (apagado, avisar, exigir) se elige en
+     * el panel, no aquí.
+     *
+     * @param llaves           llaves de la firma, "1:BASE64" (como CHAT_LLAVES).
+     *                         Las mismas van en android/firma.properties.
+     *                         Vacío = no se comprueba la firma.
+     * @param appCheckProyecto número del proyecto de Firebase (project_number
+     *                         de google-services.json). Vacío = sin App Check.
+     * @param appCheckApps     IDs de app de Firebase permitidos
+     *                         (1:123:android:abc), separados por comas.
+     *                         Vacío = cualquier app del proyecto.
+     */
+    public record LlaveDeApp(
+            @DefaultValue("") String llaves,
+            @DefaultValue("") String appCheckProyecto,
+            @DefaultValue("") String appCheckApps
+    ) {}
+
+    /**
+     * Las llaves de los datos personales cifrados en la base: correo, IP,
+     * token de Apple, comprobantes de compra. Ver seguridad/CifradorDeDatos.
+     *
+     * @param llaves  como las del chat: "1:BASE64", o "1:BASE64,2:BASE64" para
+     *                cambiar de llave sin perder lo anterior. Obligatoria.
+     * @param indice  32 bytes en base64 para las huellas con las que se busca
+     *                un correo o una IP. Obligatoria, y no se cambia nunca.
+     * @param diasIp  pasados estos días sin abrir la app, se borran la IP, la
+     *                compañía de internet y el agente de esa cuenta. 0 = nunca.
+     */
+    public record Datos(
+            @DefaultValue("") String llaves,
+            @DefaultValue("") String indice,
+            @DefaultValue("90") int diasIp
+    ) {}
 
     /**
      * Las llaves con las que se cifran los mensajes del chat guardados en la

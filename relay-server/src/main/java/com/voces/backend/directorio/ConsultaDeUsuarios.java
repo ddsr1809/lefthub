@@ -43,9 +43,14 @@ public class ConsultaDeUsuarios {
             "activos7", "u.vistoEn >= :hace7",
             "nuevos7", "u.creadoEn >= :hace7");
 
-    /** Por qué columna se puede ordenar, y con qué expresión. */
+    /**
+     * Por qué columna se puede ordenar, y con qué expresión.
+     *
+     * "cuenta" ya no ordena por correo: está cifrado y la base no puede
+     * ordenarlo. Agrupa por cómo entra (Apple, Google, invitado).
+     */
     static final Map<String, String> ORDENES = Map.of(
-            "cuenta", "lower(u.email)",
+            "cuenta", "u.proveedor",
             "tipo", "u.proveedor",
             "pais", "u.pais",
             "sigue", "size(u.favoritos)",
@@ -58,9 +63,22 @@ public class ConsultaDeUsuarios {
      * @param tipos  anonimo, google, apple; vacío = todos
      * @param marcas claves de MARCAS; las desconocidas se ignoran
      * @param pais   código de dos letras en mayúsculas, o vacío
-     * @param texto  lo que se busca en el correo, la IP o la compañía de internet, o vacío
+     * @param texto  lo que se busca en el nombre de la compañía de internet
+     *               (con los % de LIKE ya puestos), o vacío
+     * @param huellaCorreo huella del texto como correo exacto, o vacío
+     * @param huellaIp     huella del texto como IP exacta, o vacío
+     *
+     * El correo y la IP están cifrados: solo se pueden encontrar escritos
+     * completos, comparando huellas. Ver seguridad/CifradorDeDatos.
      */
-    public record Filtro(Collection<String> tipos, Collection<String> marcas, String pais, String texto) {}
+    public record Filtro(Collection<String> tipos, Collection<String> marcas, String pais, String texto,
+                         String huellaCorreo, String huellaIp) {
+
+        /** Sin búsqueda por correo ni IP. */
+        public Filtro(Collection<String> tipos, Collection<String> marcas, String pais, String texto) {
+            this(tipos, marcas, pais, texto, "", "");
+        }
+    }
 
     record Consulta(String jpql, String cuenta, Map<String, Object> parametros) {}
 
@@ -117,8 +135,18 @@ public class ConsultaDeUsuarios {
         }
 
         if (f.texto() != null && !f.texto().isBlank()) {
-            y(w, "(lower(u.email) like :texto or u.ip like :texto or lower(u.red) like :texto)");
+            List<String> donde = new java.util.ArrayList<>();
+            if (f.huellaCorreo() != null && !f.huellaCorreo().isBlank()) {
+                donde.add("u.emailHuella = :huellaCorreo");
+                parametros.put("huellaCorreo", f.huellaCorreo());
+            }
+            if (f.huellaIp() != null && !f.huellaIp().isBlank()) {
+                donde.add("u.ipHuella = :huellaIp");
+                parametros.put("huellaIp", f.huellaIp());
+            }
+            donde.add("lower(u.red) like :texto");
             parametros.put("texto", f.texto());
+            y(w, "(" + String.join(" or ", donde) + ")");
         }
 
         String expresion = ORDENES.getOrDefault(orden, ORDENES.get("visto"));

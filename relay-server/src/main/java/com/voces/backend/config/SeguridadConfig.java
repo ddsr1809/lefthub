@@ -1,6 +1,13 @@
 package com.voces.backend.config;
 
 import com.voces.backend.auth.ServicioJwt;
+import com.voces.backend.seguridad.CifrasDeLaApp;
+import com.voces.backend.seguridad.EstadoDeSesiones;
+import com.voces.backend.seguridad.FiltroDeApp;
+import com.voces.backend.seguridad.FirmaDeApp;
+import com.voces.backend.seguridad.ModosDeLaApp;
+import com.voces.backend.seguridad.VerificadorAppCheck;
+import com.voces.backend.seguridad.LimiteDePeticiones;
 import com.voces.backend.version.AppsService;
 import com.voces.backend.version.FiltroVersionMinima;
 import com.voces.backend.version.MantenimientoService;
@@ -16,6 +23,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.server.ResponseStatusException;
@@ -36,6 +44,11 @@ public class SeguridadConfig {
 
     @Bean
     public SecurityFilterChain cadenaDeFiltros(HttpSecurity http, ServicioJwt jwt,
+                                               EstadoDeSesiones estados,
+                                               FirmaDeApp firma,
+                                               VerificadorAppCheck appCheck,
+                                               ModosDeLaApp modosDeLaApp,
+                                               CifrasDeLaApp cifrasDeLaApp,
                                                AppsService apps,
                                                MantenimientoService mantenimiento) throws Exception {
         http
@@ -71,10 +84,26 @@ public class SeguridadConfig {
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().denyAll()
                 )
-                .addFilterBefore(new FiltroJwt(jwt), UsernamePasswordAuthenticationFilter.class)
+                // Cabeceras de seguridad de las respuestas de la API. Spring
+                // ya pone nosniff, no-cache y X-Frame-Options; HSTS lo pone
+                // Apache, que es quien habla HTTPS.
+                .headers(h -> h
+                        .referrerPolicy(r -> r.policy(ReferrerPolicyHeaderWriter.ReferrerPolicy.NO_REFERRER))
+                        .contentSecurityPolicy(c -> c.policyDirectives("default-src 'none'; frame-ancestors 'none'")))
+                // Primero el límite de peticiones por IP en las rutas de
+                // entrar: no pasa ni a verificar tokens.
+                .addFilterBefore(new LimiteDePeticiones(), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new FiltroJwt(jwt, estados), UsernamePasswordAuthenticationFilter.class)
                 // Las apps que ya no se atienden no pasan de aquí, ni ninguna
                 // mientras el servidor está en mantenimiento.
                 .addFilterBefore(new FiltroVersionMinima(config.apps(), apps, mantenimiento),
+                        UsernamePasswordAuthenticationFilter.class)
+                // Y al final, que la petición venga de la app original (firma
+                // con su llave y App Check). Va después de FiltroJwt porque
+                // al panel lo deja pasar por su sesión de administrador. Los
+                // filtros con el mismo punto de referencia corren en el orden
+                // en que se agregan.
+                .addFilterBefore(new FiltroDeApp(firma, appCheck, modosDeLaApp, cifrasDeLaApp),
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
