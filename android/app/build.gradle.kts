@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+import java.util.Base64
 import java.util.Properties
 
 plugins {
@@ -37,6 +39,9 @@ val hayFirma = !firma.getProperty("archivo").isNullOrBlank()
 //
 // Dentro del APK la llave va mezclada con un valor que sale del applicationId,
 // para que no aparezca tal cual. No la vuelve secreta: ver FirmaDeApp.kt.
+//
+// Base64 y MessageDigest van importados arriba: dentro de este archivo,
+// "java" es la extensión de Java de Gradle, y java.util.Base64 no se encuentra.
 fun llaveDeApp(sabor: String, idDeApp: String): Pair<Int, String> {
     val valor = firma.getProperty("llave_app_$sabor")?.trim().orEmpty()
     if (valor.isEmpty()) {
@@ -51,12 +56,12 @@ fun llaveDeApp(sabor: String, idDeApp: String): Pair<Int, String> {
         require(dos > 0) { "llave_app_$sabor en firma.properties va como número:base64 (copia APP_LLAVES del servidor)" }
         parte.substring(0, dos).trim().toInt() to parte.substring(dos + 1).trim()
     }.maxBy { it.first }
-    val llave = java.util.Base64.getDecoder().decode(base64)
+    val llave = Base64.getDecoder().decode(base64)
     require(llave.size == 32) { "llave_app_$sabor tiene ${llave.size} bytes y deben ser 32" }
-    val mascara = java.security.MessageDigest.getInstance("SHA-256")
+    val mascara = MessageDigest.getInstance("SHA-256")
         .digest("lefthub-app|$idDeApp".toByteArray(Charsets.UTF_8))
     val oculta = ByteArray(32) { (llave[it].toInt() xor mascara[it].toInt()).toByte() }
-    return numero to java.util.Base64.getEncoder().encodeToString(oculta)
+    return numero to Base64.getEncoder().encodeToString(oculta)
 }
 
 // -----------------------------------------------------------------------------
