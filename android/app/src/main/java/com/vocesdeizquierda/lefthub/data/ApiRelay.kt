@@ -232,6 +232,19 @@ object ApiRelay {
         guardarSesion(post("/api/auth/renovar", null))
     }.getOrNull()
 
+    /**
+     * Le pide al servidor que desligue este teléfono de la cuenta guardada,
+     * antes de olvidar el token. Sin esto, la sesión invisible que viene
+     * después devolvía la misma cuenta de Google: "Cerrar sesión" no cerraba
+     * nada. Si falla (sin red, o un servidor anterior a esta ruta) se sigue
+     * igual: lo peor es lo de antes.
+     */
+    suspend fun salir() {
+        if (!haySesion) return
+        runCatching { post("/api/auth/salir", null) }
+            .onFailure { Log.w(TAG, "No se pudo desligar el teléfono de la cuenta: ${it.message}") }
+    }
+
     fun cerrarSesion() {
         token = null
         sesion = null
