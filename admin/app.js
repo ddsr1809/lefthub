@@ -3365,7 +3365,7 @@
     const folios = a.folios || [];
 
     main.innerHTML = `
-      <div class="head"><div><h1>Anuncios</h1><p class="sub">Los anuncios que la app de Android muestra entre los videos de Novedades, y las dos maneras de quitarlos: una compra en Google Play o un folio de regalo.</p></div></div>
+      <div class="head"><div><h1>Anuncios</h1><p class="sub">Los anuncios que la app de Android muestra en Novedades y en las fichas de los videos y de los creadores, y las dos maneras de quitarlos: una compra en Google Play o un folio de regalo.</p></div></div>
       <div class="stack">
         <div class="stats">
           <div class="stat"><div class="k">Cuentas sin anuncios</div><div class="v">${num(total)}</div><div class="n">${sin.panel ? plural(sin.panel, 'puesta', 'puestas') + ' desde el panel' : 'entre compras y folios'}</div></div>
@@ -4485,7 +4485,7 @@
             const seguro = await confirmar(
               encender ? 'Mostrar anuncios en la app' : 'Dejar de mostrar anuncios',
               encender
-                ? 'La app de Android empezará a mostrar anuncios de Google entre los videos de Novedades a quien no los haya quitado. Los teléfonos que la tienen abierta se enteran en un minuto como mucho. Antes de encenderlos, la política de privacidad publicada tiene que decir que hay anuncios.'
+                ? 'La app de Android empezará a mostrar anuncios de Google en Novedades y en las fichas de los videos y de los creadores a quien no los haya quitado. Los teléfonos que la tienen abierta se enteran en un minuto como mucho. Antes de encenderlos, la política de privacidad publicada tiene que decir que hay anuncios.'
                 : 'La app deja de mostrar anuncios y de ofrecer quitarlos. Quien ya los quitó no pierde nada: si los vuelves a encender, sigue sin verlos.',
               encender ? 'Mostrarlos' : 'Dejar de mostrarlos', encender && config.ambiente === 'produccion');
             if (seguro) {

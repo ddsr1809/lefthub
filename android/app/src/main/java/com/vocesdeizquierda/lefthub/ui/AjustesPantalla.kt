@@ -271,7 +271,7 @@ fun AjustesPantalla(
                     }
                 } else {
                     Text(
-                        "La app muestra anuncios entre los videos de Novedades. Puedes " +
+                        "La app muestra anuncios en Novedades y en las fichas de los videos y de los creadores. Puedes " +
                             "quitarlos para siempre con un solo pago, o con un folio de " +
                             "regalo si te dieron uno.",
                         style = MaterialTheme.typography.bodyLarge,

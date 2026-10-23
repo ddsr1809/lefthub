@@ -907,10 +907,13 @@ le pones los identificadores de tu cuenta de AdMob.
 - **El equipo decide si hay anuncios.** En el panel, sección **Anuncios**, está
   el interruptor *Mostrar anuncios en la app*. Es el ajuste `anuncios` de la
   tabla `ajustes`; sin fila, no hay.
-- **Dónde salen.** Solo en Novedades: uno después del segundo video y luego uno
-  cada seis, tres como mucho (`anuncios/Huecos.kt`). Van en una tarjeta con la
-  palabra «Publicidad» y otro fondo, para que nadie toque uno creyendo que es
-  un video. Si Google no tiene anuncio que dar, ese hueco no se pinta.
+- **Dónde salen.** En Novedades: uno después del segundo video y luego uno
+  cada seis, tres como mucho (`anuncios/Huecos.kt`). Y uno en cada ficha: la de
+  un video (debajo de *Ver el video*) y la de un creador (después de *Sus
+  últimos videos*). Van en una tarjeta con la palabra «Publicidad» y otro
+  fondo, para que nadie toque uno creyendo que es un video, y con un hueco por
+  encima para que no caigan pegados a un botón. Si Google no tiene anuncio que
+  dar, ese hueco no se pinta.
 - **La biblioteca de Google solo arranca para quien ve anuncios.** Quien los
   quitó, o cualquiera mientras estén apagados, nunca la pone en marcha. Antes
   del primer anuncio se le pregunta a Google si a esa persona hay que pedirle

@@ -23,7 +23,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.concurrent.thread
 
 /**
- * Los anuncios de Novedades (AdMob).
+ * Los anuncios de la app (AdMob): en Novedades y en las fichas de un video y
+ * de un creador.
  *
  * Tres reglas que explican todo lo de este archivo:
  *
