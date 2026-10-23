@@ -83,6 +83,13 @@ Que solo la app oficial hable con `leftapp.vocesdeizquierda.com`. Cada petición
 
 Cada hora el registro del servidor también resume: `Llave de la app, última hora: N petición(es)…`.
 
+**Quién trae la llave y quién no.** El servidor anota en cada cuenta cómo llegó su última petición (`seguridad/RegistroDeLlaves`, columnas `llave_firma`, `llave_app_check` y `llave_vista_en` de V27). Se escribe una vez por minuto, no en cada petición. En el panel:
+
+- **Apps → Llave de la app → Por cuenta**: cuántas cuentas de las que abrieron la app en 7 días traen cada cosa, con un botón **Ver** que lleva a esas cuentas.
+- **Usuarios**: la fila «Llave» de filtros (Firma bien, Sin firma, Firma con error, App Check bien, Sin App Check, App Check con error, Sin datos de llave), insignias en cada cuenta y el detalle en su ficha, junto con su versión de la app.
+
+«Sin firma» con una versión anterior a 1.0.18 es lo normal. «Firma con error» casi siempre es una app compilada con otra llave: comparar `llave_app_*` de `firma.properties` con `APP_LLAVES` del servidor.
+
 ### Poner la firma
 
 1. El despliegue crea `APP_LLAVES` en cada `.env` (`.env.test` y `.env.prod`, distintas).
