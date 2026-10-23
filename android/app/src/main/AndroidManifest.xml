@@ -71,6 +71,12 @@
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Relay.Ventana" />
 
+        <!-- El botón «Responder» de los avisos del chat, en el teléfono y en el
+             reloj. Solo lo llama la propia app, a través del aviso. -->
+        <receiver
+            android:name=".notif.RespuestaDelChat"
+            android:exported="false" />
+
         <service
             android:name=".notif.MensajeriaService"
             android:exported="false">
