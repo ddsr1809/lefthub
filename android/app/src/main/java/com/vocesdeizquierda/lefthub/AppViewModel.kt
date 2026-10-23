@@ -125,6 +125,9 @@ class AppViewModel(
                 )
             }
             observar()
+            // Los videos abiertos y vistos van con la cuenta: se traen al
+            // arrancar, por si se marcaron en otro teléfono.
+            launch { Abiertos.sincronizar() }
         }
     }
 
@@ -375,6 +378,8 @@ class AppViewModel(
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
         // Un teléfono nuevo no está suscrito a nada.
         directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+        // Lo que se marcó sin conexión llega a la cuenta en cuanto vuelve.
+        Abiertos.enviarPendientes()
         // Los avisos del chat: el de esta cuenta si tiene el chat, y el del
         // equipo si es administradora. Si se los quitan o entra otra cuenta,
         // se da de baja de los que ya no van.
@@ -830,9 +835,15 @@ class AppViewModel(
 
     fun vincularConGoogle(contexto: Context) = viewModelScope.launch {
         _estado.update { it.copy(ocupado = true) }
+        // Lo marcado como invitado, a su cuenta antes de entrar: si se fusiona
+        // con una guardada, el servidor se lo pasa.
+        Abiertos.enviarPendientes()
         val resultado = autenticacion.vincularConGoogle(contexto)
         procesar(resultado)
         recargarPerfil()
+        if (resultado is AuthRepo.Resultado.Vinculada || resultado is AuthRepo.Resultado.Recuperada) {
+            Abiertos.sincronizar(cambioDeCuenta = true)
+        }
 
         // Cuenta recién guardada: si en otro teléfono ya había dado el permiso
         // de YouTube, aquí se entera sin tener que cerrar y abrir la app.
@@ -843,8 +854,13 @@ class AppViewModel(
     fun resolverConflicto(contexto: Context) = viewModelScope.launch {
         val pendiente = _estado.value.conflicto ?: return@launch
         _estado.update { it.copy(ocupado = true, conflicto = null) }
-        procesar(autenticacion.resolverConflicto(contexto, pendiente.credencialPendiente))
+        Abiertos.enviarPendientes()
+        val resultado = autenticacion.resolverConflicto(contexto, pendiente.credencialPendiente)
+        procesar(resultado)
         recargarPerfil()
+        if (resultado is AuthRepo.Resultado.Vinculada || resultado is AuthRepo.Resultado.Recuperada) {
+            Abiertos.sincronizar(cambioDeCuenta = true)
+        }
     }
 
     fun descartarConflicto() = _estado.update { it.copy(conflicto = null) }
@@ -874,7 +890,12 @@ class AppViewModel(
     }
 
     fun cerrarSesion(contexto: Context) = viewModelScope.launch {
+        // Lo marcado en este teléfono, a la cuenta antes de salir: al volver a
+        // entrar con ella, ahí estará.
+        Abiertos.enviarPendientes()
         runCatching { autenticacion.cerrarSesion(contexto) }
+        // La sesión de ahora es otra (de invitado): sus marcas, no las de antes.
+        Abiertos.sincronizar(cambioDeCuenta = true)
         youtube.alCerrarSesion(contexto)
         reiniciarYouTube()
         _estado.update { it.copy(esAnonimo = true, correo = null, mensaje = "Sesión cerrada.") }

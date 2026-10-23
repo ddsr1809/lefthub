@@ -735,6 +735,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                 VideoPantalla(
                     ficha = ficha,
                     abierto = id in Abiertos.videos,
+                    visto = id in Abiertos.aMano,
+                    onMarcarVisto = { Abiertos.marcar(contexto, id, aMano = true) },
                     onVer = { destino ->
                         Enrutador.abrirVideo(
                             contexto,

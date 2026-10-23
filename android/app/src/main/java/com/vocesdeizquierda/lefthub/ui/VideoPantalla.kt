@@ -5,10 +5,15 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -31,6 +36,13 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
  * anuncio. El anuncio solo sale si el equipo los tiene encendidos y la
  * persona no los quitó (ver [anuncio]); si no, el hueco no existe.
  *
+ * Debajo del anuncio va "Ya lo vi": para marcar el video como visto sin
+ * abrirlo (lo vio en la tele, en otro lado). Pregunta antes, "¿Seguro ya lo
+ * viste?", para que un toque sin querer no lo marque. La marca va con la
+ * cuenta (ver Abiertos).
+ *
+ * @param visto la persona ya lo marcó con "Ya lo vi".
+ * @param onMarcarVisto dijo que sí en la pregunta.
  * @param anuncio el espacio de publicidad, ya decidido fuera: null si no toca.
  */
 @Composable
@@ -38,6 +50,8 @@ fun VideoPantalla(
     ficha: FichaDeVideo,
     abierto: Boolean,
     onVer: (Destino) -> Unit,
+    visto: Boolean = false,
+    onMarcarVisto: () -> Unit = {},
     onVolver: () -> Unit,
     onAbrirCreador: (String) -> Unit = {},
     onAbrirCanal: (String) -> Unit = {},
@@ -77,7 +91,7 @@ fun VideoPantalla(
         }
 
         Column(Modifier.padding(top = Espacio.md)) {
-            EtiquetaDeEstado(abierto)
+            EtiquetaDeEstado(abierto || visto, visto = visto)
             if (publicacion != null) {
                 Text(
                     listOf(publicacion.firma, tiempoRelativo(publicacion.publishedAt))
@@ -127,6 +141,34 @@ fun VideoPantalla(
             anuncio()
         }
 
+        // Marcarlo como visto sin abrirlo. Una vez marcado, el botón da paso
+        // a una línea que lo dice: no hay nada más que hacer con él.
+        var preguntando by rememberSaveable { mutableStateOf(false) }
+        if (visto) {
+            Text(
+                "✓ Marcaste que ya lo viste.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = esquema.onSurfaceVariant,
+                modifier = Modifier.padding(vertical = Espacio.md)
+            )
+        } else {
+            BotonGrande(
+                titulo = "Ya lo vi",
+                subtitulo = "Márcalo como visto sin abrirlo",
+                variante = VarianteBoton.SECUNDARIO,
+                onClick = { preguntando = true }
+            )
+        }
+        if (preguntando) {
+            PreguntaYaLoViste(
+                onSi = {
+                    preguntando = false
+                    onMarcarVisto()
+                },
+                onNo = { preguntando = false }
+            )
+        }
+
         // Para seguir explorando: de quién es el video.
         val creadorId = publicacion?.creatorId?.takeIf { it.isNotBlank() }
         val canalId = publicacion?.canalId
@@ -168,4 +210,33 @@ fun VideoPantalla(
         }
         Spacer(Modifier.height(Espacio.xxl))
     }
+}
+
+/**
+ * "¿Seguro ya lo viste?": la confirmación de "Ya lo vi". Las dos respuestas
+ * van escritas enteras para que no haya duda de qué hace cada una.
+ */
+@Composable
+private fun PreguntaYaLoViste(onSi: () -> Unit, onNo: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onNo,
+        title = { Text("¿Seguro ya lo viste?") },
+        text = {
+            Text(
+                "Lo vamos a marcar como visto en tu cuenta. Así lo verás también si cierras " +
+                    "la sesión y vuelves a entrar, o en otro teléfono.",
+                style = MaterialTheme.typography.bodyLarge
+            )
+        },
+        confirmButton = {
+            TextButton(onClick = onSi, modifier = Modifier.heightIn(min = Tactil.minimo)) {
+                Text("Sí, ya lo vi")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onNo, modifier = Modifier.heightIn(min = Tactil.minimo)) {
+                Text("No, todavía no")
+            }
+        }
+    )
 }
