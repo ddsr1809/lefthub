@@ -453,6 +453,21 @@ public final class Dtos {
                                Boolean avisosCortos) {}
 
     // -------------------------------------------------------------------------
+    // Videos vistos (ver directorio/VistosController)
+    // -------------------------------------------------------------------------
+
+    /**
+     * Lo que la persona ya abrió o marcó como visto.
+     *
+     * @param videos todos, del más reciente al más viejo
+     * @param aMano  los que marcó con "Ya lo vi": un subconjunto de videos
+     */
+    public record Vistos(List<String> videos, List<String> aMano) {}
+
+    /** Varios videos de una vez, todos abiertos o todos marcados a mano. */
+    public record MarcarVistos(List<String> videos, Boolean aMano) {}
+
+    // -------------------------------------------------------------------------
     // Suscripciones de YouTube del usuario
     // -------------------------------------------------------------------------
 

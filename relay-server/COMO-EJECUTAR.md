@@ -62,6 +62,9 @@ Authorization: Bearer <token>
 | `PUT` | `/api/favoritos/{creadorId}` | Seguir |
 | `DELETE` | `/api/favoritos/{creadorId}` | Dejar de seguir |
 | `PUT` | `/api/preferencias` | Tamaño de letra, tema, avisos |
+| `GET` | `/api/vistos` | Los videos que la cuenta ya abrió o marcó como vistos: `{videos, aMano}` |
+| `PUT` | `/api/vistos/{videoId}?aMano=` | Apunta un video abierto, o visto a mano con `aMano=true` |
+| `POST` | `/api/vistos` | Apunta varios de una vez (hasta 500). Body: `{videos, aMano}` |
 | `POST` | `/api/reportes` | Enlace roto |
 | `POST` | `/api/anuncios/folio` | Canjea un folio de regalo. Body: `{codigo}` |
 | `POST` | `/api/anuncios/compra` | Registra una compra de Google Play. Body: `{producto, token}` |

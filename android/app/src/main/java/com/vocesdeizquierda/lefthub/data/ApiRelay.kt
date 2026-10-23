@@ -422,6 +422,17 @@ object ApiRelay {
             .delete())
     }
 
+    /**
+     * Los videos que la cuenta ya abrió o marcó como vistos. Un servidor
+     * anterior a la ruta contesta 404 (ErrorHttp): ver Abiertos.
+     */
+    suspend fun vistos(): VistosDeLaCuenta = vistosDe(getObject("/api/vistos"))
+
+    /** Apunta en la cuenta varios videos abiertos, o vistos a mano con [aMano]. */
+    suspend fun marcarVistos(videos: Collection<String>, aMano: Boolean) {
+        post("/api/vistos", JSONObject().put("videos", JSONArray(videos)).put("aMano", aMano))
+    }
+
     suspend fun guardarPreferencia(clave: String, valor: Any) {
         ejecutar(Request.Builder()
             .url(BuildConfig.API_BASE + "/api/preferencias")

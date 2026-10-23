@@ -355,9 +355,9 @@ private fun ElegirPeriodo(periodo: String, onElegir: (String) -> Unit) {
  * La tarjeta de un video. La usan Novedades y la ficha de un canal.
  *
  * Un video que la persona ya abrió se distingue de uno que no por tres cosas
- * a la vez, para que no dependa solo del color: la leyenda escrita ("Nuevo" o
- * "Ya lo abriste"), el fondo de la tarjeta con la miniatura apagada, y el
- * botón, que deja de ir relleno.
+ * a la vez, para que no dependa solo del color: la leyenda escrita ("Nuevo",
+ * "Ya lo abriste" o "Ya lo viste"), el fondo de la tarjeta con la miniatura
+ * apagada, y el botón, que deja de ir relleno.
  */
 @Composable
 internal fun TarjetaPublicacion(
@@ -390,7 +390,7 @@ internal fun TarjetaPublicacion(
                     contentDescription =
                         (lugar?.let { "$it. " } ?: "") +
                         "Abrir el video ${publicacion.title} de ${publicacion.firma}. " +
-                        if (abierto) "Ya lo abriste." else "Nuevo."
+                        estadoEnPalabras(abierto, publicacion.videoId in Abiertos.aMano, conPunto = true)
                 }
         ) {
             if (!publicacion.thumbnailUrl.isNullOrBlank()) {
@@ -415,7 +415,7 @@ internal fun TarjetaPublicacion(
                         modifier = Modifier.padding(bottom = Espacio.xs)
                     )
                 }
-                EtiquetaDeEstado(abierto)
+                EtiquetaDeEstado(abierto, visto = publicacion.videoId in Abiertos.aMano)
                 Text(
                     // Quién lo publicó y, si su canal es de una productora, cuál.
                     listOf(publicacion.firma, tiempoRelativo(publicacion.publishedAt))
@@ -478,16 +478,30 @@ internal fun TarjetaPublicacion(
 }
 
 /**
- * La leyenda que dice si el video ya se abrió. Va escrita, no solo pintada:
- * quien no distingue bien los colores la lee igual.
+ * "Nuevo", "✓ Ya lo abriste" o "✓ Ya lo viste": lo que dice la leyenda.
+ * [conPunto] es la versión para el lector de pantalla, sin la palomita.
+ */
+internal fun estadoEnPalabras(abierto: Boolean, visto: Boolean, conPunto: Boolean = false): String =
+    when {
+        !abierto -> if (conPunto) "Nuevo." else "Nuevo"
+        visto -> if (conPunto) "Ya lo viste." else "✓ Ya lo viste"
+        else -> if (conPunto) "Ya lo abriste." else "✓ Ya lo abriste"
+    }
+
+/**
+ * La leyenda que dice si el video ya se abrió o se vio. Va escrita, no solo
+ * pintada: quien no distingue bien los colores la lee igual.
+ *
+ * @param visto la persona lo marcó con "Ya lo vi": dice "Ya lo viste" en vez
+ *              de "Ya lo abriste". Solo cuenta con [abierto].
  */
 @Composable
-internal fun EtiquetaDeEstado(abierto: Boolean) {
+internal fun EtiquetaDeEstado(abierto: Boolean, visto: Boolean = false) {
     val esquema = MaterialTheme.colorScheme
     val forma = RoundedCornerShape(8.dp)
 
     Text(
-        if (abierto) "✓ Ya lo abriste" else "Nuevo",
+        estadoEnPalabras(abierto, visto),
         style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
         color = if (abierto) esquema.onSurface else esquema.onPrimary,
         modifier = Modifier
@@ -537,7 +551,7 @@ internal fun FilaVideo(
             .semantics(mergeDescendants = true) {
                 role = Role.Button
                 contentDescription = "Abrir el video ${publicacion.title}. $detalle. " +
-                    if (abierto) "Ya lo abriste." else "Nuevo."
+                    estadoEnPalabras(abierto, publicacion.videoId in Abiertos.aMano, conPunto = true)
             }
             .padding(Espacio.sm)
     ) {
@@ -555,8 +569,9 @@ internal fun FilaVideo(
             )
         }
         Column(Modifier.weight(1f)) {
-            // La misma leyenda que en Novedades: "Nuevo" o "✓ Ya lo abriste".
-            EtiquetaDeEstado(abierto)
+            // La misma leyenda que en Novedades: "Nuevo", "✓ Ya lo abriste" o
+            // "✓ Ya lo viste".
+            EtiquetaDeEstado(abierto, visto = publicacion.videoId in Abiertos.aMano)
             Text(
                 publicacion.title,
                 style = MaterialTheme.typography.bodyMedium,

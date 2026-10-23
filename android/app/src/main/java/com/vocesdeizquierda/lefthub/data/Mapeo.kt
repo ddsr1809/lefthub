@@ -250,3 +250,12 @@ internal fun <T> JSONArray.mapJson(transformar: (JSONObject) -> T): List<T> =
 
 internal fun JSONArray?.mapJsonStrings(): List<String> =
     this?.let { arr -> (0 until arr.length()).map { arr.getString(it) } } ?: emptyList()
+
+/** Las marcas de vistos de la cuenta (GET /api/vistos). */
+internal fun vistosDe(json: JSONObject): VistosDeLaCuenta {
+    fun ids(clave: String): List<String> {
+        val arr = json.optJSONArray(clave) ?: return emptyList()
+        return (0 until arr.length()).mapNotNull { arr.optString(it).takeIf { id -> id.isNotBlank() } }
+    }
+    return VistosDeLaCuenta(videos = ids("videos"), aMano = ids("aMano"))
+}

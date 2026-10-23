@@ -505,6 +505,40 @@ avisos de contenido movido abren la misma ficha y el botón lleva al sitio
 nuevo. Los videos que se abren desde la lista de Novedades siguen yendo
 directo a YouTube.
 
+## Videos abiertos y vistos, con la cuenta
+
+Cada video que se abre desde la app queda marcado: su tarjeta deja de decir
+«Nuevo» y pasa a «✓ Ya lo abriste». En la ficha del video, además, el botón
+**Ya lo vi** lo marca como visto **sin abrirlo** (por si se vio en la tele o
+en otro lado). Antes de marcarlo pregunta *«¿Seguro ya lo viste?»*, con *Sí,
+ya lo vi* y *No, todavía no*. Marcado así, la leyenda dice «✓ Ya lo viste» en
+la ficha, en Novedades y en las fichas de creadores, medios y canales, y en
+lugar del botón queda la línea *✓ Marcaste que ya lo viste*.
+
+Las marcas **van con la cuenta**, en el servidor (tabla `videos_vistos`, los
+500 más recientes de cada persona):
+
+- Al **cerrar sesión** se mandan a la cuenta y la pantalla queda con las de la
+  sesión nueva (de invitado, vacía). Al **volver a entrar** con Google
+  reaparecen todas, abiertas y vistas.
+- En **otro teléfono** con la misma cuenta, aparecen al abrir la app.
+- Si como invitado se marcaron videos y luego se entra con una cuenta que ya
+  existía, se suman a los de esa cuenta, igual que los favoritos.
+- **Sin conexión** se pintan en el acto y se mandan cuando vuelve la red.
+- Al **actualizar la app**, lo que ya estaba marcado en el teléfono se sube a
+  la cuenta la primera vez.
+- Al **borrar la cuenta** se borran también (en cascada).
+- Con un **servidor anterior** a esta versión, todo sigue como antes: las
+  marcas viven solo en el teléfono.
+
+Rutas: `GET /api/vistos` (`{videos, aMano}`), `PUT /api/vistos/{videoId}?aMano=`
+y `POST /api/vistos` con `{videos, aMano}` para varios a la vez (hasta 500).
+
+Esto cambia una decisión anterior: las marcas se guardaban solo en el teléfono
+para no tener en el servidor qué videos abre cada quien. Ahora el servidor sí
+lo guarda (solo el id del video, si fue a mano y cuándo), a cambio de que no
+se pierdan al cambiar de sesión o de teléfono.
+
 ## Etiquetas
 
 Las etiquetas son la forma de agrupar el directorio, y las decide el equipo:
