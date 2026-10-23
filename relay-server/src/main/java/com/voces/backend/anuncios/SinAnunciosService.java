@@ -4,6 +4,7 @@ import com.voces.backend.modelo.Compra;
 import com.voces.backend.modelo.Folio;
 import com.voces.backend.modelo.Repositorios;
 import com.voces.backend.modelo.Usuario;
+import com.voces.backend.seguridad.CifradorDeDatos;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -141,7 +142,9 @@ public class SinAnunciosService {
         // El mismo comprobante puede llegar otra vez: la app lo reenvía al
         // arrancar mientras la cuenta no figure sin anuncios, y la persona
         // puede tener la app en dos teléfonos. Es la misma compra, una fila.
-        Compra compra = compras.findByToken(token).orElseGet(Compra::new);
+        // El comprobante va cifrado en la base: se reconoce por su huella.
+        String huella = CifradorDeDatos.actual().huella(token, CifradorDeDatos.COMPROBANTE);
+        Compra compra = compras.findByTokenHuella(huella).orElseGet(Compra::new);
         compra.setUsuarioId(usuarioId);
         compra.setProducto(producto);
         compra.setToken(token);

@@ -169,6 +169,19 @@ relay:
     # RelayProperties.Chat. Vacío = el chat no está disponible.
     llaves: ${CHAT_LLAVES:}
 
+  datos:
+    # Las llaves de los datos personales cifrados en la base: correo, IP,
+    # token de Apple, comprobantes de compra. Mismo formato que CHAT_LLAVES.
+    # Obligatoria: sin ella el servidor no arranca. Si se pierde, se pierden
+    # esos datos. Ver seguridad/CifradorDeDatos.
+    llaves: ${DATOS_LLAVES:}
+    # 32 bytes en base64 para las huellas con las que se busca un correo o
+    # una IP sin descifrar. Obligatoria, y no se cambia nunca.
+    indice: ${DATOS_INDICE:}
+    # Días sin abrir la app tras los que se borran la IP, la compañía de
+    # internet y el agente de la cuenta. 0 = nunca.
+    dias-ip: ${DATOS_DIAS_IP:90}
+
   replica:
     # Solo en producción: URL del servidor de testing. Cada creador que se
     # guarda en el panel se copia allá. Vacío = no se copia nada.

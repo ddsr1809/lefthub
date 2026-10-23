@@ -30,8 +30,13 @@ import java.util.UUID;
  *
  * Duran 30 dias a proposito: el publico objetivo incluye gente que abre la app
  * una vez por semana, y obligarles a volver a entrar cada hora seria un
- * despropósito. A cambio no hay revocacion inmediata; para eso esta el borrado
- * de cuenta, que elimina el usuario y deja el token apuntando a nadie.
+ * despropósito.
+ *
+ * Que un token sea valido no basta para entrar: FiltroJwt comprueba ademas en
+ * la base (seguridad/EstadoDeSesiones) que la cuenta sigue existiendo, que
+ * nadie cerró sus sesiones despues de emitirlo, y que sigue siendo
+ * administradora si el token dice que lo es. Asi se puede cerrar una sesión
+ * robada o quitar el rol sin esperar a que caduque.
  */
 @Service
 public class ServicioJwt {
@@ -62,8 +67,15 @@ public class ServicioJwt {
         this.clave = secreto.getBytes(StandardCharsets.UTF_8);
     }
 
-    /** Emite el token de sesion de un usuario. */
-    public String emitir(Usuario usuario) {
+    /**
+     * Emite el token de sesion de un usuario.
+     *
+     * @param admin si esta sesion puede usar el panel. Solo cuenta si la
+     *              cuenta es administradora: se emite con el rol solo al
+     *              entrar con Google o Apple, nunca con el identificador del
+     *              teléfono (ver AuthController.anonimo).
+     */
+    public String emitir(Usuario usuario, boolean admin) {
         Instant ahora = Instant.now();
         Instant expira = ahora.plus(config.jwt().diasValidez(), ChronoUnit.DAYS);
 
@@ -72,7 +84,7 @@ public class ServicioJwt {
                 .issuer(config.jwt().emisor())
                 .issueTime(Date.from(ahora))
                 .expirationTime(Date.from(expira))
-                .claim("adm", usuario.isEsAdmin())
+                .claim("adm", admin && usuario.isEsAdmin())
                 .claim("prv", usuario.getProveedor())
                 .build();
 
@@ -85,8 +97,13 @@ public class ServicioJwt {
         }
     }
 
-    /** Contenido util de un token ya validado. */
-    public record Sesion(UUID usuarioId, boolean esAdmin, String proveedor) {}
+    /**
+     * Contenido util de un token ya validado.
+     *
+     * @param emitido cuándo se emitió (claim iat, con precisión de segundos),
+     *                para saber si es anterior a un "cerrar sesiones".
+     */
+    public record Sesion(UUID usuarioId, boolean esAdmin, String proveedor, Instant emitido) {}
 
     /**
      * Verifica firma y caducidad. Devuelve vacio ante cualquier problema en
@@ -112,10 +129,16 @@ public class ServicioJwt {
                 return Optional.empty();
             }
 
+            Date emitido = claims.getIssueTime();
+            if (emitido == null) {
+                return Optional.empty();
+            }
+
             return Optional.of(new Sesion(
                     UUID.fromString(claims.getSubject()),
                     Boolean.TRUE.equals(claims.getClaim("adm")),
-                    String.valueOf(claims.getClaim("prv"))
+                    String.valueOf(claims.getClaim("prv")),
+                    emitido.toInstant()
             ));
 
         } catch (Exception e) {

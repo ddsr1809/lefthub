@@ -81,6 +81,23 @@ if ! grep -qE '^CHAT_LLAVES=.+' "$archivo_env"; then
   echo "Creada la llave del chat (CHAT_LLAVES) en $archivo_env. Guarda una copia aparte: sin ella no se leen los mensajes."
 fi
 
+# Las llaves de los datos personales (DATOS_LLAVES y DATOS_INDICE). Igual que
+# la del chat: si faltan se crean aqui, una sola vez, y nunca salen del VPS.
+# Sin ellas el servidor no arranca.
+for clave in DATOS_LLAVES DATOS_INDICE; do
+  if ! grep -qE "^${clave}=.+" "$archivo_env"; then
+    if [[ "$clave" == DATOS_LLAVES ]]; then llave="1:$(openssl rand -base64 32)"; else llave="$(openssl rand -base64 32)"; fi
+    if grep -q "^${clave}=" "$archivo_env"; then
+      sed -i "s|^${clave}=.*|${clave}=${llave}|" "$archivo_env"
+    else
+      printf '\n# Creada por deploy-vps.sh. Guarda una copia aparte: sin ella no se leen los datos.\n%s=%s\n' "$clave" "$llave" >> "$archivo_env"
+    fi
+    unset llave
+    echo "Creada $clave en $archivo_env. Guarda una copia aparte (o usa scripts/vps/respaldo-base.sh, que la incluye cifrada)."
+  fi
+done
+chmod 600 "$archivo_env"
+
 # La variable exportada tiene prioridad sobre los archivos y permite validar el
 # primer despliegue antes de que exista .env.imagen.
 export SERVIDOR_IMAGEN="$imagen"

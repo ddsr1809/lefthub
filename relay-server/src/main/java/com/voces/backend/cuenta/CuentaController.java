@@ -1,5 +1,6 @@
 package com.voces.backend.cuenta;
 
+import com.voces.backend.seguridad.EstadoDeSesiones;
 import com.voces.backend.config.SeguridadConfig.Sesion;
 import com.voces.backend.modelo.Dtos;
 import com.voces.backend.modelo.Reporte;
@@ -13,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.Instant;
 import java.util.UUID;
 
 @RestController
@@ -25,15 +27,45 @@ public class CuentaController {
     private final Repositorios.Publicaciones publicaciones;
     private final Repositorios.Reportes reportes;
     private final AppleService apple;
+    private final EstadoDeSesiones estados;
 
     public CuentaController(Repositorios.Usuarios usuarios,
                             Repositorios.Publicaciones publicaciones,
                             Repositorios.Reportes reportes,
-                            AppleService apple) {
+                            AppleService apple,
+                            EstadoDeSesiones estados) {
         this.usuarios = usuarios;
         this.publicaciones = publicaciones;
         this.reportes = reportes;
         this.apple = apple;
+        this.estados = estados;
+    }
+
+    /**
+     * Cerrar sesión en todos los teléfonos y navegadores donde esté abierta
+     * esta cuenta, este incluido. Para quien perdió el teléfono o cree que
+     * alguien más entró en su cuenta.
+     *
+     * Los tokens emitidos hasta ahora dejan de valer al momento, y ningún
+     * teléfono queda ligado a la cuenta: para volver a entrar hay que
+     * hacerlo con Google o Apple. A una cuenta de invitado no se le puede
+     * hacer: sin teléfono ligado, no habría forma de recuperarla.
+     */
+    @PostMapping("/cuenta/cerrar-sesiones")
+    @Transactional
+    public Dtos.RespuestaSimple cerrarSesiones() {
+        UUID uid = Sesion.exigir();
+        Usuario usuario = usuarios.findById(uid)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND,
+                        "Esa cuenta ya no existe."));
+        if (usuario.esAnonimo()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Una cuenta de invitado solo está en este teléfono. Guárdala con Google o Apple primero.");
+        }
+        usuario.cerrarSesiones(Instant.now());
+        estados.olvidar(uid);
+        log.info("Sesiones cerradas por la propia cuenta {}", uid);
+        return Dtos.RespuestaSimple.de("Listo. Se cerró la sesión en todos los teléfonos y navegadores.");
     }
 
     /**
@@ -105,6 +137,7 @@ public class CuentaController {
         }
 
         usuarios.delete(usuario);
+        estados.olvidar(uid);
         log.info("Cuenta {} eliminada por completo", uid);
 
         return Dtos.RespuestaSimple.de("Cuenta borrada.");

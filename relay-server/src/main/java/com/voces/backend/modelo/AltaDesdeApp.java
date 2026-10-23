@@ -1,5 +1,6 @@
 package com.voces.backend.modelo;
 
+import com.voces.backend.seguridad.Cifrado;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -26,7 +27,9 @@ public class AltaDesdeApp {
     @Column(name = "usuario_id")
     private UUID usuarioId;
 
+    /** El correo de quien lo agregó, como estaba entonces. Cifrado, como en usuarios. */
     @Column(columnDefinition = "text")
+    @Convert(converter = Cifrado.AutorDeAlta.class)
     private String autor;
 
     @Column(nullable = false, columnDefinition = "text")

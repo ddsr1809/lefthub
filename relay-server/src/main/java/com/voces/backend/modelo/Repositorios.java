@@ -1,6 +1,5 @@
 package com.voces.backend.modelo;
 
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
@@ -287,11 +286,26 @@ public final class Repositorios {
 
     public interface Usuarios extends JpaRepository<Usuario, UUID> {
 
-        Optional<Usuario> findByDeviceId(String deviceId);
+        /** Con la huella del identificador: HuellaDeDispositivo.de(deviceId). */
+        Optional<Usuario> findByDeviceId(String huellaDelDispositivo);
+
+        /**
+         * Una cuenta cuyo device_id todavía está legible: de antes de V26,
+         * mientras CifradoDeDatosExistentes no lo convierte en huella. Solo
+         * para AuthController, que nunca la llama con algo que parezca una
+         * huella. Consulta nativa: sin pasar por el convertidor de la columna.
+         */
+        @Query(value = "select * from usuarios where device_id = :deviceId", nativeQuery = true)
+        Optional<Usuario> conDispositivoLegible(@Param("deviceId") String deviceId);
 
         Optional<Usuario> findByProveedorAndProveedorSub(String proveedor, String sub);
 
-        Optional<Usuario> findByEmail(String email);
+        /**
+         * El correo está cifrado: se busca por su huella,
+         * CifradorDeDatos.huella(correo, CORREO). Puede haber más de una
+         * cuenta con el mismo correo (Google y Apple a la vez).
+         */
+        List<Usuario> findByEmailHuella(String huella);
 
         /** Quienes siguen a un creador. Sirve para contar audiencia. */
         @Query("select count(u) from Usuario u join u.favoritos f where f = :creador")
@@ -373,37 +387,6 @@ public final class Repositorios {
         /** Fechas de alta recientes; el controlador las agrupa por día. */
         @Query("select u.creadoEn from Usuario u where u.creadoEn >= :desde")
         List<Instant> altasDesde(@Param("desde") Instant desde);
-
-        /**
-         * Listado paginado con filtros.
-         *
-         * Los filtros vacíos llegan como cadena vacía y no como null: un
-         * parámetro null dentro de "(:x is null or ...)" obliga a PostgreSQL a
-         * adivinar su tipo y es una fuente clásica de errores en tiempo de
-         * ejecución.
-         */
-        @Query(value = """
-                select u from Usuario u
-                where (:proveedor = '' or u.proveedor = :proveedor)
-                  and (:texto = '' or lower(u.email) like :texto or u.ip like :texto)
-                  and (:pais = '' or u.pais = :pais)
-                  and (:soloAdmins = false or u.esAdmin = true)
-                  and (:soloBots = false or u.posibleBot = true)
-                """,
-               countQuery = """
-                select count(u) from Usuario u
-                where (:proveedor = '' or u.proveedor = :proveedor)
-                  and (:texto = '' or lower(u.email) like :texto or u.ip like :texto)
-                  and (:pais = '' or u.pais = :pais)
-                  and (:soloAdmins = false or u.esAdmin = true)
-                  and (:soloBots = false or u.posibleBot = true)
-                """)
-        Page<Usuario> buscar(@Param("proveedor") String proveedor,
-                             @Param("texto") String texto,
-                             @Param("pais") String pais,
-                             @Param("soloAdmins") boolean soloAdmins,
-                             @Param("soloBots") boolean soloBots,
-                             Pageable pagina);
     }
 
     public interface Ajustes extends JpaRepository<Ajuste, String> {
@@ -435,7 +418,8 @@ public final class Repositorios {
 
     public interface Compras extends JpaRepository<Compra, UUID> {
 
-        Optional<Compra> findByToken(String token);
+        /** El comprobante está cifrado: se busca por su huella. */
+        Optional<Compra> findByTokenHuella(String huella);
 
         /**
          * Las compras de una cuenta pasan a otra. Hay que llamarlo antes de

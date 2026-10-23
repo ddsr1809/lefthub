@@ -1,5 +1,6 @@
 package com.voces.backend.directorio;
 
+import com.voces.backend.seguridad.CifradorDeDatos;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.voces.backend.config.RelayProperties;
 import org.springframework.http.HttpStatus;
@@ -13,6 +14,7 @@ import org.springframework.web.server.ResponseStatusException;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -105,10 +107,13 @@ public class VersionesService {
             select jsonb_build_object('contenido', directorio())::text
             """;
 
-    /** Parámetros: nota, id de quien la corta, automatica. */
+    /**
+     * Parámetros: nota, correo de quien la corta, automatica. El correo se
+     * pasa ya legible: en usuarios está cifrado (ver correoDe).
+     */
     static final String SQL_CORTAR = """
             insert into versiones (nota, creado_por, automatica, contenido)
-            values (?, (select u.email from usuarios u where u.id = cast(? as uuid)), ?, directorio())
+            values (?, ?, ?, directorio())
             returning numero
             """;
 
@@ -121,11 +126,11 @@ public class VersionesService {
                                from migraciones m order by m.id desc limit 1), 'null')
             """;
 
-    /** Parámetros: id de quien migra, el cuerpo {version, estado}. */
+    /** Parámetros: correo de quien migra, el cuerpo {version, estado}. */
     static final String SQL_REGISTRAR = """
             insert into migraciones (version, aplicada_por, estado)
             select cast(j ->> 'version' as integer),
-                   (select u.email from usuarios u where u.id = cast(? as uuid)),
+                   ?,
                    j -> 'estado'
               from (select cast(? as jsonb) as j) x
             returning id
@@ -288,7 +293,7 @@ public class VersionesService {
         if (limpia != null && limpia.length() > 200) limpia = limpia.substring(0, 200);
 
         Integer numero = jdbc.queryForObject(SQL_CORTAR, Integer.class,
-                limpia, texto(quien), automatica);
+                limpia, correoDe(quien), automatica);
         return numero == null ? 0 : numero;
     }
 
@@ -307,7 +312,7 @@ public class VersionesService {
                     "Faltan la versión o el estado de la migración.");
         }
         Integer id = jdbc.queryForObject(SQL_REGISTRAR, Integer.class,
-                texto(quien), cuerpo.toString());
+                correoDe(quien), cuerpo.toString());
         return id == null ? 0 : id;
     }
 
@@ -446,7 +451,16 @@ public class VersionesService {
         throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, motivo);
     }
 
-    private static String texto(UUID id) {
-        return id == null ? null : id.toString();
+    /**
+     * El correo de quien corta o migra, legible: es lo que el panel enseña
+     * como autor. En usuarios va cifrado, así que se lee y se descifra aquí.
+     */
+    private String correoDe(UUID id) {
+        if (id == null) return null;
+        List<String> filas = jdbc.queryForList(
+                "select email from usuarios where id = cast(? as uuid)", String.class, id.toString());
+        if (filas.isEmpty() || filas.get(0) == null) return null;
+        String correo = CifradorDeDatos.actual().descifrar(filas.get(0), CifradorDeDatos.CORREO);
+        return CifradorDeDatos.estaCifrado(correo) ? null : correo;
     }
 }

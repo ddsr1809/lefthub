@@ -2,10 +2,12 @@ package com.voces.backend.auth;
 
 import com.voces.backend.acceso.RegistroDeAcceso;
 import com.voces.backend.chat.ChatService;
+import com.voces.backend.config.SeguridadConfig;
 import com.voces.backend.cuenta.AppleService;
 import com.voces.backend.modelo.Dtos;
 import com.voces.backend.modelo.Repositorios;
 import com.voces.backend.modelo.Usuario;
+import com.voces.backend.seguridad.HuellaDeDispositivo;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.slf4j.Logger;
@@ -67,22 +69,31 @@ public class AuthController {
         this.chat = chat;
     }
 
-    /** Sesión invisible. Se llama al abrir la app, sin interfaz de por medio. */
+    /**
+     * Sesión invisible. Se llama al abrir la app, sin interfaz de por medio.
+     *
+     * Con el identificador del teléfono se recupera también una cuenta ya
+     * guardada con Google o Apple (la sesión caducó tras un mes sin abrir la
+     * app, por ejemplo). Pero nunca con el rol de administrador: el panel y
+     * el chat del equipo exigen haber entrado con Google o Apple. Así, quien
+     * consiguiera el identificador del teléfono del dueño no entra al panel.
+     */
     @PostMapping("/anonimo")
     @Transactional
     public Dtos.Sesion anonimo(@Valid @RequestBody Dtos.EntrarAnonimo peticion,
                                HttpServletRequest http) {
-        Usuario usuario = usuarios.findByDeviceId(peticion.deviceId())
+        String huella = HuellaDeDispositivo.de(peticion.deviceId());
+        Usuario usuario = porDispositivo(peticion.deviceId())
                 .orElseGet(() -> {
                     Usuario nuevo = new Usuario();
-                    nuevo.setDeviceId(peticion.deviceId());
+                    nuevo.setDeviceId(huella);
                     nuevo.setProveedor(Usuario.ANONIMO);
                     return usuarios.save(nuevo);
                 });
 
         usuario.setVistoEn(Instant.now());
         accesos.anotar(usuario, http);
-        return sesionDe(usuario, false);
+        return sesionDe(usuario, false, false);
     }
 
     @PostMapping("/google")
@@ -135,7 +146,33 @@ public class AuthController {
 
         usuario.setVistoEn(Instant.now());
         accesos.anotar(usuario, http);
-        return sesionDe(usuario, false);
+        // El rol se conserva solo si la sesión que se renueva ya lo tenía.
+        return sesionDe(usuario, false, sesion.esAdmin());
+    }
+
+    /**
+     * Cerrar sesión en este teléfono. La app la llama antes de olvidar su
+     * token, y después pide una sesión invisible nueva.
+     *
+     * Desliga el teléfono de la cuenta. Sin esto, la sesión invisible que
+     * viene después devolvía la misma cuenta de Google o Apple: el botón
+     * "Cerrar sesión" no cerraba nada, y quien recibiera el teléfono seguía
+     * dentro de la cuenta anterior.
+     *
+     * A una cuenta de invitado no le hace nada: el teléfono es lo único que
+     * la recupera, y desligarlo la dejaría perdida.
+     */
+    @PostMapping("/salir")
+    @Transactional
+    public Dtos.RespuestaSimple salir() {
+        UUID id = SeguridadConfig.Sesion.exigir();
+        usuarios.findById(id).ifPresent(usuario -> {
+            if (!usuario.esAnonimo()) {
+                usuario.setDeviceId(null);
+                log.info("Teléfono desligado de la cuenta {}", id);
+            }
+        });
+        return Dtos.RespuestaSimple.de("Sesión cerrada en este teléfono.");
     }
 
     // -------------------------------------------------------------------------
@@ -149,9 +186,8 @@ public class AuthController {
 
         // Quién tiene hoy este dispositivo. device_id es único en la tabla:
         // solo una cuenta puede llevarlo a la vez.
-        Optional<Usuario> dueno = (deviceId != null && !deviceId.isBlank())
-                ? usuarios.findByDeviceId(deviceId)
-                : Optional.empty();
+        String huella = HuellaDeDispositivo.de(deviceId);
+        Optional<Usuario> dueno = porDispositivo(deviceId);
         Optional<Usuario> anonimo = dueno.filter(Usuario::esAnonimo);
 
         // Caso A: ya tenía cuenta con este proveedor, probablemente de otro
@@ -208,13 +244,13 @@ public class AuthController {
                 // falló de nuestro lado" justo al recuperar su cuenta.
                 usuarios.delete(anonimo.get());
                 usuarios.flush();
-                usuario.setDeviceId(deviceId);
+                usuario.setDeviceId(huella);
                 log.info("Cuenta anónima fusionada en {}", usuario.getId());
             }
 
             actualizarDatos(usuario, identidad, appleRefresh);
             accesos.anotar(usuario, http);
-            return sesionDe(usuario, fusionados);
+            return sesionDe(usuario, fusionados, true);
         }
 
         // Caso B: primer inicio de sesión con este proveedor. Convertimos la
@@ -228,13 +264,33 @@ public class AuthController {
             usuarios.flush();
         }
         Usuario usuario = anonimo.orElseGet(Usuario::new);
-        usuario.setDeviceId(deviceId);
+        usuario.setDeviceId(huella);
         usuario.setProveedor(identidad.proveedor());
         usuario.setProveedorSub(identidad.sub());
         actualizarDatos(usuario, identidad, appleRefresh);
         accesos.anotar(usuario, http);
 
-        return sesionDe(usuarios.save(usuario), false);
+        return sesionDe(usuarios.save(usuario), false, true);
+    }
+
+    /**
+     * La cuenta ligada a este teléfono, por la huella de su identificador.
+     *
+     * Si no aparece, se busca también el identificador legible: una cuenta de
+     * antes de V26 que CifradoDeDatosExistentes todavía no convirtió (la app
+     * abrió justo al arrancar el servidor). Se le pone la huella en el acto.
+     * Nunca con algo que ya parezca una huella: así, quien hubiera visto una
+     * en la base no puede presentarla como identificador.
+     */
+    private Optional<Usuario> porDispositivo(String deviceId) {
+        String huella = HuellaDeDispositivo.de(deviceId);
+        if (huella == null) return Optional.empty();
+        Optional<Usuario> usuario = usuarios.findByDeviceId(huella);
+        if (usuario.isPresent() || HuellaDeDispositivo.esHuella(deviceId)) return usuario;
+        return usuarios.conDispositivoLegible(deviceId).map(u -> {
+            u.setDeviceId(huella);
+            return u;
+        });
     }
 
     private void actualizarDatos(Usuario usuario, VerificadorIdentidad.Identidad identidad,
@@ -248,13 +304,15 @@ public class AuthController {
         usuario.setVistoEn(Instant.now());
     }
 
-    private Dtos.Sesion sesionDe(Usuario usuario, boolean fusionados) {
+    /** @param admin si esta sesión puede tener el rol (solo si la cuenta lo tiene). */
+    private Dtos.Sesion sesionDe(Usuario usuario, boolean fusionados, boolean admin) {
+        boolean conRol = admin && usuario.isEsAdmin();
         return new Dtos.Sesion(
-                jwt.emitir(usuario),
+                jwt.emitir(usuario, conRol),
                 usuario.getId(),
                 usuario.getProveedor(),
                 usuario.getEmail(),
-                usuario.isEsAdmin(),
+                conRol,
                 fusionados
         );
     }

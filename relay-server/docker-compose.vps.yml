@@ -37,6 +37,11 @@ services:
       JWT_SECRETO: ${JWT_SECRETO}
       # La llave que cifra los mensajes del chat guardados. Vacio = sin chat.
       CHAT_LLAVES: ${CHAT_LLAVES:-}
+      # Obligatorias: cifran los datos personales en la base. Las crea
+      # scripts/deploy-vps.sh (o ./local.sh) si faltan. Ver CifradorDeDatos.
+      DATOS_LLAVES: ${DATOS_LLAVES:?Falta DATOS_LLAVES en el archivo .env}
+      DATOS_INDICE: ${DATOS_INDICE:?Falta DATOS_INDICE en el archivo .env}
+      DATOS_DIAS_IP: ${DATOS_DIAS_IP:-90}
       WEBSUB_SECRETO: ${WEBSUB_SECRETO}
       WEBSUB_TOKEN_CALLBACK: ${WEBSUB_TOKEN_CALLBACK}
       TOKEN_INTERNO: ${TOKEN_INTERNO}
