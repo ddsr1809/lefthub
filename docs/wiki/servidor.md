@@ -57,7 +57,7 @@ Las apps mandan `X-App-Version` y `X-App-Plataforma` en cada petición; el servi
 
 ## Base de datos
 
-Flyway aplica 27 migraciones (`V1`–`V27`) al arrancar y Hibernate solo valida (`ddl-auto: validate`). **Un número de migración que ya llegó a un servidor nunca se reutiliza ni se borra**: el servidor no arrancaría (`Migration checksum mismatch`).
+Flyway aplica 28 migraciones (`V1`–`V28`) al arrancar y Hibernate solo valida (`ddl-auto: validate`). **Un número de migración que ya llegó a un servidor nunca se reutiliza ni se borra**: el servidor no arrancaría (`Migration checksum mismatch`).
 
 | Migración | Qué agrega |
 | --- | --- |
@@ -71,6 +71,7 @@ Flyway aplica 27 migraciones (`V1`–`V27`) al arrancar y Hibernate solo valida 
 | V22–V25 | Duración en segundos, mensajes del chat, editores desde la app, stickers |
 | V26 | Huellas para buscar correo, IP y comprobantes cifrados; `sesiones_desde` para cerrar sesiones |
 | V27 | `llave_firma`, `llave_app_check`, `llave_vista_en`: cómo llegó la última petición de cada cuenta |
+| V28 | `videos_vistos`: los videos que cada cuenta abrió o marcó «Ya lo vi» |
 
 Tablas centrales: `usuarios`, `creadores`, `productoras`, `canales`, `canales_creadores`, `creadores_productoras`, `publicaciones`, `favoritos*`, `ajustes`, `fotos`, `folios`, `compras`, `mensajes_chat`, `paquetes_stickers`, `stickers`.
 
