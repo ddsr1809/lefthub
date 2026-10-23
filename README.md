@@ -960,25 +960,32 @@ Cosas que conviene saber:
 
 ### Para encenderlos en producción, en este orden
 
-**1. AdMob.** Crea la cuenta en `admob.google.com`, da de alta la app de
-Android (`com.vocesdeizquierda.lefthub`) y crea un bloque de anuncios de tipo
-**Banner**. Te da dos identificadores; ponlos en
+**1. AdMob.** ✅ Hecho. La cuenta es la del editor `pub-6584298596563589`;
+la app está dada de alta como «Voces de Izquierda Hub» y tiene un bloque Banner
+llamado «novedades». Sus identificadores ya están en
 `android/app/build.gradle.kts`, en el sabor `produccion`:
 
 ```kotlin
-val admobApp = "ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY"     // el de la app
-val admobBanner = "ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ"  // el del bloque
+val admobApp = "ca-app-pub-6584298596563589~8770479750"     // la app
+val admobBanner = "ca-app-pub-6584298596563589/6767132949"  // el bloque «novedades»
 ```
 
-Mientras estén vacíos, la app de producción no muestra anuncios aunque el panel
-los tenga encendidos. Los sabores `developer` y `pruebas` usan siempre los
+Si alguna vez se vacían, la app de producción deja de mostrar anuncios aunque
+el panel los tenga encendidos. Los sabores `developer` y `pruebas` usan siempre los
 identificadores de prueba de Google: salen anuncios marcados «Test Ad», que se
 pueden tocar sin riesgo. **No toques anuncios de verdad desde tu teléfono**: es
 el motivo más común por el que AdMob cierra una cuenta.
 
 En AdMob, *Privacidad y mensajes*, crea el mensaje de consentimiento para
-Europa si esperas gente de allí. Y publica el archivo `app-ads.txt` que te
-indica AdMob en la raíz de `vocesdeizquierda.com`.
+Europa si esperas gente de allí. `app-ads.txt` ya está en `web/` y publicado en
+`https://vocesdeizquierda.com/app-ads.txt`; para que AdMob lo lea, la ficha de
+Play tiene que llevar `https://vocesdeizquierda.com` como sitio web del
+desarrollador.
+
+AdMob revisa cada app nueva («Debe revisarse») antes de servirle anuncios
+completos: mira que esté vinculada a su ficha de Google Play y que
+`app-ads.txt` coincida. Si se dio de alta sin la tienda, vincúlala en
+*Configuración de la app → Tiendas de aplicaciones* cuando esté publicada.
 
 **2. El producto.** En Play Console, *Monetizar con Play → Productos →
 Productos únicos*, crea uno con el ID **`sin_anuncios`**, ponle precio y
@@ -1157,7 +1164,7 @@ parámetro `filtro` de antes sigue funcionando.
 
 **Se envían avisos de videos viejos.** Al suscribirte, el hub reenvía entradas recientes del feed. `relay.websub.antiguedad-maxima-horas` (6) las descarta. Cámbialo en `server/src/main/resources/application.yml`.
 
-**Los anuncios están encendidos en el panel y no sale ninguno.** En producción, casi siempre es que faltan `admobApp` y `admobBanner` en `build.gradle.kts`. Si están, mira el registro del teléfono con la etiqueta `Anuncios`: una cuenta de AdMob recién creada tarda en empezar a servir anuncios, y Google no siempre tiene uno que dar.
+**Los anuncios están encendidos en el panel y no sale ninguno.** En producción, lo primero es ver en AdMob si la app sigue en «Debe revisarse»: hasta que la aprueban sirve pocos o ningún anuncio. Después, que la app instalada sea 1.0.16 o posterior (las anteriores no traen los identificadores). Si todo eso está, mira el registro del teléfono con la etiqueta `Anuncios`: una cuenta de AdMob recién creada tarda en empezar a servir anuncios, y Google no siempre tiene uno que dar.
 
 **En Ajustes no aparece el botón de comprar, solo el del folio.** O el servidor no puede confirmar compras (el panel dice *Compra sin configurar*), o Google Play no devolvió el producto: no existe todavía en Play Console, no está activo, o la app instalada no viene de Google Play. El registro del teléfono lo dice con la etiqueta `ComprasRepo`.
 
