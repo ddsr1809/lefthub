@@ -43,6 +43,13 @@ La barra inferior tiene **Directorio** (inicio), **Novedades**, **Stickers** (si
 - Tocar el aviso de un video abre la ficha del video; tocar un video en Novedades va directo a YouTube.
 - `enlaces/Enrutador.kt` abre YouTube con enlace profundo y cae al navegador si la app no está.
 - Los avisos del chat van a topics derivados con HMAC, para que nadie se suscriba al de otra cuenta.
+- Desde la 1.0.19 el perfil le da a Android los topics `chatr_` / `chatequipor_`, de solo datos: la app pinta el aviso (`notif/AvisoDelChat.kt`) con el botón «Responder», que también sale en el reloj (Wear OS, Galaxy Watch), y `notif/RespuestaDelChat.kt` manda lo escrito. iOS y las apps anteriores siguen en `chat_` / `chatequipo_` con el aviso que pinta el sistema; el servidor manda a los dos.
+- Los demás avisos (videos, avisos del equipo) llegan al reloj solos: el teléfono pasa al reloj todo lo que pinta, si en la app del reloj (Wear OS, Galaxy Wearable) están permitidas las notificaciones de Voces.
+
+## Menú del ícono
+
+- `atajos/Atajos.kt`: al dejar el dedo sobre el ícono salen hasta cuatro atajos: «Escribir al equipo» (si la cuenta tiene chat) y a quién sigue, el que publicó más reciente primero. Tocar a alguien abre su ficha. Cada atajo se puede arrastrar a la pantalla de inicio. MainActivity los rehace cuando cambia el perfil, el directorio o los últimos videos.
+- `atajos/EscribirAlEquipoActivity.kt`: la ventanita de «Escribir al equipo». Enseña los últimos tres mensajes y manda uno sin entrar a la app; va en su propia tarea para no cerrar la app si estaba abierta.
 
 ## Anuncios y compras
 

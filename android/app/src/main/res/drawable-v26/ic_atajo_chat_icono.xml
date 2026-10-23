@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícono de «Escribir al equipo» en el menú del ícono de la app. Adaptable:
+     el teléfono le da la misma forma que a los demás. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ambar" />
+    <foreground android:drawable="@drawable/ic_atajo_chat_frente" />
+</adaptive-icon>

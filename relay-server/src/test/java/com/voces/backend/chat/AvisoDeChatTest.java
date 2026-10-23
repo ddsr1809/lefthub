@@ -24,10 +24,17 @@ class AvisoDeChatTest {
     static final class PushDePrueba extends PushService {
         record Envio(String topic, String titulo, String cuerpo, Map<String, String> datos) {}
         final List<Envio> enviados = new ArrayList<>();
+        /** Los de solo datos, para la app que contesta desde el aviso. */
+        final List<Envio> soloDatos = new ArrayList<>();
         PushDePrueba() { super(null, null); }
         @Override public String avisarChat(String topic, String titulo, String cuerpo,
                                            Map<String, String> datos, String etiqueta) {
             enviados.add(new Envio(topic, titulo, cuerpo, datos));
+            return null;
+        }
+        @Override public String avisarChatSoloDatos(String topic, String titulo, String cuerpo,
+                                                    Map<String, String> datos, String etiqueta) {
+            soloDatos.add(new Envio(topic, titulo, cuerpo, datos));
             return null;
         }
     }
@@ -55,6 +62,45 @@ class AvisoDeChatTest {
         String equipo = uno.topicDelEquipo();
         assertTrue(equipo.matches("chatequipo_[0-9a-f]{32}"), equipo);
         assertNotEquals(equipo, otroSecreto.topicDelEquipo());
+
+        String responder = uno.topicParaResponder(cuenta);
+        assertTrue(responder.matches("chatr_[0-9a-f]{32}"), responder);
+        assertNotEquals(topic.substring(5), responder.substring(6), "no se deduce uno del otro");
+        String equipoResponder = uno.topicDelEquipoParaResponder();
+        assertTrue(equipoResponder.matches("chatequipor_[0-9a-f]{32}"), equipoResponder);
+        assertNotEquals(equipoResponder, otroSecreto.topicDelEquipoParaResponder());
+    }
+
+    @Test
+    @DisplayName("Solo Android desde la 1.0.19 recibe los avisos para responder")
+    void quienResponde() {
+        assertTrue(AvisoDeChat.respondeDesdeElAviso("android", "1.0.19"));
+        assertTrue(AvisoDeChat.respondeDesdeElAviso("android", "1.0.19-pruebas"));
+        assertTrue(AvisoDeChat.respondeDesdeElAviso("android", "1.1.0"));
+        assertTrue(AvisoDeChat.respondeDesdeElAviso(null, "1.0.20"), "sin plataforma cuenta como Android");
+        assertFalse(AvisoDeChat.respondeDesdeElAviso("android", "1.0.18"));
+        assertFalse(AvisoDeChat.respondeDesdeElAviso("android", null));
+        assertFalse(AvisoDeChat.respondeDesdeElAviso("ios", "1.0.19"));
+        assertFalse(AvisoDeChat.respondeDesdeElAviso("panel", "9.9.9"));
+    }
+
+    @Test
+    @DisplayName("Cada aviso sale dos veces: con notificación y solo con datos, sin el texto")
+    void dosEnvios() {
+        PushDePrueba push = new PushDePrueba();
+        AvisoDeChat aviso = new AvisoDeChat(push, SECRETO, Clock.systemUTC());
+        UUID cuenta = UUID.randomUUID();
+
+        assertTrue(aviso.avisarPersona(cuenta));
+        assertTrue(aviso.avisarEquipo(cuenta));
+
+        assertEquals(2, push.soloDatos.size());
+        PushDePrueba.Envio persona = push.soloDatos.get(0);
+        assertEquals(aviso.topicParaResponder(cuenta), persona.topic());
+        assertEquals(Map.of("tipo", "chat"), persona.datos());
+        PushDePrueba.Envio equipo = push.soloDatos.get(1);
+        assertEquals(aviso.topicDelEquipoParaResponder(), equipo.topic());
+        assertEquals(Map.of("tipo", "chat_equipo", "usuarioId", cuenta.toString()), equipo.datos());
     }
 
     @Test

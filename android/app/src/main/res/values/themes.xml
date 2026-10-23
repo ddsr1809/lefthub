@@ -8,4 +8,15 @@
         <item name="android:statusBarColor">@color/carbon</item>
         <item name="android:navigationBarColor">@color/carbon</item>
     </style>
+
+    <!-- La ventanita de «Escribir al equipo»: transparente, con lo de atrás
+         oscurecido, para que se vea encima de la pantalla de inicio. -->
+    <style name="Theme.Relay.Ventana" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
 </resources>

@@ -2,6 +2,7 @@ package com.voces.backend.chat;
 
 import com.voces.backend.config.RelayProperties;
 import com.voces.backend.push.PushService;
+import com.voces.backend.version.VersionDeApp;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -74,17 +75,52 @@ public class AvisoDeChat {
     }
 
     /**
+     * Los mismos dos, para la app de Android que pinta el aviso ella misma
+     * con el botón «Responder» (que también sale en el reloj). Son topics
+     * aparte porque a esa app el aviso le llega sin bloque de notificación:
+     * una app anterior, con la pantalla apagada, no enseñaría nada. Cada
+     * teléfono recibe uno u otro según lo que le diga el perfil
+     * ({@link #respondeDesdeElAviso}).
+     */
+    public String topicParaResponder(UUID usuarioId) {
+        return "chatr_" + firma("chat-responder:" + usuarioId);
+    }
+
+    public String topicDelEquipoParaResponder() {
+        return "chatequipor_" + firma("chat-equipo-responder");
+    }
+
+    /** Desde esta versión la app de Android contesta desde el aviso y el reloj. */
+    public static final String ANDROID_QUE_RESPONDE = "1.0.19";
+
+    /**
+     * Si la app que pide el perfil pinta ella misma los avisos del chat. Solo
+     * Android desde {@link #ANDROID_QUE_RESPONDE}; iOS y las anteriores siguen
+     * con el aviso que pinta el sistema.
+     *
+     * @param plataforma la cabecera X-App-Plataforma, o null
+     * @param version    la cabecera X-App-Version, o null
+     */
+    public static boolean respondeDesdeElAviso(String plataforma, String version) {
+        return VersionDeApp.ANDROID.equals(VersionDeApp.plataforma(plataforma))
+                && version != null
+                && VersionDeApp.comparar(version, ANDROID_QUE_RESPONDE) >= 0;
+    }
+
+    /**
      * El equipo le escribió: aviso a la persona. Al tocarlo, la app abre su chat.
      *
-     * @return true si se mandó y FCM lo aceptó
+     * @return true si se mandó y FCM aceptó al menos uno de los dos envíos
      */
     public boolean avisarPersona(UUID usuarioId) {
         if (reciente("persona:" + usuarioId)) return false;
-        return push.avisarChat(topicDe(usuarioId),
-                "Tienes un mensaje del equipo de Voces",
-                "Toca para leerlo.",
-                Map.of("tipo", "chat"),
-                "chat") == null;
+        String titulo = "Tienes un mensaje del equipo de Voces";
+        Map<String, String> datos = Map.of("tipo", "chat");
+        boolean anterior = push.avisarChat(topicDe(usuarioId), titulo, "Toca para leerlo.",
+                datos, "chat") == null;
+        boolean nueva = push.avisarChatSoloDatos(topicParaResponder(usuarioId), titulo,
+                "Toca para leerlo o responde desde aquí.", datos, "chat") == null;
+        return anterior || nueva;
     }
 
     /**
@@ -94,11 +130,14 @@ public class AvisoDeChat {
      */
     public boolean avisarEquipo(UUID usuarioId) {
         if (reciente("equipo:" + usuarioId)) return false;
-        return push.avisarChat(topicDelEquipo(),
-                "Mensaje nuevo en el chat",
-                "Una cuenta te escribió. Toca para leerlo.",
-                Map.of("tipo", "chat_equipo", "usuarioId", usuarioId.toString()),
-                "chat_" + usuarioId) == null;
+        String titulo = "Mensaje nuevo en el chat";
+        Map<String, String> datos = Map.of("tipo", "chat_equipo", "usuarioId", usuarioId.toString());
+        boolean anterior = push.avisarChat(topicDelEquipo(), titulo,
+                "Una cuenta te escribió. Toca para leerlo.", datos, "chat_" + usuarioId) == null;
+        boolean nueva = push.avisarChatSoloDatos(topicDelEquipoParaResponder(), titulo,
+                "Una cuenta te escribió. Toca para leerlo o responde desde aquí.",
+                datos, "chat_" + usuarioId) == null;
+        return anterior || nueva;
     }
 
     // -------------------------------------------------------------------------
