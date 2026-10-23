@@ -30,6 +30,7 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.*
 import androidx.navigation.navArgument
 import com.vocesdeizquierda.lefthub.anuncios.Anuncios
+import com.vocesdeizquierda.lefthub.atajos.Atajos
 import com.vocesdeizquierda.lefthub.anuncios.BannersDelFeed
 import com.vocesdeizquierda.lefthub.chat.BandejaViewModel
 import com.vocesdeizquierda.lefthub.chat.ChatViewModel
@@ -142,6 +143,22 @@ class MainActivity : ComponentActivity() {
                     modelo.prepararTienda(applicationContext)
                 }
 
+                // El menú del ícono (dejar el dedo encima): a quién sigue, el
+                // que publicó más reciente primero, y el chat si lo tiene. Se
+                // rehace cuando cambia algo de eso; si no cambió, no hace nada.
+                val conChat = estado.perfil.chat
+                val seguidos = remember(
+                    estado.perfil, estado.creadores, estado.productoras,
+                    estado.ultimosVideos, estado.publicaciones
+                ) {
+                    Atajos.elegir(estado, Atajos.MAXIMO - (if (conChat) 1 else 0))
+                }
+                LaunchedEffect(estado.perfilCargado, seguidos, conChat) {
+                    // Hasta que llegue el perfil no se sabe a quién sigue: no
+                    // se borra el menú que ya había.
+                    if (estado.perfilCargado) Atajos.publicar(applicationContext, seguidos, conChat)
+                }
+
                 // La notificación que abrió la app trae el destino en los extras.
                 // Lo procesamos una vez y lo limpiamos, o al girar la pantalla
                 // volvería a abrirse el video.
@@ -210,6 +227,17 @@ class MainActivity : ComponentActivity() {
      */
     private fun procesarIntent(intent: Intent?) {
         val extras = intent?.extras ?: return
+
+        // Un atajo del menú del ícono: la ficha de quien se tocó.
+        val rutaDeAtajo = extras.getString(Atajos.EXTRA_RUTA)
+        if (rutaDeAtajo != null) {
+            if (Atajos.rutaValida(rutaDeAtajo)) {
+                AvisoTocado.ficha.value = rutaDeAtajo
+                extras.getString(Atajos.EXTRA_ID)?.let { Atajos.usado(this, it) }
+            }
+            intent.replaceExtras(Bundle())
+            return
+        }
 
         // Un mensaje del chat: a esa conversación. Solo abre la pantalla; el
         // mensaje no viaja en el aviso, se lee del servidor.
