@@ -33,15 +33,23 @@ public class ConsultaDeUsuarios {
      * Rasgos de la cuenta. Si se eligen varios, tiene que cumplirlos todos:
      * "Con Google" y "Posible bot" son las cuentas de Google que parecen bots.
      */
-    static final Map<String, String> MARCAS = Map.of(
-            "admin", "u.esAdmin = true",
-            "bot", "u.posibleBot = true",
-            "persona", "u.posibleBot = false",
-            "siguen", "size(u.favoritos) > 0",
-            "nosiguen", "size(u.favoritos) = 0",
-            "sinanuncios", "u.sinAnuncios = true",
-            "activos7", "u.vistoEn >= :hace7",
-            "nuevos7", "u.creadoEn >= :hace7");
+    static final Map<String, String> MARCAS = Map.ofEntries(
+            Map.entry("admin", "u.esAdmin = true"),
+            Map.entry("bot", "u.posibleBot = true"),
+            Map.entry("persona", "u.posibleBot = false"),
+            Map.entry("siguen", "size(u.favoritos) > 0"),
+            Map.entry("nosiguen", "size(u.favoritos) = 0"),
+            Map.entry("sinanuncios", "u.sinAnuncios = true"),
+            Map.entry("activos7", "u.vistoEn >= :hace7"),
+            Map.entry("nuevos7", "u.creadoEn >= :hace7"),
+            // La llave de la app en su última petición (ver seguridad/RegistroDeLlaves).
+            Map.entry("firmaok", "u.llaveFirma = 'ok'"),
+            Map.entry("firmafalta", "u.llaveFirma = 'falta'"),
+            Map.entry("firmamala", "u.llaveFirma in ('mala', 'hora', 'repetida')"),
+            Map.entry("checkok", "u.llaveAppCheck = 'ok'"),
+            Map.entry("checkfalta", "u.llaveAppCheck = 'falta'"),
+            Map.entry("checkmalo", "u.llaveAppCheck = 'malo'"),
+            Map.entry("llavesindatos", "u.llaveVistaEn is null"));
 
     /**
      * Por qué columna se puede ordenar, y con qué expresión.

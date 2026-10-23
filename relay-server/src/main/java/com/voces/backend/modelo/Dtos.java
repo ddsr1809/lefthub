@@ -834,7 +834,15 @@ public final class Dtos {
             /** El equipo la autorizó a agregar al directorio desde la app. */
             boolean editorHabilitado,
             /** El equipo la eligió para ver los stickers. */
-            boolean stickersHabilitado
+            boolean stickersHabilitado,
+            /**
+             * Cómo llegó su última petición (ver seguridad/RegistroDeLlaves):
+             * la firma (ok, falta, mala, hora, repetida), App Check (ok,
+             * falta, malo, sin_verificar) y cuándo. Null = sin datos.
+             */
+            String llaveFirma,
+            String llaveAppCheck,
+            Instant llaveVistaEn
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -845,7 +853,7 @@ public final class Dtos {
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
                     u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
                     u.isRecomendarHabilitado(), u.isYoutubeHabilitado(), u.isEditorHabilitado(),
-                    u.isStickersHabilitado());
+                    u.isStickersHabilitado(), u.getLlaveFirma(), u.getLlaveAppCheck(), u.getLlaveVistaEn());
         }
     }
 

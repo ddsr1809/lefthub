@@ -86,7 +86,12 @@ class FiltroDeAppTest {
     }
 
     private static FiltroDeApp filtro(Modo firma, Modo appCheck, VerificadorAppCheck verificador, CifrasDeLaApp cifras) {
-        return new FiltroDeApp(FIRMA, verificador, modos(firma, appCheck), cifras, RELOJ);
+        return filtro(firma, appCheck, verificador, cifras, null);
+    }
+
+    private static FiltroDeApp filtro(Modo firma, Modo appCheck, VerificadorAppCheck verificador,
+                                      CifrasDeLaApp cifras, RegistroDeLlaves registro) {
+        return new FiltroDeApp(FIRMA, verificador, modos(firma, appCheck), cifras, registro, RELOJ);
     }
 
     // --- Firma ----------------------------------------------------------------
@@ -151,6 +156,31 @@ class FiltroDeAppTest {
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
                 UUID.randomUUID(), null, List.of(new SimpleGrantedAuthority("ROLE_ADMIN"))));
         assertTrue(correr(f, peticion("GET", "/api/stickers/1/imagen")).paso());
+    }
+
+    @Test
+    @DisplayName("Cada petición con sesión deja anotado en su cuenta cómo traía la llave")
+    void anotaLaCuenta() throws Exception {
+        RegistroDeLlaves registro = new RegistroDeLlaves(null, RELOJ);
+        FiltroDeApp f = filtro(Modo.AVISAR, Modo.AVISAR, appCheckQueDa(VerificadorAppCheck.Resultado.OK),
+                new CifrasDeLaApp(RELOJ), registro);
+        UUID ana = UUID.randomUUID();
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(
+                ana, null, List.of(new SimpleGrantedAuthority("ROLE_USUARIO"))));
+
+        MockHttpServletRequest p = peticion("GET", "/api/creadores");
+        firmar(p, AHORA.getEpochSecond());
+        p.addHeader(VerificadorAppCheck.CABECERA, "token");
+        assertTrue(correr(f, p).paso());
+
+        List<RegistroDeLlaves.Pendiente> pendientes = registro.pendientes();
+        assertEquals(1, pendientes.size());
+        assertEquals(ana, pendientes.get(0).cuenta());
+        assertEquals(new RegistroDeLlaves.Estado("ok", "ok"), pendientes.get(0).estado());
+
+        SecurityContextHolder.clearContext();
+        correr(f, peticion("GET", "/api/creadores"));
+        assertEquals(1, registro.pendientes().size(), "sin sesión no hay cuenta que anotar");
     }
 
     // --- App Check ------------------------------------------------------------

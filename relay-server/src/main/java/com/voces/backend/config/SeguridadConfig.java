@@ -6,6 +6,7 @@ import com.voces.backend.seguridad.EstadoDeSesiones;
 import com.voces.backend.seguridad.FiltroDeApp;
 import com.voces.backend.seguridad.FirmaDeApp;
 import com.voces.backend.seguridad.ModosDeLaApp;
+import com.voces.backend.seguridad.RegistroDeLlaves;
 import com.voces.backend.seguridad.VerificadorAppCheck;
 import com.voces.backend.seguridad.LimiteDePeticiones;
 import com.voces.backend.version.AppsService;
@@ -49,6 +50,7 @@ public class SeguridadConfig {
                                                VerificadorAppCheck appCheck,
                                                ModosDeLaApp modosDeLaApp,
                                                CifrasDeLaApp cifrasDeLaApp,
+                                               RegistroDeLlaves registroDeLlaves,
                                                AppsService apps,
                                                MantenimientoService mantenimiento) throws Exception {
         http
@@ -103,7 +105,7 @@ public class SeguridadConfig {
                 // al panel lo deja pasar por su sesión de administrador. Los
                 // filtros con el mismo punto de referencia corren en el orden
                 // en que se agregan.
-                .addFilterBefore(new FiltroDeApp(firma, appCheck, modosDeLaApp, cifrasDeLaApp),
+                .addFilterBefore(new FiltroDeApp(firma, appCheck, modosDeLaApp, cifrasDeLaApp, registroDeLlaves),
                         UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

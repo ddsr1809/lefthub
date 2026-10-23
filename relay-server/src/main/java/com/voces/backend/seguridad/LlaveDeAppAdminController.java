@@ -29,18 +29,29 @@ public class LlaveDeAppAdminController {
     private final VerificadorAppCheck appCheck;
     private final ModosDeLaApp modos;
     private final CifrasDeLaApp cifras;
+    private final RegistroDeLlaves registro;
+
+    /** Días hacia atrás del resumen por cuentas: las que abrieron la app en ese tiempo. */
+    static final int DIAS_POR_CUENTA = 7;
 
     public LlaveDeAppAdminController(FirmaDeApp firma, VerificadorAppCheck appCheck,
-                                     ModosDeLaApp modos, CifrasDeLaApp cifras) {
+                                     ModosDeLaApp modos, CifrasDeLaApp cifras, RegistroDeLlaves registro) {
         this.firma = firma;
         this.appCheck = appCheck;
         this.modos = modos;
         this.cifras = cifras;
+        this.registro = registro;
     }
 
     public record Comprobacion(boolean configurada, String modo) {}
 
-    public record Estado(Comprobacion firma, Comprobacion appCheck, List<CifrasDeLaApp.Hora> horas) {}
+    /**
+     * @param horas   peticiones de las últimas 24 horas, hora por hora
+     * @param cuentas cuántas cuentas, de las que abrieron la app en 7 días,
+     *                trajeron cada cosa en su última petición
+     */
+    public record Estado(Comprobacion firma, Comprobacion appCheck, List<CifrasDeLaApp.Hora> horas,
+                         RegistroDeLlaves.Resumen cuentas) {}
 
     /** Lo que manda el panel. Un campo vacío deja ese modo como está. */
     public record Cambio(String firma, String appCheck) {}
@@ -51,7 +62,8 @@ public class LlaveDeAppAdminController {
         return new Estado(
                 new Comprobacion(firma.configurada(), m.firma().nombre()),
                 new Comprobacion(appCheck.configurado(), m.appCheck().nombre()),
-                cifras.ultimas());
+                cifras.ultimas(),
+                registro.resumen(DIAS_POR_CUENTA));
     }
 
     @PutMapping

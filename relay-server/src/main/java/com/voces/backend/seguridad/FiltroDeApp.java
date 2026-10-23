@@ -55,17 +55,21 @@ public class FiltroDeApp extends OncePerRequestFilter {
     private final VerificadorAppCheck appCheck;
     private final ModosDeLaApp modos;
     private final CifrasDeLaApp cifras;
+    private final RegistroDeLlaves registro;
     private final Clock reloj;
 
-    public FiltroDeApp(FirmaDeApp firma, VerificadorAppCheck appCheck, ModosDeLaApp modos, CifrasDeLaApp cifras) {
-        this(firma, appCheck, modos, cifras, Clock.systemUTC());
+    public FiltroDeApp(FirmaDeApp firma, VerificadorAppCheck appCheck, ModosDeLaApp modos,
+                       CifrasDeLaApp cifras, RegistroDeLlaves registro) {
+        this(firma, appCheck, modos, cifras, registro, Clock.systemUTC());
     }
 
-    FiltroDeApp(FirmaDeApp firma, VerificadorAppCheck appCheck, ModosDeLaApp modos, CifrasDeLaApp cifras, Clock reloj) {
+    FiltroDeApp(FirmaDeApp firma, VerificadorAppCheck appCheck, ModosDeLaApp modos,
+                CifrasDeLaApp cifras, RegistroDeLlaves registro, Clock reloj) {
         this.firma = firma;
         this.appCheck = appCheck;
         this.modos = modos;
         this.cifras = cifras;
+        this.registro = registro;
         this.reloj = reloj;
     }
 
@@ -120,7 +124,12 @@ public class FiltroDeApp extends OncePerRequestFilter {
         boolean fallaCheck = m.appCheck() == Modo.EXIGIR && ra != null
                 && ra != VerificadorAppCheck.Resultado.OK && ra != VerificadorAppCheck.Resultado.SIN_VERIFICAR;
         boolean rechazar = fallaFirma || fallaCheck;
-        if (rf != null || ra != null) cifras.anotar(rf, ra, rechazar);
+        if (rf != null || ra != null) {
+            cifras.anotar(rf, ra, rechazar);
+            // Y en la cuenta, si la petición trae sesión: así el panel sabe
+            // quién trae la llave y quién no (ver RegistroDeLlaves).
+            if (registro != null) registro.anotar(cuenta(), rf, ra);
+        }
 
         if (!rechazar) {
             cadena.doFilter(peticion, respuesta);
@@ -138,6 +147,12 @@ public class FiltroDeApp extends OncePerRequestFilter {
                     "No pudimos comprobar que esta es la app original de Voces de Izquierda. "
                             + "Instálala o actualízala desde Google Play.");
         }
+    }
+
+    /** La cuenta de la sesión de esta petición, o null si no trae. */
+    private static java.util.UUID cuenta() {
+        Authentication a = SecurityContextHolder.getContext().getAuthentication();
+        return a != null && a.getPrincipal() instanceof java.util.UUID id ? id : null;
     }
 
     private static boolean esAdministrador() {
