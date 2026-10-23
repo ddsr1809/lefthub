@@ -124,6 +124,28 @@ a:focus-visible {
   color: var(--suave);
 }
 
+/* Botón de descarga: la parte naranja del degradado del logo, para que el
+   texto oscuro se lea bien (contraste de 5:1 o más). */
+.descarga { margin-top: 2.25rem; }
+.boton-tienda {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 3.25rem;
+  padding: 0.8rem 1.5rem;
+  border-radius: 999px;
+  background: linear-gradient(45deg, #F0502A, #F8961E);
+  color: var(--carbon);
+  font-size: 1.0625rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-decoration: none;
+  box-shadow: 0 0.6rem 1.6rem rgba(240, 80, 42, 0.28);
+}
+.boton-tienda:hover { filter: brightness(1.08); }
+.boton-tienda svg { flex-shrink: 0; }
+.descarga .estado-nota { margin-top: 0.75rem; }
+
 /* El logo y las ondas comparten sistema de coordenadas: las ondas siguen a
    las tres que ya salen del megáfono y continúan fuera del recuadro. */
 .emblema {

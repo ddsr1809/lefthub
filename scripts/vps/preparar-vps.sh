@@ -136,6 +136,11 @@ crear_env() {
     done
     # Y la llave que cifra los mensajes del chat, tambien una por ambiente.
     poner "$archivo" CHAT_LLAVES "1:$(openssl rand -base64 32)"
+    # Y las de los datos personales cifrados (correo, IP...). Ver CifradorDeDatos.
+    poner "$archivo" DATOS_LLAVES "1:$(openssl rand -base64 32)"
+    poner "$archivo" DATOS_INDICE "$(openssl rand -base64 32)"
+    # Y la llave de la firma de la app: la misma va en android/firma.properties.
+    poner "$archivo" APP_LLAVES "1:$(openssl rand -base64 32)"
     chmod 600 "$archivo"
     echo "    Creado $archivo con secretos nuevos."
   fi
@@ -271,6 +276,10 @@ cat <<RESUMEN
 
     Hasta el primer despliegue del pipeline, los dominios responden 503: el
     proxy ya esta, pero todavia no hay contenedor detras.
+
+    Seguridad (ver docs/wiki/seguridad.md):
+      bash $APP_DIR/scripts/vps/endurecer-vps.sh          firewall, fail2ban, SSH, cabeceras
+      bash $APP_DIR/scripts/vps/respaldo-base.sh instalar respaldo diario cifrado
 RESUMEN
 
 if (( ${#pendientes[@]} )); then

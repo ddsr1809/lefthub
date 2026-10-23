@@ -3112,7 +3112,7 @@
         <section class="panel" id="listaUsuarios">
           <div class="panel-head" style="display:block">
             <div class="toolbar">
-              <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo, IP, compañía de internet o ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
+              <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo o IP completos, compañía de internet o ID" title="El correo y la IP se guardan cifrados: escríbelos completos" value="${esc(f.q)}" aria-label="Buscar cuentas">
               <select class="input" id="paisUsuarios" aria-label="País">
                 <option value="">Todos los países</option>
                 ${Object.keys(r.porPais || {}).map((k) => [k, nombrePais(k)]).sort((a, b) => a[1].localeCompare(b[1], 'es')).map(([k, v]) => `<option value="${esc(k)}" ${f.pais === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}
@@ -3153,6 +3153,11 @@
       rol = `<button class="btn" data-accion="rol-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${esc(u.email || u.id)}">Dar acceso al panel</button>`;
     }
 
+    // Para un teléfono perdido o una sesión que se sospecha copiada. A un
+    // invitado no: sin teléfono ligado, no podría recuperar su cuenta.
+    const sesiones = invitado ? '' : `<div><button class="btn" data-accion="cerrar-sesiones-usuario" data-id="${esc(u.id)}" data-nombre="${esc(u.email || u.id)}">Cerrar todas sus sesiones</button>
+        <p class="hint" style="margin:6px 0 0">Sale de la app y del panel en todos sus teléfonos y navegadores. Vuelve a entrar con Google o Apple y lo recupera todo.</p></div>`;
+
     abrirModal(u.email || 'Cuenta de invitado', `
       <div class="stack" style="gap:16px">
         ${u.posibleBot ? `<div class="aviso-mal"><b>Posible bot.</b> ${esc(u.motivoBot || '')}</div>` : ''}
@@ -3178,6 +3183,7 @@
           ${d.sigue.length ? '<ul class="lista-simple">' + d.sigue.map((c) => `<li><span><b>${esc(c.nombre)}</b> <span class="muted">· ${esc(CATEGORIAS[c.categoria] || c.categoria)}</span></span>${c.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Todavía no sigue a nadie, así que no recibe avisos.</p>'}
         </div>
         ${rol ? '<div>' + rol + '</div>' : ''}
+        ${sesiones}
         ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
         ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.youtubeHabilitado === undefined ? '' : fichaYouTube(u)}
@@ -3261,11 +3267,62 @@
           <p class="hint" style="margin:6px 0 0">Verá «Conectar con YouTube» en Ajustes de la app mientras en Apps esté elegido «Administradores y cuentas elegidas», si guardó su cuenta con Google.</p></div>`;
   }
 
+  // ---------------------------------------------------------------------------
+  // Llave de la app: que solo la app original hable con el servidor
+  // ---------------------------------------------------------------------------
+  const MODOS_LLAVE = {
+    apagado: ['Apagado', 'No se mira.'],
+    avisar: ['Solo avisar', 'Se mira y se cuenta, pero todas pasan.'],
+    exigir: ['Exigir', 'La que no la trae buena no pasa.']
+  };
+
+  /** Una de las dos comprobaciones, con sus cifras de las últimas 24 horas. */
+  function bloqueLlave(cual, titulo, explicacion, c, cuentas) {
+    const total = cuentas.ok + cuentas.falta + cuentas.mala + (cuentas.hora || 0) + (cuentas.otra || 0);
+    const pct = (n) => (total ? Math.round((n / total) * 1000) / 10 : 0) + ' %';
+    const filas = [
+      ['Bien', cuentas.ok, 'b-ok'],
+      ['Sin ' + (cual === 'firma' ? 'firma' : 'token') + ' (versiones anteriores o sin la app)', cuentas.falta, 'b-mute'],
+      [cual === 'firma' ? 'Firma equivocada o repetida' : 'Token falso, caducado o de otra app', cuentas.mala, 'b-bad']
+    ];
+    if (cual === 'firma') filas.push(['Hora del teléfono muy desviada', cuentas.hora, 'b-warn']);
+    else filas.push(['Sin poder verificar (Google no respondió)', cuentas.otra, 'b-mute']);
+    return `<div class="llave-bloque" style="margin-top:14px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${esc(titulo)}</b>
+          ${c.configurada ? `<span class="badge ${c.modo === 'exigir' ? 'b-ok' : c.modo === 'avisar' ? 'b-info' : 'b-mute'}">${esc(MODOS_LLAVE[c.modo][0])}</span>`
+                          : '<span class="badge b-warn">Sin configurar en el servidor</span>'}</div>
+        <p class="hint" style="margin:4px 0 8px;font-size:13.5px">${explicacion}</p>
+        ${total ? `<ul class="lista-simple">${filas.map(([t, n, cl]) => `<li><span>${esc(t)}</span><span class="badge ${cl}">${num(n || 0)} · ${pct(n || 0)}</span></li>`).join('')}</ul>`
+                : '<p class="hint" style="margin:0">Sin peticiones comprobadas en las últimas 24 horas.</p>'}
+        ${c.configurada ? `<div class="toolbar" style="margin-top:8px">${Object.entries(MODOS_LLAVE).map(([k, [t, d]]) =>
+            `<button class="btn ${c.modo === k ? 'primary' : ''} ${k === 'exigir' ? 'danger' : ''}" title="${esc(d)}" data-accion="modo-llave" data-cual="${cual}" data-valor="${k}" data-falla="${pct(total - cuentas.ok - (cuentas.otra || 0))}" ${c.modo === k ? 'disabled' : ''}>${esc(t)}</button>`).join('')}</div>` : ''}
+      </div>`;
+  }
+
+  function tarjetaLlave(ll) {
+    const h = ll.horas || [];
+    const suma = (campo) => h.reduce((s, x) => s + (x[campo] || 0), 0);
+    const firma = { ok: suma('firmaOk'), falta: suma('firmaFalta'), mala: suma('firmaMala') + suma('firmaRepetida'), hora: suma('firmaHora') };
+    const check = { ok: suma('appCheckOk'), falta: suma('appCheckFalta'), mala: suma('appCheckMalo'), otra: suma('appCheckSinVerificar') };
+    const rechazadas = suma('rechazadas');
+    return `<section class="panel"><div class="panel-head"><h2>Llave de la app</h2>
+        ${rechazadas ? `<span class="badge b-warn">${num(rechazadas)} rechazadas en 24 h</span>` : ''}</div>
+      <div class="panel-body">
+        <p class="hint" style="margin:0;font-size:13.5px">Que solo la app oficial hable con el servidor. Cada petición de la app trae dos pruebas; aquí se ve cuántas las traen bien y qué se hace con las que no. El panel, el webhook de YouTube y entrar con Google no las necesitan. El cambio vale en medio minuto.</p>
+        <p class="hint" style="margin:8px 0 0;font-size:13.5px"><span class="badge b-warn">Antes de exigir</span> deja unos días en «Solo avisar», publica la app 1.0.18 o posterior y espera a que casi todas salgan «Bien». Las versiones anteriores no traen ninguna de las dos: al exigir, ven la pantalla de «actualiza la app».</p>
+        ${bloqueLlave('firma', 'Firma con la llave de la app',
+          'La llave va dentro de la app. Frena a scripts y bots que llaman a la API sin la app, pero alguien decidido puede sacarla del APK.', ll.firma, firma)}
+        ${bloqueLlave('appCheck', 'App Check (Play Integrity)',
+          'Google confirma que es la app original, instalada desde Play en un teléfono real. No se puede falsificar copiando la app. Quedan fuera los teléfonos sin servicios de Google (algunos Huawei), con root, o la app instalada por fuera de Play.', ll.appCheck, check)}
+      </div></section>`;
+  }
+
   async function vistaApps() {
-    const [a, mant, ajustes] = await Promise.all([
+    const [a, mant, ajustes, llave] = await Promise.all([
       api('/api/admin/apps'),
       api('/api/admin/apps/mantenimiento'),
-      api('/api/admin/ajustes').catch(() => null)
+      api('/api/admin/ajustes').catch(() => null),
+      api('/api/admin/apps/llave').catch(() => null)
     ]);
     const enMant = !!(mant && mant.activo);
     const versiones = a.versiones || [];
@@ -3297,6 +3354,8 @@
         </section>
 
         ${ajustes && 'youtube' in ajustes ? tarjetaYouTube(ajustes) : ''}
+
+        ${llave ? tarjetaLlave(llave) : ''}
 
         <div class="stats">
           <div class="stat"><div class="k">Cuentas</div><div class="v">${num(suma(versiones, 'usuarios'))}</div><div class="n">${num(suma(versiones, 'activos'))} abrieron la app en 30 días</div></div>
@@ -4537,6 +4596,21 @@
           break;
         }
 
+        case 'modo-llave': {
+          const cual = b.dataset.cual, valor = b.dataset.valor;
+          const nombre = cual === 'firma' ? 'la firma con la llave de la app' : 'App Check';
+          if (valor === 'exigir') {
+            const ok = await confirmar('¿Exigir ' + nombre + '?',
+              'En las últimas 24 horas, ' + b.dataset.falla + ' de las peticiones no la traían bien: con esto dejarían de pasar. Las apps de versiones anteriores verán la pantalla de «actualiza la app». Si algo sale mal, vuelve a «Solo avisar» y en medio minuto todo pasa otra vez.',
+              'Exigir', true);
+            if (!ok) break;
+          }
+          await api('/api/admin/apps/llave', { metodo: 'PUT', cuerpo: { [cual]: valor } });
+          toast('Listo: ' + nombre + ' en «' + MODOS_LLAVE[valor][0] + '».');
+          if (estado.vista === 'apps') await vistaApps();
+          break;
+        }
+
         case 'baja-app':
           await ponerBajaDeApp(b.dataset.plataforma, b.dataset.version, b.dataset.valor === 'true', Number(b.dataset.cuentas) || 0);
           break;
@@ -4690,12 +4764,25 @@
           const ok = await confirmar(
             dar ? '¿Dar acceso a ' + nombre + '?' : '¿Quitar el acceso a ' + nombre + '?',
             dar ? 'Podrá entrar a este panel, editar el directorio, mover videos, avisar a los seguidores y ver las cuentas de los usuarios.'
-                : 'Ya no podrá volver a entrar al panel. Si lo tiene abierto ahora mismo, su sesión sigue valiendo hasta que la cierre o caduque.',
+                : 'Ya no podrá usar el panel, ni siquiera si lo tiene abierto ahora mismo.',
             dar ? 'Dar acceso' : 'Quitar acceso', !dar || config.ambiente === 'produccion');
           if (!ok) break;
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/admin?valor=' + dar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
           if (estado.vista === 'usuarios') repintarUsuarios();
+          break;
+        }
+
+        case 'cerrar-sesiones-usuario': {
+          const ok = await confirmar(
+            '¿Cerrar todas las sesiones de ' + b.dataset.nombre + '?',
+            'Saldrá de la app y del panel en todos sus teléfonos y navegadores. Para volver a entrar tendrá que usar Google o Apple; no pierde nada de lo que tenía.',
+            'Cerrar sesiones', true);
+          if (!ok) break;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/cerrar-sesiones', { metodo: 'POST' });
+          toast(r.mensaje || 'Sesiones cerradas.');
+          if (sesion && sesion.id === id) { location.reload(); break; }
+          cerrarModal();
           break;
         }
 

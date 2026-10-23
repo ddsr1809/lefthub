@@ -1,5 +1,6 @@
 package com.vocesdeizquierda.lefthub
 
+import com.vocesdeizquierda.lefthub.seguridad.ProveedorAppCheck
 import android.app.Application
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -27,6 +28,9 @@ class LeftVocesApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // Antes que nada que hable con el servidor: cada petición lleva el
+        // token de App Check (ver seguridad/InterceptorDeFirma).
+        ProveedorAppCheck.instalar()
         ApiRelay.inicializar(this)
         ChatAvisos.inicializar(this)
 

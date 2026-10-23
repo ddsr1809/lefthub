@@ -1,5 +1,8 @@
 package com.voces.backend.modelo;
 
+import com.voces.backend.seguridad.Cifrado;
+import com.voces.backend.seguridad.CifradorDeDatos;
+import com.voces.backend.seguridad.HuellaDeDispositivo;
 import jakarta.persistence.*;
 
 import java.time.Instant;
@@ -33,8 +36,13 @@ public class Usuario {
     @GeneratedValue
     private UUID id;
 
-    /** Identificador que genera la app en la primera ejecucion. */
+    /**
+     * Huella del identificador que genera la app en la primera ejecucion
+     * (h1:...). El identificador original no se guarda: con él se entra en la
+     * cuenta. Ver seguridad/HuellaDeDispositivo y V26.
+     */
     @Column(name = "device_id", unique = true)
+    @Convert(converter = HuellaDeDispositivo.Columna.class)
     private String deviceId;
 
     @Column(nullable = false)
@@ -44,7 +52,13 @@ public class Usuario {
     @Column(name = "proveedor_sub")
     private String proveedorSub;
 
+    /** Cifrado en la base. Para buscarlo, emailHuella. Ver seguridad/CifradorDeDatos y V26. */
+    @Convert(converter = Cifrado.Correo.class)
     private String email;
+
+    /** HMAC del correo en minúsculas: encontrar una cuenta por su correo sin descifrar todas. */
+    @Column(name = "email_huella")
+    private String emailHuella;
 
     @Column(name = "es_admin", nullable = false)
     private boolean esAdmin = false;
@@ -130,10 +144,21 @@ public class Usuario {
     /**
      * Refresh token de Apple. Sin el guardado no se puede revocar el vinculo
      * al borrar la cuenta, y Apple rechaza la app por incumplir la Guideline
-     * 5.1.1(v).
+     * 5.1.1(v). Cifrado en la base: con él se actúa ante Apple en nombre de
+     * la persona.
      */
     @Column(name = "apple_refresh", columnDefinition = "text")
+    @Convert(converter = Cifrado.TokenDeApple.class)
     private String appleRefresh;
+
+    /**
+     * Los tokens de sesión emitidos antes de este momento ya no valen. Lo
+     * fija "cerrar sesión en todos lados" (la persona o el equipo desde el
+     * panel). Null = valen todos los que no hayan caducado. Ver
+     * seguridad/EstadoDeSesiones y V26.
+     */
+    @Column(name = "sesiones_desde")
+    private Instant sesionesDesde;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "favoritos", joinColumns = @JoinColumn(name = "usuario_id"))
@@ -160,9 +185,15 @@ public class Usuario {
 
     // --- Última conexión -----------------------------------------------------
     // Los llena RegistroDeAcceso cada vez que la app abre sesión. Describen el
-    // acceso más reciente, no un historial.
+    // acceso más reciente, no un historial. LimpiezaDeAccesos borra la IP, la
+    // compañía y el agente de quien lleva meses sin abrir la app.
 
+    /** Cifrada en la base. Para buscarla, ipHuella. */
+    @Convert(converter = Cifrado.Ip.class)
     private String ip;
+
+    @Column(name = "ip_huella")
+    private String ipHuella;
 
     /** Código ISO de dos letras: MX, US, ES... */
     private String pais;
@@ -206,7 +237,12 @@ public class Usuario {
     public void setProveedorSub(String proveedorSub) { this.proveedorSub = proveedorSub; }
 
     public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
+    public void setEmail(String email) {
+        this.email = email;
+        this.emailHuella = CifradorDeDatos.huellaSiSePuede(email, CifradorDeDatos.CORREO);
+    }
+
+    public String getEmailHuella() { return emailHuella; }
 
     public boolean isEsAdmin() { return esAdmin; }
     public void setEsAdmin(boolean esAdmin) { this.esAdmin = esAdmin; }
@@ -270,6 +306,18 @@ public class Usuario {
     public String getAppleRefresh() { return appleRefresh; }
     public void setAppleRefresh(String appleRefresh) { this.appleRefresh = appleRefresh; }
 
+    public Instant getSesionesDesde() { return sesionesDesde; }
+
+    /**
+     * Cierra todas sus sesiones: los tokens emitidos hasta ahora dejan de
+     * valer, y el teléfono deja de estar ligado a la cuenta. Sin lo segundo,
+     * la app volvería a entrar sola con su identificador de instalación.
+     */
+    public void cerrarSesiones(Instant ahora) {
+        this.sesionesDesde = ahora;
+        this.deviceId = null;
+    }
+
     public Set<UUID> getFavoritos() { return favoritos; }
     public void setFavoritos(Set<UUID> favoritos) {
         this.favoritos = favoritos != null ? favoritos : new LinkedHashSet<>();
@@ -289,7 +337,12 @@ public class Usuario {
     public void setVistoEn(Instant vistoEn) { this.vistoEn = vistoEn; }
 
     public String getIp() { return ip; }
-    public void setIp(String ip) { this.ip = ip; }
+    public void setIp(String ip) {
+        this.ip = ip;
+        this.ipHuella = CifradorDeDatos.huellaSiSePuede(ip, CifradorDeDatos.IP);
+    }
+
+    public String getIpHuella() { return ipHuella; }
 
     public String getPais() { return pais; }
     public void setPais(String pais) { this.pais = pais; }

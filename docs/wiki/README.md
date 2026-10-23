@@ -17,6 +17,7 @@ Voces Izquierda (proyecto LeftHub) es un directorio curado de creadores de conte
 | [Flujo de ramas y pipeline](pipeline.md) | `development` → `testing` → `master` y despliegue |
 | [Desarrollo local](desarrollo-local.md) | `./local.sh`, comandos `make` y convenciones |
 | [Operación y mantenimiento](operacion.md) | Tareas frecuentes, respaldos y problemas comunes |
+| [Seguridad](seguridad.md) | Datos cifrados, llaves, sesiones, VPS endurecido y respaldos cifrados |
 | [Historial](historial.md) | Versiones publicadas en producción |
 | [Glosario y preguntas](glosario.md) | Términos y preguntas frecuentes |
 

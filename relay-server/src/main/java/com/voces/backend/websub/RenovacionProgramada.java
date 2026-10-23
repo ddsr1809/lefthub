@@ -97,7 +97,9 @@ class TareasInternasController {
 
         // Si el token no está configurado, la ruta simplemente no existe. Es
         // más seguro que dejarla abierta por descuido.
-        if (esperado.isBlank() || !esperado.equals(token)) {
+        if (esperado.isBlank() || token == null || !java.security.MessageDigest.isEqual(
+                esperado.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                token.getBytes(java.nio.charset.StandardCharsets.UTF_8))) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 

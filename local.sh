@@ -61,6 +61,23 @@ poner_llave_del_chat() {
   paso "Agregué la llave del chat (CHAT_LLAVES) a relay-server/.env.local"
 }
 
+# Las llaves que cifran los datos personales en la base (correo, IP...). Sin
+# ellas el servidor no arranca; un .env.local de antes no las tiene.
+poner_llaves_de_datos() {
+  command -v openssl >/dev/null || fallo "Falta openssl (se usa para generar los secretos)."
+  local clave valor
+  for clave in DATOS_LLAVES DATOS_INDICE; do
+    [ -n "$(valor "$clave")" ] && continue
+    if [ "$clave" = DATOS_LLAVES ]; then valor="1:$(openssl rand -base64 32)"; else valor="$(openssl rand -base64 32)"; fi
+    if grep -q "^$clave=" "$ENV"; then
+      sed -i "s|^$clave=.*|$clave=$valor|" "$ENV"
+    else
+      printf '\n%s=%s\n' "$clave" "$valor" >> "$ENV"
+    fi
+    paso "Agregué $clave a relay-server/.env.local"
+  done
+}
+
 # La primera vez crea el .env.local con los secretos ya generados.
 preparar_env() {
   [ -f "$ENV" ] && return 0
@@ -71,6 +88,7 @@ preparar_env() {
     sed -i "s|^$clave=.*|$clave=$(openssl rand -hex 32)|" "$ENV"
   done
   poner_llave_del_chat
+  poner_llaves_de_datos
   cliente="$(grep -oE "[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com" "$RAIZ/admin/config.js" | head -n 1 || true)"
   [ -n "$cliente" ] && sed -i "s|^GOOGLE_CLIENT_ID=.*|GOOGLE_CLIENT_ID=$cliente|" "$ENV"
 
@@ -157,6 +175,7 @@ levantar() {
   comprobar_requisitos
   preparar_env
   poner_llave_del_chat
+  poner_llaves_de_datos
   revisar_env
 
   local puerto api

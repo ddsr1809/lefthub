@@ -47,7 +47,7 @@ public class WebSubController {
             @RequestParam(name = "hub.challenge", required = false) String challenge,
             @RequestParam(name = "hub.lease_seconds", required = false, defaultValue = "0") long lease
     ) {
-        if (!config.websub().tokenCallback().equals(token)) {
+        if (!tokenValido(token)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body("No encontrado");
         }
         if (modo == null || topic == null || challenge == null) {
@@ -76,7 +76,7 @@ public class WebSubController {
             @RequestHeader(name = "X-Hub-Signature", required = false) String firma,
             @RequestBody byte[] cuerpo
     ) {
-        if (!config.websub().tokenCallback().equals(token)) {
+        if (!tokenValido(token)) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
         }
 
@@ -93,5 +93,18 @@ public class WebSubController {
         servicio.procesarAviso(cuerpo);
 
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * El token del callback, comparado en tiempo constante: quien prueba
+     * tokens no puede deducir cuántos caracteres acertó por lo que tarda la
+     * respuesta. Sin token configurado, la ruta no existe para nadie.
+     */
+    private boolean tokenValido(String token) {
+        String esperado = config.websub().tokenCallback();
+        if (esperado == null || esperado.isBlank() || token == null) return false;
+        return java.security.MessageDigest.isEqual(
+                esperado.getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                token.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 }
