@@ -40,8 +40,8 @@ android {
         applicationId = "com.vocesdeizquierda.lefthub"
         minSdk = 24
         targetSdk = 37
-        versionCode = 115
-        versionName = "1.0.15"
+        versionCode = 116
+        versionName = "1.0.16"
 
         // El client_id de tipo 3 ("web") dentro de google-services.json.
         // Credential Manager lo necesita para que el servidor pueda validar el
@@ -136,19 +136,19 @@ android {
             // Google la apruebe. Esto en "false" lo quitaría del todo.
             buildConfigField("boolean", "SUSCRIPCIONES_YOUTUBE", "true")
 
-            // Los identificadores de TU cuenta de AdMob (admob.google.com):
+            // Los identificadores de la cuenta de AdMob (admob.google.com),
+            // editor pub-6584298596563589:
             //
-            //   admobApp    -> el de la app:    ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY
-            //   admobBanner -> el del bloque de anuncios de tipo Banner:
-            //                                   ca-app-pub-XXXXXXXXXXXXXXXX/ZZZZZZZZZZ
+            //   admobApp    -> la app "Voces de Izquierda Hub"
+            //   admobBanner -> el bloque de anuncios Banner "novedades"
             //
-            // Mientras estén vacíos, la app de producción NO muestra anuncios,
-            // aunque el panel los tenga encendidos: no se cuela ningún anuncio
-            // de prueba a la gente. (El manifiesto necesita siempre un ID de
+            // No son secretos: van dentro de la app publicada. Si se vacían,
+            // la app de producción deja de mostrar anuncios aunque el panel
+            // los tenga encendidos. (El manifiesto necesita siempre un ID de
             // app o la biblioteca de Google tumba la app al arrancar; por eso
-            // ahí se pone el de prueba, que sin bloque no pide nada.)
-            val admobApp = ""
-            val admobBanner = ""
+            // sin él se pone el de prueba, que sin bloque no pide nada.)
+            val admobApp = "ca-app-pub-6584298596563589~8770479750"
+            val admobBanner = "ca-app-pub-6584298596563589/6767132949"
 
             manifestPlaceholders["admobAppId"] = admobApp.ifBlank { admobAppDePrueba }
             buildConfigField("String", "ADMOB_BANNER",

@@ -47,7 +47,7 @@ La barra inferior tiene **Directorio** (inicio), **Novedades**, **Stickers** (si
 ## Anuncios y compras
 
 - AdMob solo en Novedades: uno tras el segundo video y luego cada seis, máximo tres (`anuncios/Huecos.kt`).
-- En producción los IDs `admobApp` y `admobBanner` de `build.gradle.kts` están **vacíos**: no se muestran anuncios aunque el panel los encienda. `developer` y `pruebas` usan los IDs de prueba de Google.
+- En producción `build.gradle.kts` lleva los IDs reales desde la 1.0.16: app `ca-app-pub-6584298596563589~8770479750` y bloque Banner «novedades» `ca-app-pub-6584298596563589/6767132949`. `developer` y `pruebas` usan los IDs de prueba de Google. `web/app-ads.txt` declara al editor `pub-6584298596563589`.
 - Compra única `sin_anuncios` con Google Play Billing 8.3.0; el servidor la verifica antes de quitar anuncios.
 
 ## Accesibilidad
