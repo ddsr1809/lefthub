@@ -12,3 +12,10 @@ alias=voces
 
 # La clave que escribiste al crearla.
 clave=
+
+# Las llaves de la app (ver docs/wiki/seguridad.md, "Llave de la app"): la
+# APP_LLAVES del .env de cada servidor, tal cual.
+#   ssh root@216.238.70.157 "grep ^APP_LLAVES /opt/vocesleft/relay-server/.env.prod"
+# Sin ellas la app sale sin firma, y no podrá entrar si el panel la exige.
+llave_app_pruebas=
+llave_app_produccion=

@@ -44,6 +44,10 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 # Android. Auth y Firestore se fueron: ahora los cubre nuestro servidor.
 firebase-bom = { group = "com.google.firebase", name = "firebase-bom", version.ref = "firebaseBom" }
 firebase-messaging = { group = "com.google.firebase", name = "firebase-messaging" }
+# App Check: que solo la app original hable con el servidor. Play Integrity en
+# pruebas y produccion; el proveedor de depuración, en developer.
+firebase-appcheck-playintegrity = { group = "com.google.firebase", name = "firebase-appcheck-playintegrity" }
+firebase-appcheck-debug = { group = "com.google.firebase", name = "firebase-appcheck-debug" }
 
 # Credential Manager: reemplaza al obsoleto GoogleSignInClient.
 androidx-credentials = { group = "androidx.credentials", name = "credentials", version.ref = "credentials" }
