@@ -66,6 +66,7 @@ Hay 10,000 unidades al día. WebSub cuesta 0; cada video nuevo, 1; cifras y tít
 | Servidor no arranca: «Falta DATOS_LLAVES» o «DATOS_INDICE» | El `.env` no las tiene o están mal escritas | `deploy-vps.sh` las crea solas; a mano: `echo "1:$(openssl rand -base64 32)"` y `openssl rand -base64 32` |
 | El panel muestra correos que empiezan por `c1:` | Se perdió o cambió la llave con que se cifraron | Reponer la `DATOS_LLAVES` anterior (del respaldo cifrado); los datos siguen intactos |
 | La app dice «Hay demasiadas personas entrando desde tu red» | Límite de entradas por IP (429) | Se pasa solo en segundos; si es constante, revisar quién inunda `/api/auth` en el log de Apache |
+| La app enseña «actualiza la app» o «No pudimos comprobar que esta es la app original» | Se exige la firma o App Check (Apps → Llave de la app) y esa app no la trae buena | Ver la tarjeta: si son muchas, volver a «Solo avisar». Una app compilada sin `llave_app_produccion` no trae firma |
 | Anuncios encendidos y no sale ninguno | App en «Debe revisarse» en AdMob, o la instalada es anterior a 1.0.16 | Vincular la app a Play en AdMob y esperar la revisión; actualizar la app |
 | No aparece el botón de comprar | Falta `COMPRAS_PAQUETE` o el producto en Play | Panel → Anuncios dice *Compra sin configurar*; registro `ComprasRepo` |
 | Entrar con Google falla en el panel | `origin_mismatch` | Agregar el dominio a orígenes autorizados del cliente web |

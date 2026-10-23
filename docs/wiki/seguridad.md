@@ -2,7 +2,7 @@
 
 # Seguridad
 
-Qué protege a las personas que usan la app y al dueño del sistema, dónde están las llaves y qué hacer en el VPS. Desde el servidor 1.0.15.
+Qué protege a las personas que usan la app y al dueño del sistema, dónde están las llaves y qué hacer en el VPS. Desde el servidor 1.0.15 y la app Android 1.0.18.
 
 ## En resumen
 
@@ -13,6 +13,7 @@ Qué protege a las personas que usan la app y al dueño del sistema, dónde est�
 | Sesiones | JWT de 30 días que se comprueban contra la base en cada petición: se pueden cerrar, y quitar el rol de administrador surte efecto al momento |
 | Panel y chat del equipo | Solo con una sesión abierta con Google o Apple. El identificador del teléfono nunca da acceso de administrador |
 | Entrar | Límite de entradas por IP en `/api/auth`; fail2ban saca del firewall a quien insiste |
+| Quién habla con la API | Solo la app original: firma con la llave de la app y App Check (Play Integrity). Se elige en el panel si solo se avisa o se exige |
 | VPS | Firewall (solo SSH, 80 y 443), fail2ban, parches automáticos, SSH endurecido, Apache sin versión y con HSTS y CSP en el panel |
 | Respaldos | Diarios, cifrados para la llave pública del dueño: el VPS puede cifrarlos pero no abrirlos |
 | Retención | La IP, la compañía y el agente se borran tras 90 días sin abrir la app |
@@ -62,6 +63,62 @@ Las huellas son HMAC-SHA256 con `DATOS_INDICE`. Sirven para encontrar «este cor
 - **Cerrar todas las sesiones de una cuenta:** Panel → Usuarios → la cuenta → «Cerrar todas sus sesiones» (`POST /api/admin/usuarios/{id}/cerrar-sesiones`), o la propia persona con `POST /api/cuenta/cerrar-sesiones`. Además desliga su teléfono: vuelve a entrar con Google o Apple y no pierde nada. A un invitado no se le puede hacer (sin teléfono, su cuenta quedaría perdida).
 - **«Cerrar sesión» en Android ahora sí cierra.** Antes, la app olvidaba su token y la sesión invisible siguiente devolvía la misma cuenta de Google. Ahora llama a `/api/auth/salir`, que desliga el teléfono. Las versiones anteriores de la app siguen con el comportamiento viejo.
 - **Límite de entradas:** 60 por IP de margen y una más cada 2 s en `/api/auth/*`. Es generoso a propósito: muchos teléfonos comparten IP en las redes móviles (CGNAT).
+
+## Llave de la app
+
+Que solo la app oficial hable con `leftapp.vocesdeizquierda.com`. Cada petición de la app trae dos pruebas, y el servidor (`seguridad/FiltroDeApp`) las comprueba:
+
+| Prueba | Qué demuestra | Límite |
+| --- | --- | --- |
+| **Firma con la llave de la app** (`X-App-Llave`, `X-App-Hora`, `X-App-Nonce`, `X-App-Firma`) | Que quien llama tiene la llave que va dentro de la app. HMAC-SHA256 del método, la ruta, la hora y un nonce de un solo uso: una petición copiada no se puede repetir, y una de hace más de 5 minutos no vale | La llave va dentro del APK: quien descompile la app con paciencia puede sacarla. Frena a scripts, bots y escáneres, no a alguien decidido |
+| **App Check con Play Integrity** (`X-Firebase-AppCheck`) | Google confirma que es la app firmada por Play, instalada desde Play, en un teléfono Android real. El token lo firma Google y dura una hora | Se quedan sin token los teléfonos sin servicios de Google (algunos Huawei), con root, o con la app instalada fuera de Play |
+
+**No las necesitan:** el panel (va con su sesión de administrador), entrar con Google o Apple (exige un token real de esa cuenta), `/api/servidor`, las fotos públicas (`/api/fotos`), el webhook de YouTube y las tareas internas.
+
+**Qué se hace con las que fallan** se elige en el panel, **Apps → Llave de la app**, para cada prueba por separado, y vale en medio minuto:
+
+- **Solo avisar** (como empieza): se cuentan y pasan todas. La tarjeta enseña, de las últimas 24 horas, cuántas venían bien.
+- **Exigir**: la que no la trae buena no pasa. Una app sin ninguna de las dos (versiones anteriores a 1.0.18) recibe 426 y enseña la pantalla de «actualiza la app». Una con la prueba mala recibe 403.
+- Si algo sale mal, se vuelve a «Solo avisar» y en medio minuto todo pasa otra vez.
+
+Cada hora el registro del servidor también resume: `Llave de la app, última hora: N petición(es)…`.
+
+### Poner la firma
+
+1. El despliegue crea `APP_LLAVES` en cada `.env` (`.env.test` y `.env.prod`, distintas).
+2. Cópialas a `android/firma.properties` (fuera de git):
+   ```bash
+   ssh root@216.238.70.157 "grep ^APP_LLAVES /opt/vocesleft/relay-server/.env.test /opt/vocesleft/relay-server/.env.prod"
+   ```
+   ```properties
+   llave_app_pruebas=1:…      # la de .env.test
+   llave_app_produccion=1:…   # la de .env.prod
+   ```
+3. Compila la app como siempre. Si falta `llave_app_produccion`, Gradle lo avisa y la app sale sin firma.
+
+**Cambiar de llave** (si sospechas que alguien la sacó): agrega una nueva sin quitar la vieja, `APP_LLAVES=1:vieja,2:nueva`, y recrea el servidor. Pon la línea completa en `firma.properties` (la app firma con la de número más alto) y publica la app. Cuando casi nadie use versiones anteriores, quita la `1:` del servidor.
+
+### Poner App Check (Play Integrity)
+
+Una sola vez, en las consolas de Google (unos 15 minutos):
+
+1. **Huella de la llave de Play.** Play Console → la app → *Probar y publicar → Configuración de la app → Integridad de la app → Firma de apps*: copia el **SHA-256 del certificado de la clave de firma de apps**.
+2. **Firebase.** [console.firebase.google.com](https://console.firebase.google.com) → el proyecto (número `1025901070678`) → ⚙ *Configuración del proyecto* → la app Android `com.vocesdeizquierda.lefthub` → *Agregar huella digital*: pega ese SHA-256.
+3. **App Check.** Firebase → *App Check* → *Apps* → `com.vocesdeizquierda.lefthub` → **Play Integrity** → pega el mismo SHA-256 → Guardar. Si te pide activar la API de Play Integrity en Google Cloud, actívala.
+4. **Vincular Play con Google Cloud.** Play Console → *Integridad de la app* → *API de Play Integrity* → *Vincular un proyecto de Cloud* → el del proyecto de Firebase.
+5. **No** pulses «Aplicar» en las tarjetas de servicios de Firebase de App Check: eso es para Firestore y compañía, que no usamos. Lo comprueba nuestro servidor.
+6. Para `com.vocesdeizquierda.lefthub.pruebas` haz lo mismo si la instalas desde Play (prueba interna). Si la instalas con un APK, regístrala con el proveedor **Debug**, como developer:
+7. **developer:** App Check → `…lefthub.developer` → *Debug* → al abrir la app, Logcat escribe `Enter this debug secret into the allow list…`; pega ese secreto en *Administrar tokens de depuración*.
+
+El servidor ya trae `APP_CHECK_PROYECTO=1025901070678`. Para aceptar solo la app de cada ambiente, pon en el `.env` su `APP_CHECK_APPS` (el `mobilesdk_app_id` de `google-services.json`): producción `1:1025901070678:android:bdaed1e83362e0074b6ef7`, pruebas `1:1025901070678:android:1b22a606c86d110b4b6ef7`.
+
+Play Integrity tiene una cuota gratuita de 10 000 consultas al día por app. App Check renueva el token una vez por hora y por teléfono mientras la app está abierta, así que alcanza para varios miles de personas al día; si se acerca al límite, Play Console deja pedir más.
+
+### Cuándo exigir
+
+1. Publica la app 1.0.18 (la primera con las dos pruebas) y deja todo en «Solo avisar» unos días.
+2. Cuando en la tarjeta casi todas salgan «Bien» en la firma, exige la firma. Para que nadie con una versión anterior se quede con errores raros, puedes además dar de baja esas versiones en **Apps** (verán «actualiza»).
+3. App Check, igual, pero mira con calma «Sin token» y «Token falso»: son teléfonos reales que no pasan Play Integrity. Exigirlo los deja fuera.
 
 ## El VPS
 
@@ -157,5 +214,5 @@ El `.env` restaurado trae las mismas `DATOS_LLAVES`, `DATOS_INDICE` y `CHAT_LLAV
 - **Verificación en dos pasos** en las cuentas de Google de todos los administradores y en GitHub (quien entra a GitHub puede desplegar).
 - **Secretos de GitHub:** revisar quién tiene acceso al repositorio y a `VPS_SSH_KEY`; rotarla si alguien dejó el equipo.
 - **App:** un botón «Cerrar sesión en todos los teléfonos» que llame a `POST /api/cuenta/cerrar-sesiones` (hoy se hace desde el panel).
-- **iOS:** al migrarla a las sesiones del servidor, guardar el token y el identificador del teléfono en el Llavero (Keychain), no en `UserDefaults`, y llamar a `/api/auth/salir` al cerrar sesión.
+- **iOS:** al migrarla a las sesiones del servidor, guardar el token y el identificador del teléfono en el Llavero (Keychain), no en `UserDefaults`, llamar a `/api/auth/salir` al cerrar sesión, y agregar la firma y App Check (con App Attest). Mientras no los tenga, no exijas ninguna de las dos si hay iPhones usando la app.
 - **Política de privacidad:** se actualizó (cifrado y 90 días de IP). Revísala antes de publicarla.

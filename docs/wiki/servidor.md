@@ -22,7 +22,7 @@ El servidor es una app Spring Boot 3.4.1 en Java 21 con PostgreSQL 17, Flyway y 
 | `avisos` | Notificaciones que el equipo manda desde el panel, con historial |
 | `version` | `/api/servidor`, mantenimiento (503), versión mínima y bajas por versión (426) |
 | `acceso` | Último acceso por cuenta, país y ASN con bases DB-IP locales, posibles bots |
-| `seguridad` | Datos personales cifrados en la base (correo, IP, token de Apple, compras), huella del teléfono, cierre de sesiones, límite de entradas por IP, limpieza de IPs viejas. Ver [Seguridad](seguridad.md) |
+| `seguridad` | Datos personales cifrados en la base (correo, IP, token de Apple, compras), huella del teléfono, cierre de sesiones, límite de entradas por IP, limpieza de IPs viejas, y la llave de la app (firma + App Check). Ver [Seguridad](seguridad.md) |
 
 ## Rutas principales
 
@@ -89,6 +89,8 @@ Tablas centrales: `usuarios`, `creadores`, `productoras`, `canales`, `canales_cr
 | `DATOS_LLAVES` | **Obligatoria.** Cifran correo, IP, token de Apple y compras en la base; mismo formato que `CHAT_LLAVES` |
 | `DATOS_INDICE` | **Obligatoria.** Llave de las huellas para buscar un correo o una IP; no se cambia nunca |
 | `DATOS_DIAS_IP` | Días sin abrir la app tras los que se borra la IP (90; 0 = nunca) |
+| `APP_LLAVES` | Llave de la firma de la app, `1:base64`; la misma va en `android/firma.properties`. Ver [Seguridad](seguridad.md#llave-de-la-app) |
+| `APP_CHECK_PROYECTO`, `APP_CHECK_APPS` | Número del proyecto de Firebase y apps aceptadas para App Check |
 | `REPLICA_URL`, `REPLICA_TOKEN` | Copia de producción a testing |
 | `APP_VERSION_MINIMA_ANDROID`, `_IOS` | Versión mínima atendida; vacío = todas |
 | `CORS_ORIGENES` | Orígenes permitidos del panel |
