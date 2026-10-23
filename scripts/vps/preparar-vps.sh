@@ -139,6 +139,8 @@ crear_env() {
     # Y las de los datos personales cifrados (correo, IP...). Ver CifradorDeDatos.
     poner "$archivo" DATOS_LLAVES "1:$(openssl rand -base64 32)"
     poner "$archivo" DATOS_INDICE "$(openssl rand -base64 32)"
+    # Y la llave de la firma de la app: la misma va en android/firma.properties.
+    poner "$archivo" APP_LLAVES "1:$(openssl rand -base64 32)"
     chmod 600 "$archivo"
     echo "    Creado $archivo con secretos nuevos."
   fi

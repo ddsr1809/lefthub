@@ -182,6 +182,17 @@ relay:
     # internet y el agente de la cuenta. 0 = nunca.
     dias-ip: ${DATOS_DIAS_IP:90}
 
+  llave-de-app:
+    # Que solo la app original hable con la API (ver seguridad/FiltroDeApp).
+    # Si se exige o solo se avisa, se elige en el panel: Apps > Llave de la app.
+    # Firma con la llave de la app, "1:BASE64". La misma va en
+    # android/firma.properties (llave_app_pruebas / llave_app_produccion).
+    llaves: ${APP_LLAVES:}
+    # Firebase App Check (Play Integrity): el NÚMERO del proyecto de Firebase.
+    app-check-proyecto: ${APP_CHECK_PROYECTO:}
+    # Opcional: los IDs de app de Firebase aceptados, separados por comas.
+    app-check-apps: ${APP_CHECK_APPS:}
+
   replica:
     # Solo en producción: URL del servidor de testing. Cada creador que se
     # guarda en el panel se copia allá. Vacío = no se copia nada.

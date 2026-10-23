@@ -42,6 +42,11 @@ services:
       DATOS_LLAVES: ${DATOS_LLAVES:?Falta DATOS_LLAVES en el archivo .env}
       DATOS_INDICE: ${DATOS_INDICE:?Falta DATOS_INDICE en el archivo .env}
       DATOS_DIAS_IP: ${DATOS_DIAS_IP:-90}
+      # Que solo la app original hable con la API. Si se exige, se elige en el
+      # panel (Apps > Llave de la app). Ver seguridad/FiltroDeApp.
+      APP_LLAVES: ${APP_LLAVES:-}
+      APP_CHECK_PROYECTO: ${APP_CHECK_PROYECTO:-1025901070678}
+      APP_CHECK_APPS: ${APP_CHECK_APPS:-}
       WEBSUB_SECRETO: ${WEBSUB_SECRETO}
       WEBSUB_TOKEN_CALLBACK: ${WEBSUB_TOKEN_CALLBACK}
       TOKEN_INTERNO: ${TOKEN_INTERNO}

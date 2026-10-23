@@ -26,8 +26,29 @@ public record RelayProperties(
         @DefaultValue Servidor servidor,
         @DefaultValue Apps apps,
         @DefaultValue Chat chat,
-        @DefaultValue Datos datos
+        @DefaultValue Datos datos,
+        @DefaultValue LlaveDeApp llaveDeApp
 ) {
+
+    /**
+     * Que solo la app original hable con la API. Ver seguridad/FiltroDeApp.
+     * Qué se hace con lo que no pasa (apagado, avisar, exigir) se elige en
+     * el panel, no aquí.
+     *
+     * @param llaves           llaves de la firma, "1:BASE64" (como CHAT_LLAVES).
+     *                         Las mismas van en android/firma.properties.
+     *                         Vacío = no se comprueba la firma.
+     * @param appCheckProyecto número del proyecto de Firebase (project_number
+     *                         de google-services.json). Vacío = sin App Check.
+     * @param appCheckApps     IDs de app de Firebase permitidos
+     *                         (1:123:android:abc), separados por comas.
+     *                         Vacío = cualquier app del proyecto.
+     */
+    public record LlaveDeApp(
+            @DefaultValue("") String llaves,
+            @DefaultValue("") String appCheckProyecto,
+            @DefaultValue("") String appCheckApps
+    ) {}
 
     /**
      * Las llaves de los datos personales cifrados en la base: correo, IP,

@@ -81,12 +81,13 @@ if ! grep -qE '^CHAT_LLAVES=.+' "$archivo_env"; then
   echo "Creada la llave del chat (CHAT_LLAVES) en $archivo_env. Guarda una copia aparte: sin ella no se leen los mensajes."
 fi
 
-# Las llaves de los datos personales (DATOS_LLAVES y DATOS_INDICE). Igual que
-# la del chat: si faltan se crean aqui, una sola vez, y nunca salen del VPS.
-# Sin ellas el servidor no arranca.
-for clave in DATOS_LLAVES DATOS_INDICE; do
+# Las llaves de los datos personales (DATOS_LLAVES y DATOS_INDICE) y la de la
+# firma de la app (APP_LLAVES). Igual que la del chat: si faltan se crean
+# aqui, una sola vez. Sin las de datos el servidor no arranca. APP_LLAVES hay
+# que copiarla a android/firma.properties para compilar la app.
+for clave in DATOS_LLAVES DATOS_INDICE APP_LLAVES; do
   if ! grep -qE "^${clave}=.+" "$archivo_env"; then
-    if [[ "$clave" == DATOS_LLAVES ]]; then llave="1:$(openssl rand -base64 32)"; else llave="$(openssl rand -base64 32)"; fi
+    if [[ "$clave" != DATOS_INDICE ]]; then llave="1:$(openssl rand -base64 32)"; else llave="$(openssl rand -base64 32)"; fi
     if grep -q "^${clave}=" "$archivo_env"; then
       sed -i "s|^${clave}=.*|${clave}=${llave}|" "$archivo_env"
     else
