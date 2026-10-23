@@ -3112,7 +3112,7 @@
         <section class="panel" id="listaUsuarios">
           <div class="panel-head" style="display:block">
             <div class="toolbar">
-              <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo, IP, compañía de internet o ID" value="${esc(f.q)}" aria-label="Buscar cuentas">
+              <input class="input buscar" id="qUsuarios" type="search" placeholder="Buscar por correo o IP completos, compañía de internet o ID" title="El correo y la IP se guardan cifrados: escríbelos completos" value="${esc(f.q)}" aria-label="Buscar cuentas">
               <select class="input" id="paisUsuarios" aria-label="País">
                 <option value="">Todos los países</option>
                 ${Object.keys(r.porPais || {}).map((k) => [k, nombrePais(k)]).sort((a, b) => a[1].localeCompare(b[1], 'es')).map(([k, v]) => `<option value="${esc(k)}" ${f.pais === k ? 'selected' : ''}>${esc(v)}</option>`).join('')}
@@ -3153,6 +3153,11 @@
       rol = `<button class="btn" data-accion="rol-usuario" data-id="${esc(u.id)}" data-valor="true" data-nombre="${esc(u.email || u.id)}">Dar acceso al panel</button>`;
     }
 
+    // Para un teléfono perdido o una sesión que se sospecha copiada. A un
+    // invitado no: sin teléfono ligado, no podría recuperar su cuenta.
+    const sesiones = invitado ? '' : `<div><button class="btn" data-accion="cerrar-sesiones-usuario" data-id="${esc(u.id)}" data-nombre="${esc(u.email || u.id)}">Cerrar todas sus sesiones</button>
+        <p class="hint" style="margin:6px 0 0">Sale de la app y del panel en todos sus teléfonos y navegadores. Vuelve a entrar con Google o Apple y lo recupera todo.</p></div>`;
+
     abrirModal(u.email || 'Cuenta de invitado', `
       <div class="stack" style="gap:16px">
         ${u.posibleBot ? `<div class="aviso-mal"><b>Posible bot.</b> ${esc(u.motivoBot || '')}</div>` : ''}
@@ -3178,6 +3183,7 @@
           ${d.sigue.length ? '<ul class="lista-simple">' + d.sigue.map((c) => `<li><span><b>${esc(c.nombre)}</b> <span class="muted">· ${esc(CATEGORIAS[c.categoria] || c.categoria)}</span></span>${c.activo ? '' : '<span class="badge b-mute">Oculto</span>'}</li>`).join('') + '</ul>' : '<p class="hint" style="margin:0">Todavía no sigue a nadie, así que no recibe avisos.</p>'}
         </div>
         ${rol ? '<div>' + rol + '</div>' : ''}
+        ${sesiones}
         ${u.chatHabilitado === undefined ? '' : fichaChat(u)}
         ${u.recomendarHabilitado === undefined ? '' : fichaRecomendar(u)}
         ${u.youtubeHabilitado === undefined ? '' : fichaYouTube(u)}
@@ -4690,12 +4696,25 @@
           const ok = await confirmar(
             dar ? '¿Dar acceso a ' + nombre + '?' : '¿Quitar el acceso a ' + nombre + '?',
             dar ? 'Podrá entrar a este panel, editar el directorio, mover videos, avisar a los seguidores y ver las cuentas de los usuarios.'
-                : 'Ya no podrá volver a entrar al panel. Si lo tiene abierto ahora mismo, su sesión sigue valiendo hasta que la cierre o caduque.',
+                : 'Ya no podrá usar el panel, ni siquiera si lo tiene abierto ahora mismo.',
             dar ? 'Dar acceso' : 'Quitar acceso', !dar || config.ambiente === 'produccion');
           if (!ok) break;
           const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/admin?valor=' + dar, { metodo: 'POST' });
           toast(r.mensaje || 'Listo.');
           if (estado.vista === 'usuarios') repintarUsuarios();
+          break;
+        }
+
+        case 'cerrar-sesiones-usuario': {
+          const ok = await confirmar(
+            '¿Cerrar todas las sesiones de ' + b.dataset.nombre + '?',
+            'Saldrá de la app y del panel en todos sus teléfonos y navegadores. Para volver a entrar tendrá que usar Google o Apple; no pierde nada de lo que tenía.',
+            'Cerrar sesiones', true);
+          if (!ok) break;
+          const r = await api('/api/admin/usuarios/' + encodeURIComponent(id) + '/cerrar-sesiones', { metodo: 'POST' });
+          toast(r.mensaje || 'Sesiones cerradas.');
+          if (sesion && sesion.id === id) { location.reload(); break; }
+          cerrarModal();
           break;
         }
 
