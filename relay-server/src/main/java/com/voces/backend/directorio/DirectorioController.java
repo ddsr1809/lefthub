@@ -8,11 +8,15 @@ import com.voces.backend.modelo.*;
 import com.voces.backend.push.PushService;
 import com.voces.backend.recomendaciones.RecomendacionesService;
 import com.voces.backend.editor.EditorService;
+import com.voces.backend.version.VersionDeApp;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.text.Collator;
@@ -578,11 +582,29 @@ public class DirectorioController {
         boolean disponible = chat.disponible();
         boolean activo = disponible && usuario.isChatHabilitado();
         boolean equipo = disponible && usuario.isEsAdmin();
+        // La app que contesta desde el aviso recibe los topics de solo datos;
+        // al leer el perfil se da de baja de los anteriores ella sola.
+        boolean responde = respondeDesdeElAviso();
         return new Dtos.ChatDelPerfil(activo,
-                activo ? avisoDeChat.topicDe(usuario.getId()) : null,
+                !activo ? null : responde
+                        ? avisoDeChat.topicParaResponder(usuario.getId())
+                        : avisoDeChat.topicDe(usuario.getId()),
                 activo ? chat.sinLeerDeLaPersona(usuario.getId()) : 0,
-                equipo ? avisoDeChat.topicDelEquipo() : null,
+                !equipo ? null : responde
+                        ? avisoDeChat.topicDelEquipoParaResponder()
+                        : avisoDeChat.topicDelEquipo(),
                 equipo ? chat.conversacionesSinLeer() : 0);
+    }
+
+    /** Si quien pide el perfil es la app de Android que pinta ella los avisos del chat. */
+    private static boolean respondeDesdeElAviso() {
+        if (!(RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes atributos)) {
+            return false;
+        }
+        HttpServletRequest peticion = atributos.getRequest();
+        return AvisoDeChat.respondeDesdeElAviso(
+                peticion.getHeader(VersionDeApp.CABECERA_PLATAFORMA),
+                peticion.getHeader(VersionDeApp.CABECERA_VERSION));
     }
 
     private Usuario usuarioActual() {
