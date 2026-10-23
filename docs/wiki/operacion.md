@@ -63,7 +63,7 @@ Hay 10,000 unidades al día. WebSub cuesta 0; cada video nuevo, 1; cifras y tít
 | Avisos de videos viejos | El hub reenvía entradas al suscribirse | Corte de 6 h en `relay.websub.antiguedad-maxima-horas` |
 | Servidor no arranca: `Migration checksum mismatch` | Se editó o reutilizó una migración | Restaurar el archivo original; lo nuevo va en otra migración |
 | Servidor no arranca tras cambiar el chat | `CHAT_LLAVES` mal escrita | Corregir formato `n:base64`; el pipeline revierte solo |
-| Anuncios encendidos y no sale ninguno | Faltan `admobApp`/`admobBanner` en producción | Ponerlos en `build.gradle.kts` y publicar |
+| Anuncios encendidos y no sale ninguno | App en «Debe revisarse» en AdMob, o la instalada es anterior a 1.0.16 | Vincular la app a Play en AdMob y esperar la revisión; actualizar la app |
 | No aparece el botón de comprar | Falta `COMPRAS_PAQUETE` o el producto en Play | Panel → Anuncios dice *Compra sin configurar*; registro `ComprasRepo` |
 | Entrar con Google falla en el panel | `origin_mismatch` | Agregar el dominio a orígenes autorizados del cliente web |
 | Entrar con Google falla en Android | SHA-1 o `WEB_CLIENT_ID` equivocados | Cliente Android por cada `applicationId` en el proyecto 445243795956 |

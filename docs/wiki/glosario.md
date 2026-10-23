@@ -31,4 +31,4 @@
 
 **¿Se puede usar la app sin cuenta?** Sí. Se crea una cuenta anónima por dispositivo; guardarla con Google conserva lo seguido al cambiar de teléfono.
 
-**¿Qué falta por hacer?** Migrar iOS al servidor actual; poner los IDs reales de AdMob; aprobar la verificación OAuth de `youtube.readonly` para abrirlo a todos; avisos de Twitch por EventSub; más pruebas automáticas e interfaz; stickers en iPhone.
+**¿Qué falta por hacer?** Migrar iOS al servidor actual; aprobar la verificación OAuth de `youtube.readonly` para abrirlo a todos; avisos de Twitch por EventSub; más pruebas automáticas e interfaz; stickers en iPhone.
