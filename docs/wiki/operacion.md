@@ -42,9 +42,9 @@ docker compose --env-file /opt/vocesleft/relay-server/.env.prod --env-file .env.
 
 | Qué | Dónde | Cómo |
 | --- | --- | --- |
-| Base completa (cuentas, favoritos, chat cifrado) | VPS | `pg_dump` diario por cron, comprimido (lo recomienda `relay-server/COMO-EJECUTAR.md`; confirmar que está instalado). Lo que duele perder son cuentas y favoritos |
+| Base completa (cuentas, favoritos, chat, compras) con sus llaves | `/var/backups/vocesleft/` en el VPS, cifrada para la llave del dueño | `bash /opt/vocesleft/scripts/vps/respaldo-base.sh instalar` (diario 3:15, 14 días). Bajarlos a tu equipo con `rsync`. Ver [Seguridad](seguridad.md#respaldos-cifrados) |
 | Directorio (creadores, medios, canales, fotos, ajustes) | `datos/{testing,produccion}/` en `master` | Temporizador del VPS cada 5 min; commits que no disparan el pipeline |
-| Llave del chat `CHAT_LLAVES` | Solo en `.env.prod` / `.env.test` | Guardar copia fuera del VPS; sin ella los mensajes no se leen |
+| Llaves `CHAT_LLAVES`, `DATOS_LLAVES`, `DATOS_INDICE` | `.env.prod` / `.env.test`, y dentro del respaldo cifrado | Guardar copia fuera del VPS; sin ellas el chat, los correos y las IPs no se leen |
 | Versiones del panel | Base de datos | Van en el `pg_dump`, no en `datos/` |
 
 Pendiente de revisar: en `master` la carpeta `datos/` solo tiene su `README.md`, sin commits de respaldo desde el 8 oct. El temporizador quizá no está instalado o no tiene permiso de escritura (Deploy key con *Allow write access*).
@@ -63,6 +63,9 @@ Hay 10,000 unidades al día. WebSub cuesta 0; cada video nuevo, 1; cifras y tít
 | Avisos de videos viejos | El hub reenvía entradas al suscribirse | Corte de 6 h en `relay.websub.antiguedad-maxima-horas` |
 | Servidor no arranca: `Migration checksum mismatch` | Se editó o reutilizó una migración | Restaurar el archivo original; lo nuevo va en otra migración |
 | Servidor no arranca tras cambiar el chat | `CHAT_LLAVES` mal escrita | Corregir formato `n:base64`; el pipeline revierte solo |
+| Servidor no arranca: «Falta DATOS_LLAVES» o «DATOS_INDICE» | El `.env` no las tiene o están mal escritas | `deploy-vps.sh` las crea solas; a mano: `echo "1:$(openssl rand -base64 32)"` y `openssl rand -base64 32` |
+| El panel muestra correos que empiezan por `c1:` | Se perdió o cambió la llave con que se cifraron | Reponer la `DATOS_LLAVES` anterior (del respaldo cifrado); los datos siguen intactos |
+| La app dice «Hay demasiadas personas entrando desde tu red» | Límite de entradas por IP (429) | Se pasa solo en segundos; si es constante, revisar quién inunda `/api/auth` en el log de Apache |
 | Anuncios encendidos y no sale ninguno | App en «Debe revisarse» en AdMob, o la instalada es anterior a 1.0.16 | Vincular la app a Play en AdMob y esperar la revisión; actualizar la app |
 | No aparece el botón de comprar | Falta `COMPRAS_PAQUETE` o el producto en Play | Panel → Anuncios dice *Compra sin configurar*; registro `ComprasRepo` |
 | Entrar con Google falla en el panel | `origin_mismatch` | Agregar el dominio a orígenes autorizados del cliente web |

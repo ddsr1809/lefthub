@@ -22,16 +22,17 @@ El servidor es una app Spring Boot 3.4.1 en Java 21 con PostgreSQL 17, Flyway y 
 | `avisos` | Notificaciones que el equipo manda desde el panel, con historial |
 | `version` | `/api/servidor`, mantenimiento (503), versión mínima y bajas por versión (426) |
 | `acceso` | Último acceso por cuenta, país y ASN con bases DB-IP locales, posibles bots |
+| `seguridad` | Datos personales cifrados en la base (correo, IP, token de Apple, compras), huella del teléfono, cierre de sesiones, límite de entradas por IP, limpieza de IPs viejas. Ver [Seguridad](seguridad.md) |
 
 ## Rutas principales
 
 | Grupo | Rutas |
 | --- | --- |
-| Sesión | `POST /api/auth/anonimo`, `/google`, `/apple`, `/renovar` |
+| Sesión | `POST /api/auth/anonimo`, `/google`, `/apple`, `/renovar`, `/salir` (desliga el teléfono al cerrar sesión) |
 | Directorio | `GET /api/creadores`, `/api/creadores/{id}`, `/api/creadores/{id}/publicaciones?parte=propios\|compartidos`, `/api/productoras[/{id}]`, `/api/productoras/{id}/publicaciones`, `/api/canales/{id}/publicaciones`, `/api/canales/ultimos-videos`, `/api/etiquetas` |
 | Novedades | `GET /api/publicaciones[?tipo=cortos]`, `/api/publicaciones/mas-vistas?periodo=hoy\|semana`, `/api/videos/{videoId}` |
 | Perfil | `GET /api/perfil`, `PUT /api/preferencias`, `PUT/DELETE /api/favoritos/{id}`, `/api/favoritos/productoras/{id}`, `/api/favoritos/canales/{id}` |
-| Cuenta | `POST /api/reportes`, `DELETE /api/cuenta` |
+| Cuenta | `POST /api/reportes`, `DELETE /api/cuenta`, `POST /api/cuenta/cerrar-sesiones` |
 | Funciones | `/api/youtube/suscripciones`, `/api/anuncios/folio`, `/api/anuncios/compra`, `/api/chat/*`, `/api/recomendaciones`, `/api/editor/*`, `/api/stickers/*`, `/api/fotos/{id}` |
 | Panel | `/api/admin/*` (requiere `es_admin`) |
 | Internas | `/websub`, `/internal/renovar`, `/internal/replica/*`, `/internal/versiones/*`, `GET /api/servidor`, `/actuator/health` |
@@ -51,10 +52,12 @@ Las apps mandan `X-App-Version` y `X-App-Plataforma` en cada petición; el servi
 | Bases DB-IP | cada 12 h | País y compañía de internet de cada IP |
 | Purgar suscripciones YouTube | diario 03:30 | Borrar lo que lleve 30 días sin refrescarse |
 | Renovar WebSub | 04:00 cada 4 días (Hermosillo) | El arrendamiento del hub dura 10 días |
+| Limpiar accesos | diario 04:30 (Hermosillo) | Borrar IP, compañía y agente de cuentas sin abrir la app en `DATOS_DIAS_IP` días (90) |
+| Cifrar lo pendiente | al arrancar | Cifra lo que siga legible y convierte `device_id` en huella (la primera vez tras V26) |
 
 ## Base de datos
 
-Flyway aplica 25 migraciones (`V1`–`V25`) al arrancar y Hibernate solo valida (`ddl-auto: validate`). **Un número de migración que ya llegó a un servidor nunca se reutiliza ni se borra**: el servidor no arrancaría (`Migration checksum mismatch`).
+Flyway aplica 26 migraciones (`V1`–`V26`) al arrancar y Hibernate solo valida (`ddl-auto: validate`). **Un número de migración que ya llegó a un servidor nunca se reutiliza ni se borra**: el servidor no arrancaría (`Migration checksum mismatch`).
 
 | Migración | Qué agrega |
 | --- | --- |
@@ -66,6 +69,7 @@ Flyway aplica 25 migraciones (`V1`–`V25`) al arrancar y Hibernate solo valida 
 | V16–V18 | Revisión de videos, cifras, avisos del equipo |
 | V19–V21 | Chat, recomendaciones, YouTube por cuenta |
 | V22–V25 | Duración en segundos, mensajes del chat, editores desde la app, stickers |
+| V26 | Huellas para buscar correo, IP y comprobantes cifrados; `sesiones_desde` para cerrar sesiones |
 
 Tablas centrales: `usuarios`, `creadores`, `productoras`, `canales`, `canales_creadores`, `creadores_productoras`, `publicaciones`, `favoritos*`, `ajustes`, `fotos`, `folios`, `compras`, `mensajes_chat`, `paquetes_stickers`, `stickers`.
 
@@ -82,6 +86,9 @@ Tablas centrales: `usuarios`, `creadores`, `productoras`, `canales`, `canales_cr
 | `FCM_PROYECTO_ID`, `FCM_CREDENCIALES_HOST` | Push; JSON montado en `/secretos/fcm.json` |
 | `COMPRAS_PAQUETE`, `COMPRAS_PRODUCTO` | Confirmar compras de Play (`sin_anuncios`) |
 | `CHAT_LLAVES` | Llaves del chat, formato `1:vieja,2:nueva` |
+| `DATOS_LLAVES` | **Obligatoria.** Cifran correo, IP, token de Apple y compras en la base; mismo formato que `CHAT_LLAVES` |
+| `DATOS_INDICE` | **Obligatoria.** Llave de las huellas para buscar un correo o una IP; no se cambia nunca |
+| `DATOS_DIAS_IP` | Días sin abrir la app tras los que se borra la IP (90; 0 = nunca) |
 | `REPLICA_URL`, `REPLICA_TOKEN` | Copia de producción a testing |
 | `APP_VERSION_MINIMA_ANDROID`, `_IOS` | Versión mínima atendida; vacío = todas |
 | `CORS_ORIGENES` | Orígenes permitidos del panel |
