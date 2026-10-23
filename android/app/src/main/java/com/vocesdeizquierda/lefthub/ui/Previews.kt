@@ -423,7 +423,9 @@ private fun PreviaPerfilDeCreador() {
             productoras = listOf(estudio),
             // Su canal principal, sus últimos videos y los de otros canales en los que aparece.
             videos = VideosDeCanal("juan", lista = publicaciones),
-            videosDondeAparece = VideosDeCanal("juan", lista = publicaciones.take(1))
+            videosDondeAparece = VideosDeCanal("juan", lista = publicaciones.take(1)),
+            // Donde cae el anuncio, entre sus videos y los de otros canales.
+            anuncio = { MarcoDeAnuncio(onQuitar = {}) { Text("Aquí va el anuncio") } }
         )
     }
 }

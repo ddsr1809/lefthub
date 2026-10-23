@@ -374,9 +374,11 @@ private fun TituloDeGrupo(texto: String) {
  * cada botón dice en palabras qué va a pasar al tocarlo.
  *
  * De arriba abajo: quién es y el botón de seguir; su canal principal; sus
- * últimos videos; los videos de canales de otros en los que también aparece;
- * sus otros canales, sus redes y sus medios. Puede faltar cualquiera: hay
- * quien solo tiene una cuenta de X o de Instagram.
+ * últimos videos; un anuncio, si toca; los videos de canales de otros en los
+ * que también aparece; sus otros canales, sus redes y sus medios. Puede
+ * faltar cualquiera: hay quien solo tiene una cuenta de X o de Instagram.
+ *
+ * @param anuncio el espacio de publicidad, ya decidido fuera: null si no toca.
  */
 @Composable
 fun CreadorPantalla(
@@ -400,7 +402,8 @@ fun CreadorPantalla(
     perfil: Perfil = Perfil(),
     onSeguirCanal: (Canal) -> Unit = {},
     /** Los videos de canales de otros (un medio, otro creador) en los que aparece. */
-    videosDondeAparece: VideosDeCanal = VideosDeCanal()
+    videosDondeAparece: VideosDeCanal = VideosDeCanal(),
+    anuncio: (@Composable () -> Unit)? = null
 ) {
     val esquema = MaterialTheme.colorScheme
     val contexto = LocalContext.current
@@ -590,6 +593,14 @@ fun CreadorPantalla(
 
         // 2. Lo último que subió a sus canales.
         pintarVideos("Sus últimos videos", videos)
+
+        // El anuncio, después de lo suyo y nunca pegado al botón de seguir:
+        // con un hueco por encima, para que un toque con el pulso inseguro no
+        // caiga en él. La tarjeta dice «Publicidad» y no se parece a un video.
+        if (anuncio != null) {
+            Spacer(Modifier.height(Espacio.lg))
+            anuncio()
+        }
 
         // 3. Los videos de canales de otros (un medio, otro creador) en los
         //    que también aparece.

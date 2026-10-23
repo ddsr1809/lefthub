@@ -595,6 +595,10 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     seccionDirectorio = SeccionDirectorio.CREADORES
                 }
 
+                // Un anuncio, igual que en la ficha de un video: propio de
+                // esta ficha y suelto al salir de ella.
+                val anuncio = rememberAnuncioDeFicha(conAnuncios, onQuitar = irAAjustes)
+
                 CreadorPantalla(
                     creador = modelo.creador(id),
                     siguiendo = id in estado.perfil.favoritos,
@@ -613,7 +617,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         ?: VideosDeCanal(id, cargando = true),
                     abiertos = Abiertos.videos,
                     perfil = estado.perfil,
-                    onSeguirCanal = { modelo.alternarCanal(it) }
+                    onSeguirCanal = { modelo.alternarCanal(it) },
+                    anuncio = anuncio
                 )
             }
 
@@ -722,20 +727,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     if (estado.fichaDeVideo.videoId != id) modelo.abrirFichaDeVideo(VideoDeAviso(id))
                 }
 
-                // Su propio anuncio, apartado de los de Novedades. Solo se
-                // pide si el equipo tiene los anuncios encendidos y la persona
-                // no los quitó, y se suelta al salir de la ficha.
-                val bannerDelVideo = remember { BannersDelFeed() }
-                DisposableEffect(Unit) { onDispose { bannerDelVideo.destruir() } }
-                val anchoDeAnuncio = LocalConfiguration.current.screenWidthDp - 2 * Espacio.md.value.toInt() - 2
-                LaunchedEffect(conAnuncios, anchoDeAnuncio) {
-                    if (conAnuncios) bannerDelVideo.asegurar(contexto, 1, anchoDeAnuncio)
-                    else bannerDelVideo.destruir()
-                }
-                val banner = bannerDelVideo.banners.firstOrNull()?.takeIf { conAnuncios && it.cargado }
-                val anuncio: (@Composable () -> Unit)? = banner?.let { b ->
-                    @Composable { TarjetaAnuncio(banner = b, onQuitar = irAAjustes) }
-                }
+                // Su propio anuncio, apartado de los de Novedades.
+                val anuncio = rememberAnuncioDeFicha(conAnuncios, onQuitar = irAAjustes)
 
                 val ficha = estado.fichaDeVideo.takeIf { it.videoId == id }
                     ?: FichaDeVideo(VideoDeAviso(id), cargando = true)
@@ -1057,4 +1050,34 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
             }
         )
     }
+}
+
+/**
+ * El anuncio de una ficha: la de un video o la de un creador.
+ *
+ * Es uno solo y es de esa ficha, aparte de los de Novedades: se pide al
+ * entrar y se suelta al salir. Si la persona no ve anuncios (el equipo los
+ * tiene apagados, o los quitó) no se pide nada.
+ *
+ * Devuelve null mientras no hay anuncio que pintar: todavía no llegó, Google
+ * no tenía ninguno que dar, o no toca. La ficha entonces no deja hueco.
+ */
+@Composable
+private fun rememberAnuncioDeFicha(
+    conAnuncios: Boolean,
+    onQuitar: () -> Unit
+): (@Composable () -> Unit)? {
+    val contexto = LocalContext.current
+    val anuncios = remember { BannersDelFeed() }
+    DisposableEffect(Unit) { onDispose { anuncios.destruir() } }
+
+    // El ancho de una tarjeta: la pantalla menos el margen a cada lado y el borde.
+    val ancho = LocalConfiguration.current.screenWidthDp - 2 * Espacio.md.value.toInt() - 2
+    LaunchedEffect(conAnuncios, ancho) {
+        if (conAnuncios) anuncios.asegurar(contexto, 1, ancho) else anuncios.destruir()
+    }
+
+    val banner = anuncios.banners.firstOrNull()?.takeIf { conAnuncios && it.cargado } ?: return null
+    val tarjeta: @Composable () -> Unit = { TarjetaAnuncio(banner = banner, onQuitar = onQuitar) }
+    return tarjeta
 }
