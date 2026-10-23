@@ -20,7 +20,8 @@ import androidx.compose.ui.viewinterop.AndroidView
 import com.vocesdeizquierda.lefthub.anuncios.Banner
 
 /**
- * La tarjeta de un anuncio en Novedades.
+ * La tarjeta de un anuncio: en Novedades y en las fichas de un video y de un
+ * creador.
  *
  * Tiene que distinguirse de la de un video sin tener que fijarse: lleva la
  * palabra "Publicidad" escrita arriba, otro fondo, y no tiene ni miniatura
