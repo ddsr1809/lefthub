@@ -7,6 +7,7 @@ import com.nimbusds.jose.jwk.source.JWKSourceBuilder;
 import com.nimbusds.jose.proc.JWSVerificationKeySelector;
 import com.nimbusds.jose.proc.SecurityContext;
 import com.nimbusds.jwt.JWTClaimsSet;
+import com.nimbusds.jwt.SignedJWT;
 import com.nimbusds.jwt.proc.ConfigurableJWTProcessor;
 import com.nimbusds.jwt.proc.DefaultJWTClaimsVerifier;
 import com.nimbusds.jwt.proc.DefaultJWTProcessor;
@@ -20,6 +21,7 @@ import java.net.URI;
 import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -91,6 +93,37 @@ public class VerificadorAppCheck {
 
     public boolean configurado() {
         return !proyecto.isEmpty();
+    }
+
+    /**
+     * Las apps de Firebase del proyecto, como se llaman en el panel. Son los
+     * mobilesdk_app_id de google-services.json; una que no esté aquí sale con
+     * el final de su identificador.
+     */
+    static final Map<String, String> NOMBRES_DE_APPS = Map.of(
+            "1:1025901070678:android:bdaed1e83362e0074b6ef7", "Producción",
+            "1:1025901070678:android:1b22a606c86d110b4b6ef7", "Pruebas",
+            "1:1025901070678:android:77a8355ef485c9794b6ef7", "Developer");
+
+    public static String nombreDeApp(String id) {
+        if (id == null || id.isBlank()) return null;
+        String nombre = NOMBRES_DE_APPS.get(id);
+        return nombre != null ? nombre : "Otra app (…" + id.substring(Math.max(0, id.length() - 6)) + ")";
+    }
+
+    /**
+     * La app (el `sub`) de un token que verificar() ya dio por bueno, sin
+     * volver a comprobar su firma. Solo se llama con tokens buenos: de uno
+     * malo, el `sub` lo podría haber escrito cualquiera.
+     */
+    public static String appDelToken(String token) {
+        if (token == null || token.isBlank()) return null;
+        try {
+            String sub = SignedJWT.parse(token.trim()).getJWTClaimsSet().getSubject();
+            return sub == null || sub.isBlank() || sub.length() > 120 ? null : sub;
+        } catch (Exception e) {
+            return null;
+        }
     }
 
     public Resultado verificar(String token) {

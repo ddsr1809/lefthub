@@ -906,7 +906,11 @@ public final class Dtos {
              */
             String llaveFirma,
             String llaveAppCheck,
-            Instant llaveVistaEn
+            Instant llaveVistaEn,
+            /** Con qué número de llave firma (1, 2...). Null: sin firma o sin datos. */
+            Short llaveNumero,
+            /** De qué app viene su App Check bueno: "Producción", "Pruebas"... */
+            String llaveAppCheckApp
     ) {
         public static UsuarioAdminDto de(Usuario u) {
             return new UsuarioAdminDto(u.getId(), u.getProveedor(), u.getEmail(), u.isEsAdmin(),
@@ -917,7 +921,8 @@ public final class Dtos {
                     u.isSinAnuncios(), u.getSinAnunciosOrigen(), u.getSinAnunciosDesde(),
                     u.getAppVersion(), u.getAppPlataforma(), u.isChatHabilitado(),
                     u.isRecomendarHabilitado(), u.isYoutubeHabilitado(), u.isEditorHabilitado(),
-                    u.isStickersHabilitado(), u.getLlaveFirma(), u.getLlaveAppCheck(), u.getLlaveVistaEn());
+                    u.isStickersHabilitado(), u.getLlaveFirma(), u.getLlaveAppCheck(), u.getLlaveVistaEn(),
+                    u.getLlaveNumero(), com.voces.backend.seguridad.VerificadorAppCheck.nombreDeApp(u.getLlaveAppCheckApp()));
         }
     }
 

@@ -1,5 +1,6 @@
 package com.voces.backend.seguridad;
 
+import com.voces.backend.version.VersionDeApp;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,10 +46,20 @@ public class RegistroDeLlaves {
     /** Cómo llegó la última petición de una cuenta. null = esa comprobación estaba apagada. */
     record Estado(String firma, String appCheck) {}
 
+    /**
+     * Lo demás que se sabe de su última petición: con qué número de llave
+     * firmó, de qué app vino su App Check bueno, y con qué versión de la app.
+     * Cada dato se conserva hasta que llega otro: una petición del panel no
+     * trae versión, y una sin firma no borra la versión que había.
+     */
+    record Detalle(Short numero, String appCheckApp, String plataforma, String version) {}
+
     private static final class Entrada {
         Estado ultimo;
+        Detalle detalle = new Detalle(null, null, null, null);
         Instant cuando;
         Estado guardado;
+        Detalle detalleGuardado;
         Instant guardadoEn;
     }
 
@@ -68,35 +79,71 @@ public class RegistroDeLlaves {
 
     /** Una petición comprobada de esa cuenta. */
     public void anotar(UUID cuenta, FirmaDeApp.Resultado firma, VerificadorAppCheck.Resultado appCheck) {
-        if (cuenta == null || (firma == null && appCheck == null)) return;
+        anotar(cuenta, firma, null, appCheck, null, null, null);
+    }
+
+    /**
+     * Una petición de esa cuenta.
+     *
+     * @param numero     el número de llave con que firmó (X-App-Llave), o null
+     * @param app        la app de su App Check, solo si salió bueno
+     * @param plataforma android | ios, de la cabecera; null si no la trae
+     * @param version    la versión de la app ya limpia ("1.2.2"); null si no la trae
+     */
+    public void anotar(UUID cuenta, FirmaDeApp.Resultado firma, Short numero,
+                       VerificadorAppCheck.Resultado appCheck, String app,
+                       String plataforma, String version) {
+        boolean conLlave = firma != null || appCheck != null;
+        if (cuenta == null || (!conLlave && version == null)) return;
         if (cuentas.size() >= TOPE) {
             log.warn("Demasiadas cuentas en el registro de llaves sin volcar; se vuelca ya");
             volcar();
             if (cuentas.size() >= TOPE) cuentas.clear();
         }
-        Estado estado = new Estado(nombre(firma), nombre(appCheck));
         Instant ahora = reloj.instant();
         Entrada e = cuentas.computeIfAbsent(cuenta, k -> new Entrada());
         synchronized (e) {
-            e.ultimo = estado;
+            Detalle antes = e.detalle;
+            if (conLlave) {
+                e.ultimo = new Estado(nombre(firma), nombre(appCheck));
+                e.detalle = new Detalle(firma != null ? numero : antes.numero(),
+                        appCheck == VerificadorAppCheck.Resultado.OK ? app
+                                : appCheck != null ? null : antes.appCheckApp(),
+                        antes.plataforma(), antes.version());
+            }
+            if (version != null) {
+                e.detalle = new Detalle(e.detalle.numero(), e.detalle.appCheckApp(), plataforma, version);
+            }
             e.cuando = ahora;
         }
     }
 
-    /** Lo que hay que escribir: lo que cambió desde la última vez, o lleva rato sin escribirse. */
-    record Pendiente(UUID cuenta, Estado estado, Instant cuando) {}
+    /** Solo la versión de la app: una petición que no pasa por las comprobaciones de la llave. */
+    public void anotarVersion(UUID cuenta, String plataforma, String version) {
+        anotar(cuenta, null, null, null, null, plataforma, version);
+    }
+
+    /**
+     * Lo que hay que escribir: lo que cambió desde la última vez, o lleva rato
+     * sin escribirse. `estado` es null si de esa cuenta solo se sabe la versión.
+     */
+    record Pendiente(UUID cuenta, Estado estado, Detalle detalle, Instant cuando) {
+        Pendiente(UUID cuenta, Estado estado, Instant cuando) {
+            this(cuenta, estado, new Detalle(null, null, null, null), cuando);
+        }
+    }
 
     List<Pendiente> pendientes() {
         Instant ahora = reloj.instant();
         List<Pendiente> lista = new ArrayList<>();
         cuentas.forEach((cuenta, e) -> {
             synchronized (e) {
-                if (e.ultimo == null) return;
-                boolean cambio = !Objects.equals(e.ultimo, e.guardado);
-                boolean refrescar = e.guardadoEn != null
+                if (e.ultimo == null && e.detalle.version() == null) return;
+                boolean cambio = !Objects.equals(e.ultimo, e.guardado) || !Objects.equals(e.detalle, e.detalleGuardado);
+                boolean refrescar = e.ultimo != null && e.guardadoEn != null
                         && Duration.between(e.guardadoEn, ahora).compareTo(REFRESCO) >= 0
                         && e.cuando.isAfter(e.guardadoEn);
-                if (cambio || refrescar) lista.add(new Pendiente(cuenta, e.ultimo, e.cuando));
+                if (cambio || refrescar) lista.add(new Pendiente(cuenta, e.ultimo, e.detalle, e.cuando));
             }
         });
         return lista;
@@ -107,6 +154,7 @@ public class RegistroDeLlaves {
         if (e == null) return;
         synchronized (e) {
             e.guardado = p.estado();
+            e.detalleGuardado = p.detalle();
             e.guardadoEn = reloj.instant();
         }
     }
@@ -117,11 +165,25 @@ public class RegistroDeLlaves {
         List<Pendiente> lista = pendientes();
         if (lista.isEmpty()) return;
         try {
-            jdbc.batchUpdate(
-                    "update usuarios set llave_firma = ?, llave_app_check = ?, llave_vista_en = ? where id = ?",
-                    lista.stream().map(p -> new Object[]{
-                            p.estado().firma(), p.estado().appCheck(), Timestamp.from(p.cuando()), p.cuenta()
-                    }).toList());
+            List<Object[]> llaves = lista.stream().filter(p -> p.estado() != null).map(p -> new Object[]{
+                    p.estado().firma(), p.estado().appCheck(), p.detalle().numero(), p.detalle().appCheckApp(),
+                    Timestamp.from(p.cuando()), p.cuenta()
+            }).toList();
+            if (!llaves.isEmpty()) {
+                jdbc.batchUpdate("update usuarios set llave_firma = ?, llave_app_check = ?, llave_numero = ?,"
+                        + " llave_app_check_app = ?, llave_vista_en = ? where id = ?", llaves);
+            }
+            // La versión, con cada petición y no solo al entrar: quien instala
+            // la nueva cambia de versión en el panel en un minuto.
+            List<Object[]> versiones = lista.stream().filter(p -> p.detalle().version() != null).map(p -> new Object[]{
+                    p.detalle().version(), p.detalle().plataforma(), VersionDeApp.orden(p.detalle().version()),
+                    p.cuenta(), p.detalle().version(), p.detalle().plataforma()
+            }).toList();
+            if (!versiones.isEmpty()) {
+                jdbc.batchUpdate("update usuarios set app_version = ?, app_plataforma = ?, app_version_orden = ?"
+                        + " where id = ? and (app_version is distinct from ? or app_plataforma is distinct from ?)",
+                        versiones);
+            }
             lista.forEach(this::marcarGuardado);
         } catch (RuntimeException ex) {
             // Se reintenta al minuto siguiente con lo que haya entonces.
@@ -132,7 +194,8 @@ public class RegistroDeLlaves {
         cuentas.entrySet().removeIf(en -> {
             Entrada e = en.getValue();
             synchronized (e) {
-                return Objects.equals(e.ultimo, e.guardado) && e.cuando != null && e.cuando.isBefore(viejo);
+                return Objects.equals(e.ultimo, e.guardado) && Objects.equals(e.detalle, e.detalleGuardado)
+                        && e.cuando != null && e.cuando.isBefore(viejo);
             }
         });
     }

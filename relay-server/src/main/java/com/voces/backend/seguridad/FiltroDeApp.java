@@ -1,5 +1,6 @@
 package com.voces.backend.seguridad;
 
+import com.voces.backend.version.VersionDeApp;
 import com.voces.backend.seguridad.ModosDeLaApp.Modo;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -104,7 +105,11 @@ public class FiltroDeApp extends OncePerRequestFilter {
         respuesta.setHeader(CABECERA_HORA_SERVIDOR, String.valueOf(ahora.getEpochSecond()));
 
         String ruta = ruta(peticion);
-        if ("OPTIONS".equalsIgnoreCase(peticion.getMethod()) || exenta(ruta) || esAdministrador()) {
+        boolean opciones = "OPTIONS".equalsIgnoreCase(peticion.getMethod());
+        if (opciones || exenta(ruta) || esAdministrador()) {
+            // Un administrador que usa la app tampoco pasa por las
+            // comprobaciones, pero su versión de la app sí se anota.
+            if (!opciones && !exenta(ruta)) anotarVersion(peticion);
             cadena.doFilter(peticion, respuesta);
             return;
         }
@@ -124,11 +129,16 @@ public class FiltroDeApp extends OncePerRequestFilter {
         boolean fallaCheck = m.appCheck() == Modo.EXIGIR && ra != null
                 && ra != VerificadorAppCheck.Resultado.OK && ra != VerificadorAppCheck.Resultado.SIN_VERIFICAR;
         boolean rechazar = fallaFirma || fallaCheck;
-        if (rf != null || ra != null) {
-            cifras.anotar(rf, ra, rechazar);
-            // Y en la cuenta, si la petición trae sesión: así el panel sabe
-            // quién trae la llave y quién no (ver RegistroDeLlaves).
-            if (registro != null) registro.anotar(cuenta(), rf, ra);
+        if (rf != null || ra != null) cifras.anotar(rf, ra, rechazar);
+        // Y en la cuenta, si la petición trae sesión: así el panel sabe quién
+        // trae la llave y quién no, con qué número de llave, de qué app viene
+        // su App Check y con qué versión de la app (ver RegistroDeLlaves).
+        if (registro != null) {
+            String[] version = versionDeLaApp(peticion);
+            registro.anotar(cuenta(), rf, rf != null ? numeroDeLlave(peticion.getHeader(FirmaDeApp.CABECERA_LLAVE)) : null,
+                    ra, ra == VerificadorAppCheck.Resultado.OK
+                            ? VerificadorAppCheck.appDelToken(peticion.getHeader(VerificadorAppCheck.CABECERA)) : null,
+                    version[0], version[1]);
         }
 
         if (!rechazar) {
@@ -146,6 +156,35 @@ public class FiltroDeApp extends OncePerRequestFilter {
             responder(respuesta, 403, soloHora ? "hora" : "app",
                     "No pudimos comprobar que esta es la app original de Voces de Izquierda. "
                             + "Instálala o actualízala desde Google Play.");
+        }
+    }
+
+    private void anotarVersion(HttpServletRequest peticion) {
+        if (registro == null) return;
+        String[] version = versionDeLaApp(peticion);
+        if (version[1] != null) registro.anotarVersion(cuenta(), version[0], version[1]);
+    }
+
+    /**
+     * {plataforma, versión} de la app que hace la petición. Vacío si no lo
+     * dice o si es el panel, que entra con su propia cabecera.
+     */
+    static String[] versionDeLaApp(HttpServletRequest peticion) {
+        String cabecera = peticion.getHeader(VersionDeApp.CABECERA_PLATAFORMA);
+        String plataforma = VersionDeApp.plataforma(cabecera);
+        String version = VersionDeApp.limpia(peticion.getHeader(VersionDeApp.CABECERA_VERSION));
+        if (VersionDeApp.PANEL.equals(plataforma) || version == null) return new String[]{null, null};
+        return new String[]{plataforma, version};
+    }
+
+    /** El número de la cabecera X-App-Llave, o null si no viene o no es un número razonable. */
+    static Short numeroDeLlave(String cabecera) {
+        if (cabecera == null || cabecera.isBlank()) return null;
+        try {
+            short n = Short.parseShort(cabecera.trim());
+            return n >= 1 && n <= 999 ? n : null;
+        } catch (NumberFormatException e) {
+            return null;
         }
     }
 

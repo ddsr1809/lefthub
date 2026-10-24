@@ -218,6 +218,10 @@ public class Usuario {
     @Column(name = "app_plataforma")
     private String appPlataforma;
 
+    /** La versión como número, para ordenar (1.2.2 -> 1002002). La pone setAppVersion. Ver V29. */
+    @Column(name = "app_version_orden")
+    private Integer appVersionOrden;
+
     // --- Llave de la app -----------------------------------------------------
     // Cómo llegó su última petición: con la firma de la llave de la app y con
     // el token de App Check, o sin ellos. Los escribe solo
@@ -235,6 +239,14 @@ public class Usuario {
 
     @Column(name = "llave_vista_en", insertable = false, updatable = false)
     private Instant llaveVistaEn;
+
+    /** Con qué llave (el número de APP_LLAVES) firmó su última petición. Ver V29. */
+    @Column(name = "llave_numero", insertable = false, updatable = false)
+    private Short llaveNumero;
+
+    /** La app de Firebase de su último App Check bueno (el `sub` del token). Ver V29. */
+    @Column(name = "llave_app_check_app", insertable = false, updatable = false)
+    private String llaveAppCheckApp;
 
     @Column(name = "posible_bot", nullable = false)
     private boolean posibleBot = false;
@@ -375,7 +387,14 @@ public class Usuario {
     public void setAgente(String agente) { this.agente = agente; }
 
     public String getAppVersion() { return appVersion; }
-    public void setAppVersion(String appVersion) { this.appVersion = appVersion; }
+    public void setAppVersion(String appVersion) {
+        this.appVersion = appVersion;
+        this.appVersionOrden = com.voces.backend.version.VersionDeApp.orden(appVersion);
+    }
+
+    public Integer getAppVersionOrden() { return appVersionOrden; }
+    public Short getLlaveNumero() { return llaveNumero; }
+    public String getLlaveAppCheckApp() { return llaveAppCheckApp; }
 
     public String getAppPlataforma() { return appPlataforma; }
     public void setAppPlataforma(String appPlataforma) { this.appPlataforma = appPlataforma; }
