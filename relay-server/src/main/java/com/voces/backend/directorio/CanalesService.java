@@ -178,6 +178,7 @@ public class CanalesService {
             canal.setNombre(pedido.nombre());
             canal.setUrl(pedido.url());
             canal.setHandle(pedido.handle());
+            com.voces.backend.modelo.Clase.aplicar(canal, pedido.clase());
             canal.setChannelId(pedido.channelId());
             canal.setOrden(i);
             // Sin lista, el canal sigue apareciendo con los creadores que ya tenía.
@@ -311,6 +312,7 @@ public class CanalesService {
         canal.setNombre(nombre);
         canal.setUrl(url);
         canal.setHandle(limpiar(peticion.handle()));
+        com.voces.backend.modelo.Clase.aplicar(canal, peticion.clase());
         canal.setChannelId(channelId);
         canal.setCreadorId(creadorId);
         canal.setProductoraId(productoraId);
@@ -447,7 +449,8 @@ public class CanalesService {
             limpios.add(new Dtos.GuardarCanal(pedido.id(), plataforma, nombre, url,
                     limpiar(pedido.handle()), channelId, pedido.productoraId(),
                     pedido.creadores() == null ? null
-                            : pedido.creadores().stream().filter(Objects::nonNull).distinct().toList()));
+                            : pedido.creadores().stream().filter(Objects::nonNull).distinct().toList(),
+                    pedido.clase()));
         }
         return limpios;
     }
@@ -535,11 +538,14 @@ public class CanalesService {
         return pedidos;
     }
 
-    /** El canal tal como está, para guardar "lo mismo que había". */
+    /**
+     * El canal tal como está, para guardar "lo mismo que había". La clase va
+     * siempre, vacía si es la de su dueño: así la copia a testing la lleva igual.
+     */
     static Dtos.GuardarCanal comoPedido(Canal k) {
         return new Dtos.GuardarCanal(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
                 k.getHandle(), k.getChannelId(), k.getProductoraId(),
-                List.copyOf(k.getVinculados()));
+                List.copyOf(k.getVinculados()), k.getClase() == null ? "" : k.getClase());
     }
 
     static List<String> deYouTube(Collection<Canal> lista) {

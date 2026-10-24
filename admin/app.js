@@ -21,6 +21,18 @@
   const BASE = (CONFIG.apiBase || '').replace(/\/$/, '');
 
   const CATEGORIAS = { cine: 'Cine', comida: 'Comida', politica: 'Política', musica: 'Música', salud: 'Salud', noticias: 'Noticias', tecnologia: 'Tecnología', otros: 'Otros' };
+
+  // El tipo de cuenta. La app ordena sus listas así: primero lo general,
+  // después la televisión pública y al final la política y el gobierno.
+  const CLASES = { general: 'General (no político)', television_publica: 'Televisión pública', politica: 'Política y gobierno' };
+  // Un servidor anterior no manda la clase: entonces no se ofrece elegirla.
+  const conClases = (x) => x == null || 'clase' in x;
+  const badgeClase = (clase) => clase && clase !== 'general'
+    ? ` <span class="badge ${clase === 'politica' ? 'b-warn' : 'b-info'}">${esc(CLASES[clase] || clase)}</span>` : '';
+  /** El selector de tipo de cuenta. Con `heredada`, la primera opción es "la de su dueño". */
+  const selectorClase = (id, valor, heredada) => `<label class="f">Tipo de cuenta<select class="input" id="${id}">${
+    heredada !== undefined ? `<option value="" ${!valor ? 'selected' : ''}>Igual que su dueño (${esc(CLASES[heredada] || CLASES.general)})</option>` : ''
+  }${Object.entries(CLASES).map(([k, v]) => `<option value="${k}" ${valor === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>`;
   // En el orden en que se ofrecen. Solo YouTube genera avisos de videos; las
   // demás son enlaces del perfil.
   const PLATAFORMAS = { youtube: 'YouTube', tiktok: 'TikTok', twitch: 'Twitch', instagram: 'Instagram', x: 'X', facebook: 'Facebook', threads: 'Threads', telegram: 'Telegram', spotify: 'Spotify', patreon: 'Patreon', web: 'Web' };
@@ -667,7 +679,7 @@
       const casas = (c.productoras || []).map(nombreProductora).filter(Boolean);
       const chips = canalesDe(c).map((k) => chipCanal(k)).concat((c.canalesCompartidos || []).map(chipCompartido));
       return `<tr>
-      <td><div class="who">${avatar(c.fotoUrl)}<div><b>${esc(c.nombre)}</b><span>${esc(CATEGORIAS[c.categoria] || c.categoria)}${casas.length ? ' · ' + esc(casas.join(', ')) : ''}</span></div></div></td>
+      <td><div class="who">${avatar(c.fotoUrl)}<div><b>${esc(c.nombre)}</b>${badgeClase(c.clase)}<span>${esc(CATEGORIAS[c.categoria] || c.categoria)}${casas.length ? ' · ' + esc(casas.join(', ')) : ''}</span></div></div></td>
       <td><div class="chips">${chips.join('') || '<span class="muted">—</span>'}</div></td>
       <td>${badgeSusc(c.estadoSuscripcion)}${c.expiraEn ? `<div class="muted" style="font-size:12.5px">vence ${esc(relativo(c.expiraEn))}</div>` : ''}</td>
       <td class="num">${num(c.seguidores)}</td>
@@ -1129,6 +1141,7 @@
         <div class="form" style="margin-top:12px">
           <label class="f">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(c.nombre)}"></label>
           <label class="f">Tema <span class="opcional">solo para apps anteriores</span><select class="input" id="fCategoria">${Object.entries(CATEGORIAS).map(([k, v]) => `<option value="${k}" ${c.categoria === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
+          ${conClases(estado.creadores && estado.creadores[0]) ? selectorClase('fClase', c.clase || 'general') : ''}
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(c.bio)}</textarea></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${c.activo ? 'checked' : ''}> Visible en la app y suscrito a sus videos</label>
         </div>
@@ -1171,6 +1184,7 @@
           fotoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
           canales, conexiones: conexionesDe(canales)
         };
+        if ($('#fClase')) cuerpo.clase = $('#fClase').value;
         if (!estado.sinProductoras) cuerpo.productoras = marcadas('productoras');
 
         // El aviso a todos se lee antes de guardar: si le falta texto, no se guarda nada.
@@ -1379,7 +1393,7 @@
       ${lista.length ? lista.map((p) => {
         const figuran = nombresDe(p.creadores);
         return `<tr>
-          <td><div class="who">${avatar(p.logoUrl)}<div><b>${esc(p.nombre)}</b>${p.descripcion ? `<span class="clip" style="max-width:260px">${esc(p.descripcion)}</span>` : ''}</div></div></td>
+          <td><div class="who">${avatar(p.logoUrl)}<div><b>${esc(p.nombre)}</b>${badgeClase(p.clase)}${p.descripcion ? `<span class="clip" style="max-width:260px">${esc(p.descripcion)}</span>` : ''}</div></div></td>
           <td><div class="chips">${(p.canales || []).map((k) => chipCanal(k, true)).join('') || '<span class="muted">—</span>'}</div></td>
           <td>${figuran.length ? esc(figuran.join(', ')) : '<span class="muted">—</span>'}</td>
           <td class="num">${num(p.seguidores)}</td>
@@ -1399,6 +1413,7 @@
       <div class="stack" style="gap:14px">
         <div class="form">
           <label class="f full">Nombre<input class="input" id="fNombre" maxlength="60" value="${esc(p.nombre)}"></label>
+          ${conClases(estado.productoras && estado.productoras[0]) ? selectorClase('fClase', p.clase || 'general') : ''}
           <label class="f full">Descripción<textarea class="input" id="fBio" rows="3" maxlength="600">${esc(p.descripcion)}</textarea></label>
           <label class="check full"><input type="checkbox" id="fActivo" ${p.activo ? 'checked' : ''}> Visible en la app y suscrito a los videos de sus canales propios</label>
         </div>
@@ -1436,6 +1451,7 @@
           logoUrl: $('#fFoto').value.trim() || null, activo: $('#fActivo').checked,
           canales, creadores: marcadas('creadores')
         };
+        if ($('#fClase')) cuerpo.clase = $('#fClase').value;
         if ($('#fEnDirectorio')) {
           cuerpo.enDirectorio = $('#fEnDirectorio').checked;
           cuerpo.categoria = $('#fCategoria').value;
@@ -1481,7 +1497,7 @@
         const casa = !deProductora && k.productoraId ? nombreProductora(k.productoraId) : null;
         const con = nombresDe(k.creadores);
         return `<tr>
-          <td><b>${esc(k.titulo || k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal'))}</b>${k.titulo && k.nombre ? ' <span class="badge b-mute">' + esc(k.nombre) + '</span>' : ''}<div><a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></div></td>
+          <td><b>${esc(k.titulo || k.nombre || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal'))}</b>${k.titulo && k.nombre ? ' <span class="badge b-mute">' + esc(k.nombre) + '</span>' : ''}${badgeClase(k.claseEfectiva)}<div><a class="mono" href="https://www.youtube.com/channel/${esc(k.channelId)}" target="_blank" rel="noopener">${esc(k.channelId)}</a></div></td>
           <td><div class="who">${avatar(deProductora ? d.logoUrl : d.fotoUrl)}<div><b>${esc(d.nombre)}</b><span>${deProductora ? 'Medio' : (casa ? 'Creador · canal de ' + esc(casa) : 'Creador')}${d.activo ? '' : ' · oculto'}</span></div></div></td>
           <td>${con.length ? esc(con.join(', ')) : '<span class="muted">—</span>'}</td>
           <td>${d.activo ? badgeSusc(k.estadoSuscripcion || 'PENDIENTE_VERIFICACION') : '<span class="badge b-mute">Sin suscribir</span>'}${k.expiraEn ? `<div class="muted" style="font-size:12.5px" title="${esc(fmtFecha(k.expiraEn))}">vence ${esc(relativo(k.expiraEn))}${vencePronto(k) ? ' <span class="badge b-warn">pronto</span>' : ''}</div>` : ''}</td>
@@ -1489,6 +1505,14 @@
         </tr>`;
       }).join('') : '<tr><td colspan="5"><div class="empty">Todavía no hay ningún canal de YouTube en el directorio.</div></td></tr>'}
       </tbody></table></div></section>`;
+  }
+
+  /** El tipo de cuenta del dueño del canal: el del creador o, si no tiene, el del medio. */
+  function claseDelDueno(k) {
+    const c = k.creadorId && (estado.creadores || []).find((x) => x.id === k.creadorId);
+    if (c) return c.clase || 'general';
+    const p = k.productoraId && (estado.productoras || []).find((x) => x.id === k.productoraId);
+    return (p && p.clase) || 'general';
   }
 
   const tarjetaCanal = (k, titulo) => `<div class="canal"><div><b>${esc(titulo || (k.handle ? '@' + k.handle.replace(/^@/, '') : 'Canal vinculado'))}</b><div class="mono muted">${esc(k.channelId)}</div></div></div>`;
@@ -1511,6 +1535,7 @@
           <label class="f full">Etiqueta<input class="input" id="fKNombre" maxlength="60" value="${esc(k.nombre)}" placeholder="Oficial, Clips, Directos… (opcional)"></label>
           <label class="f">Creador dueño<select class="input" id="fKCreador"><option value="">Ninguno: es propio del medio</option>${(estado.creadores || []).map((c) => `<option value="${esc(c.id)}" ${k.creadorId === c.id ? 'selected' : ''}>${esc(c.nombre)}</option>`).join('')}</select></label>
           <label class="f">Medio<select class="input" id="fKProductora"><option value="">Ninguno</option>${(estado.productoras || []).map((p) => `<option value="${esc(p.id)}" ${k.productoraId === p.id ? 'selected' : ''}>${esc(p.nombre)}</option>`).join('')}</select></label>
+          ${(k.id ? 'claseEfectiva' in k : conClases((estado.creadores || [])[0])) ? selectorClase('fKClase', k.clase || '', claseDelDueno(k)) : ''}
         </div>
         <fieldset><legend>También aparece con estos creadores</legend>
           ${casillas('con', estado.creadores || [], k.creadores || [], 'Todavía no hay creadores.')}
@@ -1553,7 +1578,9 @@
             id: k ? k.id : null, nombre: $('#fKNombre').value.trim() || null,
             url: $('#fKUrl').value || 'https://www.youtube.com/channel/' + channelId,
             handle: $('#fKHandle').value || null, channelId, creadorId, productoraId,
-            creadores: marcadas('con').filter((x) => x !== creadorId)
+            creadores: marcadas('con').filter((x) => x !== creadorId),
+            // Vacío: el tipo de su dueño. Sin el selector (servidor anterior), no se manda.
+            ...($('#fKClase') ? { clase: $('#fKClase').value } : {})
           } });
         } catch (e) {
           if (e.estado === 404 && !k) throw new ErrorApi('Este servidor todavía no tiene la versión con fichas de canal.', 404);

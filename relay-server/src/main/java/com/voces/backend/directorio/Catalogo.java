@@ -1,6 +1,7 @@
 package com.voces.backend.directorio;
 
 import com.voces.backend.modelo.Canal;
+import com.voces.backend.modelo.Clase;
 import com.voces.backend.modelo.Creador;
 import com.voces.backend.modelo.Dtos;
 import com.voces.backend.modelo.Productora;
@@ -158,7 +159,7 @@ public class Catalogo {
                     Dtos.ConexionDto.principales(suyos),
                     suyos.stream().map(this::canalPublico).toList(),
                     c.getProductoras().stream().filter(id -> productoraVisible(id) != null).toList(),
-                    null);
+                    null, c.getClase());
         }
 
         /** La ficha de una productora visible. */
@@ -170,7 +171,7 @@ public class Catalogo {
 
             return new Dtos.ProductoraDto(p.getId(), p.getNombre(), p.getDescripcion(),
                     p.getLogoUrl(), canalesVisiblesDe(p).stream().map(this::canalPublico).toList(),
-                    figuran, p.isEnDirectorio(), p.getCategoria());
+                    figuran, p.isEnDirectorio(), p.getCategoria(), p.getClase());
         }
 
         /**
@@ -186,7 +187,7 @@ public class Catalogo {
                     p.getDescripcion(), p.getLogoUrl(),
                     Dtos.ConexionDto.principales(suyos),
                     suyos.stream().map(this::canalPublico).toList(),
-                    List.of(), true);
+                    List.of(), true, p.getClase());
         }
 
         /** Sus canales propios primero, y después los de sus creadores visibles. */
@@ -205,7 +206,10 @@ public class Catalogo {
                     .filter(id -> creadorVisible(id) != null)
                     .toList();
 
-            return Dtos.CanalDto.de(k, p != null ? p.getId() : null, conQuien);
+            // La clase que vale: la suya, o la de su dueño (el creador o, si no
+            // tiene, el medio, aunque esté oculto: es de quien es el canal).
+            String clase = Clase.deCanal(k, creador(k.getCreadorId()), productora(k.getProductoraId()));
+            return Dtos.CanalDto.de(k, p != null ? p.getId() : null, conQuien, clase);
         }
     }
 }

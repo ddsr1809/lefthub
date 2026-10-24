@@ -32,6 +32,10 @@ public class Creador {
     @Column(nullable = false)
     private String categoria = "otros";
 
+    /** General, televisión pública o política y gobierno. Ver Clase. */
+    @Column(nullable = false)
+    private String clase = Clase.GENERAL;
+
     @Column(columnDefinition = "text")
     private String bio;
 
@@ -75,6 +79,9 @@ public class Creador {
 
     public String getCategoria() { return categoria; }
     public void setCategoria(String categoria) { this.categoria = categoria; }
+
+    public String getClase() { return clase; }
+    public void setClase(String clase) { this.clase = clase; }
 
     public String getBio() { return bio; }
     public void setBio(String bio) { this.bio = bio; }

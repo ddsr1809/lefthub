@@ -105,16 +105,19 @@ public final class Dtos {
             UUID productoraId,
             List<UUID> creadores,
             /** Su nombre en YouTube, si ya se sabe. */
-            String titulo
+            String titulo,
+            /** Su clase (general, television_publica, politica): la suya o la de su dueño. */
+            String clase
     ) {
         /**
          * @param productoraId la del canal, o null si no hay que mostrarla.
          * @param creadores    los creadores visibles con los que además aparece.
+         * @param clase        la del canal, ya resuelta con la de su dueño.
          */
-        public static CanalDto de(Canal k, UUID productoraId, List<UUID> creadores) {
+        public static CanalDto de(Canal k, UUID productoraId, List<UUID> creadores, String clase) {
             return new CanalDto(k.getId(), k.getPlataforma(), k.getNombre(), k.getUrl(),
                     k.getHandle(), k.getChannelId(), k.getCreadorId(), productoraId, creadores,
-                    k.getTitulo());
+                    k.getTitulo(), clase);
         }
     }
 
@@ -135,7 +138,9 @@ public final class Dtos {
              * que aparece en el directorio: su id es el de la productora.
              * Falta en los creadores de verdad.
              */
-            Boolean esProductora
+            Boolean esProductora,
+            /** General, television_publica o politica. */
+            String clase
     ) {}
 
     public record ProductoraDto(
@@ -149,7 +154,9 @@ public final class Dtos {
             List<UUID> creadores,
             /** Aparece también en el listado de creadores, en {@code categoria}. */
             boolean enDirectorio,
-            String categoria
+            String categoria,
+            /** General, television_publica o politica. */
+            String clase
     ) {}
 
     public record PublicacionDto(
@@ -531,8 +538,18 @@ public final class Dtos {
             List<GuardarCanal> canales,
 
             /** Productoras en las que figura. Si no viene, no se tocan. */
-            List<UUID> productoras
+            List<UUID> productoras,
+
+            /** General, television_publica o politica. Si no viene, no se toca. */
+            String clase
     ) {
+        /** Como antes de la clase: sin ella, no se toca. */
+        public GuardarCreador(UUID id, String nombre, String categoria, String bio, String fotoUrl,
+                              Map<String, ConexionDto> conexiones, Boolean activo,
+                              List<GuardarCanal> canales, List<UUID> productoras) {
+            this(id, nombre, categoria, bio, fotoUrl, conexiones, activo, canales, productoras, null);
+        }
+
         public String categoriaOtros() {
             return (categoria == null || categoria.isBlank()) ? "otros" : categoria;
         }
@@ -561,8 +578,16 @@ public final class Dtos {
             String handle,
             String channelId,
             UUID productoraId,
-            List<UUID> creadores
-    ) {}
+            List<UUID> creadores,
+            /** Null: no se toca; vacía: la de su dueño; si no, esa clase. */
+            String clase
+    ) {
+        /** Como antes de la clase: sin ella, no se toca. */
+        public GuardarCanal(UUID id, String plataforma, String nombre, String url, String handle,
+                            String channelId, UUID productoraId, List<UUID> creadores) {
+            this(id, plataforma, nombre, url, handle, channelId, productoraId, creadores, null);
+        }
+    }
 
     /**
      * La ficha de un canal de YouTube, guardada por sí sola.
@@ -588,8 +613,16 @@ public final class Dtos {
 
             UUID creadorId,
             UUID productoraId,
-            List<UUID> creadores
-    ) {}
+            List<UUID> creadores,
+            /** Null: no se toca; vacía: la de su dueño; si no, esa clase. */
+            String clase
+    ) {
+        /** Como antes de la clase: sin ella, no se toca. */
+        public GuardarFichaDeCanal(UUID id, String nombre, String url, String handle, String channelId,
+                                   UUID creadorId, UUID productoraId, List<UUID> creadores) {
+            this(id, nombre, url, handle, channelId, creadorId, productoraId, creadores, null);
+        }
+    }
 
     public record CanalGuardado(UUID id, String avisoSuscripcion, String avisoReplica) {}
 
@@ -724,8 +757,18 @@ public final class Dtos {
             Boolean enDirectorio,
 
             /** En qué tema del directorio sale. Si no viene, no se toca. */
-            String categoria
+            String categoria,
+
+            /** General, television_publica o politica. Si no viene, no se toca. */
+            String clase
     ) {
+        /** Como antes de la clase: sin ella, no se toca. */
+        public GuardarProductora(UUID id, String nombre, String descripcion, String logoUrl,
+                                 Boolean activo, List<GuardarCanal> canales, List<UUID> creadores,
+                                 Boolean enDirectorio, String categoria) {
+            this(id, nombre, descripcion, logoUrl, activo, canales, creadores, enDirectorio, categoria, null);
+        }
+
         public boolean estaActivo() { return activo == null || activo; }
     }
 
@@ -760,7 +803,11 @@ public final class Dtos {
             /** Los otros creadores con los que aparece, visibles o no. */
             List<UUID> creadores,
             /** Su nombre en YouTube, si ya se sabe. */
-            String titulo
+            String titulo,
+            /** La suya; null es la de su dueño. */
+            String clase,
+            /** La que vale: la suya o la de su dueño. */
+            String claseEfectiva
     ) {}
 
     /**
@@ -784,7 +831,8 @@ public final class Dtos {
             /** Canales de otros (de una productora, de otro creador) en los que aparece. */
             List<CanalAdminDto> canalesCompartidos,
             /** Cuándo se avisó a todos de que llegó. Null: nunca. */
-            Instant anunciadoEn
+            Instant anunciadoEn,
+            String clase
     ) {}
 
     public record ProductoraAdminDto(
@@ -798,7 +846,8 @@ public final class Dtos {
             List<UUID> creadores,
             long seguidores,
             boolean enDirectorio,
-            String categoria
+            String categoria,
+            String clase
     ) {}
 
     // -------------------------------------------------------------------------

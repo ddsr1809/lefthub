@@ -82,6 +82,33 @@ prueba('lo que cambió solo en pruebas se lleva, completo', () => {
   assert.deepStrictEqual(cuerpo.canales.map((k) => [k.channelId, k.nombre, k.productoraId]), [['UCjuan', null, null], ['UCclips', 'Clips', 'P-casa']]);
 });
 
+prueba('el tipo de cuenta se lleva, del creador y de cada canal', () => {
+  const prod = produccion();
+  const t = enPruebas(prod);
+  // En pruebas: Juan pasa a política y su canal de clips queda general.
+  de(t, 'creadores', 'T-juan').clase = 'politica';
+  de(t, 'creadores', 'T-juan').canales[1].clase = 'general';
+
+  const plan = V.planear({ base: baseDe(prod), pruebas: t, produccion: prod });
+  assert.strictEqual(plan.resumen.cambios, 2, 'el tipo de cuenta y el canal');
+  const etiquetas = ficha(plan, 'P-juan').items.map((i) => i.etiqueta);
+  assert.ok(etiquetas.includes('Tipo de cuenta'), etiquetas);
+
+  const { cuerpo } = V.cuerpoDe(V.operaciones(plan, {})[0], {}, existen(prod));
+  assert.strictEqual(cuerpo.clase, 'politica');
+  // Sin tipo propio viaja vacío: el de su dueño.
+  assert.deepStrictEqual(cuerpo.canales.map((k) => [k.channelId, k.clase]), [['UCjuan', ''], ['UCclips', 'general']]);
+});
+
+prueba('una ficha sin tipo de cuenta es general', () => {
+  const prod = produccion();
+  const t = enPruebas(prod);
+  de(t, 'creadores', 'T-ana').bio = 'Hola';
+  const plan = V.planear({ base: baseDe(prod), pruebas: t, produccion: prod });
+  const { cuerpo } = V.cuerpoDe(V.operaciones(plan, {})[0], {}, existen(prod));
+  assert.strictEqual(cuerpo.clase, 'general');
+});
+
 prueba('lo que cambió solo en producción se deja como está', () => {
   const prod = produccion();
   const base = baseDe(prod);
