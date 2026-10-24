@@ -146,6 +146,8 @@ public class UsuariosAdminController {
      *               y lo demás de más a menos
      * @param pagina empieza en 0
      * @param tamano 25, 50, 100 o 200 por página
+     * @param versiones "android:1.2.2" separadas por comas, o "sin"; vale cualquiera
+     * @param llaves    números de llave ("1,2") o "sin"; vale cualquiera
      */
     @GetMapping
     @Transactional(readOnly = true)
@@ -157,7 +159,9 @@ public class UsuariosAdminController {
                                       @RequestParam(defaultValue = "visto") String orden,
                                       @RequestParam(required = false) String dir,
                                       @RequestParam(defaultValue = "0") int pagina,
-                                      @RequestParam(defaultValue = "50") int tamano) {
+                                      @RequestParam(defaultValue = "50") int tamano,
+                                      @RequestParam(defaultValue = "") String versiones,
+                                      @RequestParam(defaultValue = "") String llaves) {
 
         String texto = q.trim().toLowerCase(Locale.ROOT);
         int porPagina = TAMANOS.contains(tamano) ? tamano : TAMANO_PAGINA;
@@ -197,7 +201,8 @@ public class UsuariosAdminController {
         ConsultaDeUsuarios.Pagina resultado = consulta.buscar(
                 new ConsultaDeUsuarios.Filtro(listaDeTipos, listaDeMarcas,
                         pais.trim().toUpperCase(Locale.ROOT), limpio.isEmpty() ? "" : "%" + limpio.toLowerCase(Locale.ROOT) + "%",
-                        huellaCorreo == null ? "" : huellaCorreo, huellaIp == null ? "" : huellaIp),
+                        huellaCorreo == null ? "" : huellaCorreo, huellaIp == null ? "" : huellaIp,
+                        separar(versiones), separar(llaves)),
                 orden, ascendente, Math.max(pagina, 0), porPagina);
 
         int paginas = (int) Math.max(1, (resultado.total() + porPagina - 1) / porPagina);
@@ -207,6 +212,17 @@ public class UsuariosAdminController {
                 Math.max(pagina, 0),
                 paginas,
                 porPagina);
+    }
+
+    /**
+     * Cuántas cuentas hay en cada versión de la app, con qué llave firman y
+     * de qué app viene su App Check. Se pone al día con cada petición de la
+     * app: quien instala una versión nueva cambia de fila en un minuto.
+     */
+    @GetMapping("/versiones")
+    @Transactional(readOnly = true)
+    public ResumenDeVersiones.Resumen versiones() {
+        return ResumenDeVersiones.armar(usuarios.versionesYLlaves(Instant.now().minus(Duration.ofDays(7))));
     }
 
     private static List<String> separar(String lista) {

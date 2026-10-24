@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "com.voces"
-version = "1.0.20"
+version = "1.0.21"
 description = "Servidor de seguimiento de creadores"
 
 java {

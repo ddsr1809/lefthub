@@ -29,8 +29,8 @@
   const PLATAFORMAS = { youtube: 'YouTube', tiktok: 'TikTok', twitch: 'Twitch', instagram: 'Instagram', x: 'X', facebook: 'Facebook', threads: 'Threads', telegram: 'Telegram', spotify: 'Spotify', patreon: 'Patreon', web: 'Página web' };
 
   const CAMPOS = {
-    creador: { nombre: 'Nombre', categoria: 'Tema', bio: 'Descripción', foto_url: 'Foto', activo: 'Visible en la app' },
-    productora: { nombre: 'Nombre', descripcion: 'Descripción', logo_url: 'Logo', activo: 'Visible en la app', en_directorio: 'Aparece en el directorio', categoria: 'Tema' }
+    creador: { nombre: 'Nombre', categoria: 'Tema', bio: 'Descripción', foto_url: 'Foto', activo: 'Visible en la app', clase: 'Tipo de cuenta' },
+    productora: { nombre: 'Nombre', descripcion: 'Descripción', logo_url: 'Logo', activo: 'Visible en la app', en_directorio: 'Aparece en el directorio', categoria: 'Tema', clase: 'Tipo de cuenta' }
   };
   const LISTA = { creador: 'creadores', productora: 'productoras' };
   const TIPOS = ['productora', 'creador'];     // las productoras primero: los creadores las nombran
@@ -56,7 +56,10 @@
       handle: limpio(k.handle),
       channel_id: limpio(k.channel_id),
       productora_id: limpio(k.productora_id),
-      vinculados: (k.vinculados || []).slice().sort()
+      vinculados: (k.vinculados || []).slice().sort(),
+      // El tipo de cuenta del canal; sin él, el de su dueño. Solo viene
+      // cuando el canal tiene uno propio (ver V29).
+      clase: limpio(k.clase)
     };
   }
 
@@ -452,12 +455,15 @@
     const canales = ficha.canales.map((k) => ({
       plataforma: k.plataforma, nombre: k.nombre, url: k.url, handle: k.handle, channelId: k.channel_id,
       productoraId: op.tipo === 'creador' ? real(k.productora_id) : null,
-      creadores: k.vinculados.map(real).filter(Boolean)
+      creadores: k.vinculados.map(real).filter(Boolean),
+      // Vacío: el de su dueño. Así un canal que dejó de tener tipo propio
+      // en pruebas también lo deja en producción.
+      clase: k.clase || ''
     }));
 
     const cuerpo = op.tipo === 'creador'
-      ? { id: op.nuevo ? (nuevos[op.id] || null) : op.id, nombre: ficha.nombre, categoria: ficha.categoria || 'otros', bio: ficha.bio, fotoUrl: ficha.foto_url, activo: ficha.activo !== false, canales, productoras: ficha.productoras.map(real).filter(Boolean) }
-      : { id: op.nuevo ? (nuevos[op.id] || null) : op.id, nombre: ficha.nombre, descripcion: ficha.descripcion, logoUrl: ficha.logo_url, activo: ficha.activo !== false, canales, enDirectorio: ficha.en_directorio === true, categoria: ficha.categoria || 'otros' };
+      ? { id: op.nuevo ? (nuevos[op.id] || null) : op.id, nombre: ficha.nombre, categoria: ficha.categoria || 'otros', bio: ficha.bio, fotoUrl: ficha.foto_url, activo: ficha.activo !== false, canales, productoras: ficha.productoras.map(real).filter(Boolean), clase: ficha.clase || 'general' }
+      : { id: op.nuevo ? (nuevos[op.id] || null) : op.id, nombre: ficha.nombre, descripcion: ficha.descripcion, logoUrl: ficha.logo_url, activo: ficha.activo !== false, canales, enDirectorio: ficha.en_directorio === true, categoria: ficha.categoria || 'otros', clase: ficha.clase || 'general' };
 
     return { cuerpo, incompleto };
   }

@@ -60,6 +60,8 @@ public class ProductorasService {
         // Quien no manda estos dos campos (el botón de reintentar, un panel
         // anterior) deja la productora como estaba en el directorio.
         if (peticion.enDirectorio() != null) productora.setEnDirectorio(peticion.enDirectorio());
+        String clase = com.voces.backend.modelo.Clase.validar(peticion.clase());
+        if (clase != null) productora.setClase(clase);
         if (peticion.categoria() != null && !peticion.categoria().isBlank()) {
             if (!Dtos.CATEGORIAS.contains(peticion.categoria())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST,

@@ -74,6 +74,12 @@ public class Canal {
     private Instant tituloEn;
 
     /**
+     * General, televisión pública o política y gobierno. Null: la de su
+     * dueño (el creador o, si no tiene, el medio). Ver Clase.
+     */
+    private String clase;
+
+    /**
      * Posición dentro del dueño. El primero de cada plataforma es el
      * principal: el que reciben las versiones de la app anteriores a los
      * canales múltiples.
@@ -126,6 +132,9 @@ public class Canal {
         }
         this.channelId = channelId;
     }
+
+    public String getClase() { return clase; }
+    public void setClase(String clase) { this.clase = clase; }
 
     public String getTitulo() { return titulo; }
     public void setTitulo(String titulo) { this.titulo = titulo; }

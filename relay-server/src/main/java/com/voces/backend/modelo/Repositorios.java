@@ -364,6 +364,19 @@ public final class Repositorios {
                 """)
         List<Object[]> activosPorVersionDeApp(@Param("desde") Instant desde);
 
+        /**
+         * Cuentas por versión de la app, número de llave y app de App Check,
+         * con cuántas abrieron la app desde `desde`. Para la tarjeta
+         * «Versiones y llaves» de Usuarios (directorio/ResumenDeVersiones).
+         */
+        @Query("""
+                select u.appPlataforma, u.appVersion, u.llaveNumero, u.llaveAppCheckApp, count(u),
+                       sum(case when u.vistoEn >= :desde then 1 else 0 end), max(u.vistoEn), max(u.appVersionOrden)
+                from Usuario u
+                group by u.appPlataforma, u.appVersion, u.llaveNumero, u.llaveAppCheckApp
+                """)
+        List<Object[]> versionesYLlaves(@Param("desde") Instant desde);
+
         /** Cuántas cuentas ya no ven anuncios, por motivo: compra, folio o panel. */
         @Query("""
                 select u.sinAnunciosOrigen, count(u) from Usuario u
