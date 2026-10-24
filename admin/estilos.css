@@ -406,3 +406,21 @@ label.btn.ocupado{opacity:.6;pointer-events:none}
 /* Las insignias de la llave de la app, debajo de la cuenta en la lista de Usuarios. */
 .insignias-llave{display:flex;flex-wrap:wrap;gap:4px;margin-top:4px}
 .insignias-llave .badge{font-size:11.5px}
+
+/* Usuarios: la tarjeta «Versiones y llaves» y las casillas de versión. */
+.nowrap{white-space:nowrap}
+.casilla{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.chip .cuantas{font-weight:500;color:var(--muted);margin-left:2px}
+.chip.activo .cuantas{color:inherit;opacity:.8}
+.chips-mini{display:flex;flex-wrap:wrap;gap:4px}
+.chip.mini{padding:2px 9px;font-size:12px}
+.chip.quieto{cursor:default}
+.chip.quieto:hover{border-color:var(--line)}
+.tabla-versiones td,.tabla-versiones th{vertical-align:top}
+.dos.parejo{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.grupos-llave{display:flex;flex-direction:column;gap:8px}
+.grupo-llave{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:2px 12px;align-items:center;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-2);font-size:13.5px}
+.grupo-llave .btn{grid-column:2;grid-row:1 / span 2}
+.grupo-llave .hint{grid-column:1}
+.grupo-llave .retirable{color:var(--accent);font-weight:700}
+@media (max-width:1000px){.dos.parejo{grid-template-columns:minmax(0,1fr)}}

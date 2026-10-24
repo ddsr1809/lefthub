@@ -3007,15 +3007,147 @@
     return una(ESTADO_FIRMA, u.llaveFirma) + ' ' + una(ESTADO_CHECK, u.llaveAppCheck);
   }
   const COLUMNAS_USUARIOS = [['cuenta', 'Cuenta'], ['tipo', 'Tipo'], ['pais', 'Conexión'], ['bot', 'Bot'],
-    ['sigue', 'Sigue a'], ['alta', 'Alta'], ['visto', 'Abrió la app']];
+    ['sigue', 'Sigue a'], ['app', 'Versión'], ['llave', 'Llave'], ['alta', 'Alta'], ['visto', 'Abrió la app']];
   const USUARIOS_DE_LA_A = ['cuenta', 'tipo', 'pais'];
   const TAMANOS_USUARIOS = [25, 50, 100, 200];
+
+  // ---------------------------------------------------------------------------
+  // Versiones de la app y número de llave de cada cuenta
+  // ---------------------------------------------------------------------------
+  // El servidor guarda, de la última petición de cada cuenta, la versión de la
+  // app, el número de la llave con que firmó (APP_LLAVES=1:…,2:…) y de qué app
+  // de Firebase venía su App Check. Lo pone al día cada minuto, así que quien
+  // pasa de la 1.1.8 a la 1.2.2 cambia de fila en cuanto abre la app.
+  const CADA_USUARIOS = 60 * 1000;
+  // Lo que el servidor acepta como versión en el filtro (ConsultaDeUsuarios).
+  const VERSION_FILTRABLE = /^[0-9]{1,4}(\.[0-9]{1,4}){0,3}$/;
+
+  /** El valor del filtro de una versión: "android:1.2.2", o "sin". Null si el servidor no sabría filtrarla. */
+  function claveVersion(plataforma, version) {
+    if (!version) return 'sin';
+    if ((plataforma !== 'android' && plataforma !== 'ios') || !VERSION_FILTRABLE.test(version)) return null;
+    return plataforma + ':' + version;
+  }
+
+  /** "1.2.2" para Android, "iOS 0.1" para iPhone: casi todo es Android. */
+  const textoVersion = (plataforma, version) => (version ? (plataforma === 'ios' ? 'iOS ' : '') + version : 'Sin versión');
+  const textoLlave = (n) => (n === 'sin' || n == null ? 'Sin número' : 'Llave ' + n);
+
+  /** La versión más nueva que hay de cada plataforma, según el resumen. */
+  function versionesMasNuevas() {
+    const r = estado.versionesUsuarios, nuevas = {};
+    ((r && r.versiones) || []).forEach((v) => {
+      if (v.version && claveVersion(v.plataforma, v.version) && !(v.plataforma in nuevas)) nuevas[v.plataforma] = v.version;
+    });
+    return nuevas;
+  }
+
+  /** Trae el resumen. Un servidor anterior no tiene la ruta: entonces no se enseña. */
+  async function cargarVersionesUsuarios() {
+    try {
+      estado.versionesUsuarios = await api('/api/admin/usuarios/versiones');
+      estado.versionesUsuariosEn = new Date();
+    } catch (e) {
+      if (e.estado !== 404) throw e;
+      estado.versionesUsuarios = null;
+    }
+  }
+
+  /** La tarjeta «Versiones y llaves». */
+  function tarjetaVersiones() {
+    const r = estado.versionesUsuarios;
+    if (!r) return '';
+    const auto = estado.autoUsuarios !== false;
+    const hora = estado.versionesUsuariosEn ? estado.versionesUsuariosEn.toLocaleTimeString('es-MX') : '';
+    return `<section class="panel" id="versionesUsuarios">
+      <div class="panel-head"><h2>Versiones y llaves</h2>
+        <div class="toolbar"><span class="muted" style="font-size:13px" id="horaVersiones">${hora ? 'Al día a las ' + esc(hora) : ''}</span>
+          <label class="hint casilla"><input type="checkbox" id="autoUsuarios" ${auto ? 'checked' : ''}> Actualizar cada minuto</label>
+          <button class="btn sm" data-accion="refrescar-versiones">Actualizar</button></div></div>
+      <div class="panel-body stack" style="gap:16px" id="cuerpoVersiones">${cuerpoVersiones()}</div>
+    </section>`;
+  }
+
+  function cuerpoVersiones() {
+    const r = estado.versionesUsuarios;
+    if (!r.versiones.length) return '<div class="empty">Todavía no hay cuentas.</div>';
+    const vistas = {};
+    const filas = r.versiones.map((v) => {
+      const clave = claveVersion(v.plataforma, v.version);
+      const nueva = v.version && clave && !vistas[v.plataforma];
+      if (nueva) vistas[v.plataforma] = true;
+      const repartoLlave = Object.entries(v.porLlave || {}).map(([n, c]) => clave
+        ? `<button class="chip mini" data-accion="ver-version" data-version="${esc(clave)}" data-llave="${esc(n)}" title="Ver las cuentas de esta versión con ${esc(textoLlave(n).toLowerCase())}">${esc(textoLlave(n))} · ${num(c)}</button>`
+        : `<span class="chip mini quieto">${esc(textoLlave(n))} · ${num(c)}</span>`).join('');
+      const repartoCheck = Object.entries(v.porAppCheck || {}).map(([a, c]) =>
+        `<span class="chip mini quieto">${esc(a === 'sin' ? 'Sin App Check' : a)} · ${num(c)}</span>`).join('');
+      return `<tr>
+        <td><b class="nowrap">${v.version ? esc(textoVersion(v.plataforma, v.version)) : '<span class="muted">Sin versión</span>'}</b>${nueva ? ' <span class="badge b-ok">La más nueva</span>' : ''}${!v.version ? '<div class="hint">No han abierto la app desde que se guarda la versión</div>' : ''}</td>
+        <td class="num">${num(v.cuentas)}</td>
+        <td class="num">${num(v.activas)}</td>
+        <td><div class="chips-mini">${repartoLlave}</div></td>
+        <td><div class="chips-mini">${repartoCheck}</div></td>
+        <td class="num" title="${esc(fmtFecha(v.ultima))}">${v.ultima ? esc(relativo(v.ultima)) : '—'}</td>
+        <td class="acciones">${clave ? `<button class="btn sm" data-accion="ver-version" data-version="${esc(clave)}">Ver</button>` : ''}</td>
+      </tr>`;
+    }).join('');
+
+    // La llave más alta en uso: las de número menor se pueden retirar cuando nadie activo firma con ellas.
+    const numeros = r.llaves.map((g) => g.nombre).filter((n) => n !== 'sin').map(Number);
+    const mayor = numeros.length ? Math.max(...numeros) : null;
+    const rango = (g) => (g.versionMasVieja ? (g.versionMasVieja === g.versionMasNueva ? 'versión ' + esc(g.versionMasVieja) : 'de la ' + esc(g.versionMasVieja) + ' a la ' + esc(g.versionMasNueva)) : 'sin versión');
+    const grupo = (g, ver) => `<div class="grupo-llave">
+        <div><b>${esc(ver ? textoLlave(g.nombre) : (g.nombre === 'sin' ? 'Sin App Check' : g.nombre))}</b>
+          <span class="muted"> · ${plural(g.cuentas, 'cuenta', 'cuentas')}, ${num(g.activas)} ${g.activas === 1 ? 'activa' : 'activas'} en 7 días · ${rango(g)}</span></div>
+        ${ver && g.nombre !== 'sin' && mayor !== null && Number(g.nombre) < mayor
+          ? (g.activas ? `<div class="hint">Todavía la usan ${plural(g.activas, 'cuenta activa', 'cuentas activas')}: espera a que actualicen antes de quitarla.</div>`
+            : '<div class="hint retirable">Nadie activo firma con ella: ya se puede quitar de APP_LLAVES.</div>') : ''}
+        ${ver ? `<button class="btn sm" data-accion="ver-numero-llave" data-llave="${esc(g.nombre)}">Ver</button>` : ''}
+      </div>`;
+
+    return `<p class="hint" style="margin:0">De la última vez que cada cuenta abrió la app: qué versión tiene, con qué número de llave firmó y de qué app venía su App Check. Cuando alguien instala una versión nueva deja de contar en la fila de la anterior y suma en la nueva al minuto de abrirla.</p>
+      <div class="tablewrap"><table class="tabla-versiones"><thead><tr><th>Versión</th><th class="num">Cuentas</th><th class="num">Activas en 7 días</th><th>Firman con</th><th>App Check</th><th class="num">Última vez</th><th></th></tr></thead>
+        <tbody>${filas}</tbody></table></div>
+      <div class="dos parejo">
+        <div><p class="reparto-titulo">Por número de llave</p><div class="grupos-llave">${r.llaves.map((g) => grupo(g, true)).join('')}</div></div>
+        <div><p class="reparto-titulo">Por app de App Check</p><div class="grupos-llave">${r.appsDeAppCheck.map((g) => grupo(g, false)).join('')}</div></div>
+      </div>`;
+  }
+
+  /** Vuelve a pedir el resumen y la página de la lista, y los repinta. */
+  async function refrescarVersionesYUsuarios() {
+    try { await cargarVersionesUsuarios(); } catch (e) {
+      if (e.estado !== 401 && e.estado !== 403) toast(e.message, true);
+      return;
+    }
+    if (estado.vista !== 'usuarios') return;
+    const tarjeta = $('#versionesUsuarios');
+    if (tarjeta && estado.versionesUsuarios) {
+      $('#cuerpoVersiones').innerHTML = cuerpoVersiones();
+      $('#horaVersiones').textContent = 'Al día a las ' + estado.versionesUsuariosEn.toLocaleTimeString('es-MX');
+    } else if (tarjeta) tarjeta.remove();
+    await repintarUsuarios();
+  }
+
+  // Mientras Usuarios está a la vista se pone al día sola cada minuto. No con
+  // una ventana abierta (la ficha de una cuenta) ni con la pestaña escondida.
+  let relojUsuarios = null;
+  function vigilarUsuarios() {
+    clearInterval(relojUsuarios);
+    relojUsuarios = setInterval(() => {
+      if (estado.vista !== 'usuarios' || !$('#listaUsuarios')) { clearInterval(relojUsuarios); relojUsuarios = null; return; }
+      if (estado.autoUsuarios === false || document.hidden || modal.open) return;
+      refrescarVersionesYUsuarios();
+    }, CADA_USUARIOS);
+  }
 
   /** Los filtros guardados, con la forma de ahora aunque vengan de una versión anterior del panel. */
   function filtroUsuarios() {
     const f = estado.filtroUsuarios;
     if (!Array.isArray(f.tipos)) f.tipos = [];
     if (!Array.isArray(f.marcas)) f.marcas = [];
+    if (!Array.isArray(f.versiones)) f.versiones = [];
+    if (!Array.isArray(f.llaves)) f.llaves = [];
     if (f.filtro) {
       (TIPOS_USUARIO.some(([k]) => k === f.filtro) ? f.tipos : f.marcas).push(f.filtro);
       delete f.filtro;
@@ -3027,7 +3159,7 @@
     return f;
   }
 
-  const hayFiltrosUsuarios = (f) => !!(f.q.trim() || f.tipos.length || f.marcas.length || f.pais);
+  const hayFiltrosUsuarios = (f) => !!(f.q.trim() || f.tipos.length || f.marcas.length || f.pais || f.versiones.length || f.llaves.length);
 
   let pedidoUsuarios = 0;
   /** Trae la página que piden los filtros. Devuelve false si llegó tarde y otra más nueva ya ganó. */
@@ -3035,6 +3167,7 @@
     const f = filtroUsuarios();
     const miPedido = ++pedidoUsuarios;
     const p = new URLSearchParams({ q: f.q.trim(), tipos: f.tipos.join(','), marcas: f.marcas.join(','), pais: f.pais,
+      versiones: f.versiones.join(','), llaves: f.llaves.join(','),
       orden: f.orden, dir: f.dir, pagina: String(f.pagina), tamano: String(f.tamano) });
     // Un servidor anterior solo entiende un filtro a la vez.
     const elegidos = f.tipos.concat(f.marcas);
@@ -3051,16 +3184,33 @@
       return `<tr><td colspan="${COLUMNAS_USUARIOS.length + 1}"><div class="empty">${hayFiltrosUsuarios(filtroUsuarios())
         ? 'Ninguna cuenta coincide. <button class="link" data-accion="limpiar-usuarios">Quitar los filtros</button>' : 'Todavía no hay cuentas.'}</div></td></tr>`;
     }
+    const nuevas = versionesMasNuevas();
     return pag.usuarios.map((u) => `<tr>
       <td><div class="clip"><b>${u.email ? esc(u.email) : '<span class="muted">Sin correo</span>'}</b>${u.sinAnuncios ? ' <span class="badge b-mute" title="No ve anuncios">Sin anuncios</span>' : ''}</div><span class="mono muted">${esc(u.id)}</span>${u.llaveVistaEn ? `<div class="insignias-llave" title="Su última petición, ${esc(relativo(u.llaveVistaEn))}${u.appVersion ? ' · app ' + esc(u.appVersion) : ''}">${insigniasLlave(u)}</div>` : ''}</td>
       <td>${badgeProveedor(u, true)}</td>
       <td>${u.pais || u.red ? `<div>${esc(nombrePais(u.pais) || '—')}</div><div class="muted clip" style="font-size:12.5px;max-width:220px" title="${esc(u.red || '')}">${esc(u.red || '')}</div>` : '<span class="muted">—</span>'}</td>
       <td>${u.posibleBot ? `<span class="badge b-bad" title="${esc(u.motivoBot || '')}">Posible bot</span>` : '<span class="muted">—</span>'}</td>
       <td class="num">${num(u.favoritos)}</td>
+      <td>${celdaVersion(u, nuevas)}</td>
+      <td>${celdaLlave(u)}</td>
       <td class="num">${esc(fmtDia(u.creadoEn))}</td>
       <td class="num" title="${esc(fmtFecha(u.vistoEn))}">${esc(relativo(u.vistoEn))}</td>
       <td class="acciones"><button class="btn sm" data-accion="ver-usuario" data-id="${esc(u.id)}">Ver</button></td>
     </tr>`).join('');
+  }
+
+  function celdaVersion(u, nuevas) {
+    if (!u.appVersion) return '<span class="muted">—</span>';
+    const nueva = nuevas[u.appPlataforma];
+    const vieja = nueva && nueva !== u.appVersion;
+    return `<span class="nowrap" title="${esc(nombrePlataforma(u.appPlataforma) + ' ' + u.appVersion)}">${esc(textoVersion(u.appPlataforma, u.appVersion))}</span>${vieja ? `<div><span class="badge b-mute" title="La más nueva en uso es la ${esc(nueva)}">Anterior</span></div>` : ''}`;
+  }
+
+  /** El número de llave con que firmó y de qué app venía su App Check. Un servidor anterior no lo manda. */
+  function celdaLlave(u) {
+    if (u.llaveNumero === undefined) return '<span class="muted">—</span>';
+    if (u.llaveNumero == null && !u.llaveAppCheckApp) return '<span class="muted">—</span>';
+    return `${u.llaveNumero != null ? `<span class="badge b-info">${esc(textoLlave(u.llaveNumero))}</span>` : '<span class="muted">Sin número</span>'}${u.llaveAppCheckApp ? `<div class="muted nowrap" style="font-size:12.5px" title="App de Firebase de su App Check">${esc(u.llaveAppCheckApp)}</div>` : ''}`;
   }
 
   function cabezaUsuarios() {
@@ -3080,8 +3230,31 @@
         ${MARCAS_USUARIO.map((m) => chip('marcas', m, f.marcas.includes(m[0]))).join('')}</div>
       <div class="fila-chips"><span class="etiqueta-chips" title="Cómo llegó su última petición: con la firma de la llave de la app y con App Check (Apps → Llave de la app)">Llave</span>
         ${MARCAS_LLAVE.map((m) => chip('marcas', m, f.marcas.includes(m[0]))).join('')}</div>
+      ${chipsDeVersiones(f, chip)}
       <div class="resumen-filtros"><span>${pag ? `<b>${num(pag.total)}</b> ${pag.total === 1 ? 'cuenta coincide' : 'cuentas coinciden'}` : ''}${f.tipos.length > 1 ? ' · de cualquiera de los tipos marcados' : ''}${f.marcas.length > 1 ? ' · con todas las marcas elegidas' : ''}</span>
         ${hayFiltrosUsuarios(f) ? '<button class="link" data-accion="limpiar-usuarios">Quitar los filtros</button>' : ''}</div>`;
+  }
+
+  /**
+   * Las casillas de versión y de número de llave, con las que hay ahora.
+   * Una que ya está marcada sigue saliendo aunque se haya quedado sin nadie
+   * (todos actualizaron), para poder desmarcarla.
+   */
+  function chipsDeVersiones(f, chip) {
+    const r = estado.versionesUsuarios;
+    if (!r) return '';
+    const cuenta = (n) => ` <span class="cuantas">${num(n)}</span>`;
+    const versiones = r.versiones.map((v) => [claveVersion(v.plataforma, v.version), v]).filter(([k]) => k);
+    f.versiones.filter((k) => !versiones.some(([x]) => x === k))
+      .forEach((k) => versiones.push([k, { plataforma: k.split(':')[0], version: k === 'sin' ? null : k.split(':')[1], cuentas: 0 }]));
+    const llaves = r.llaves.map((g) => [g.nombre, g.cuentas]);
+    f.llaves.filter((k) => !llaves.some(([x]) => x === k)).forEach((k) => llaves.push([k, 0]));
+    const boton = (grupo, k, texto, n) => chip(grupo, [k, texto], f[grupo].includes(k)).replace('</button>', cuenta(n) + '</button>');
+    return `
+      <div class="fila-chips"><span class="etiqueta-chips" title="La versión de la app de su última petición. Vale cualquiera de las marcadas">Versión</span>
+        ${versiones.map(([k, v]) => boton('versiones', k, textoVersion(v.plataforma, v.version), v.cuentas)).join('')}</div>
+      <div class="fila-chips"><span class="etiqueta-chips" title="El número de llave (APP_LLAVES) con que firmó su última petición. Vale cualquiera de los marcados">N.º llave</span>
+        ${llaves.map(([k, n]) => boton('llaves', k, textoLlave(k), n)).join('')}</div>`;
   }
 
   function pieUsuarios() {
@@ -3114,7 +3287,7 @@
 
   /** Cambia los filtros desde un botón (las cuentas de una IP, los administradores) y deja la tabla a la vista. */
   async function filtrarUsuarios(cambios) {
-    const f = Object.assign(filtroUsuarios(), { q: '', tipos: [], marcas: [], pais: '' }, cambios, { pagina: 0 });
+    const f = Object.assign(filtroUsuarios(), { q: '', tipos: [], marcas: [], pais: '', versiones: [], llaves: [] }, cambios, { pagina: 0 });
     const tabla = $('#filasUsuarios');
     if (estado.vista !== 'usuarios' || !tabla) { ir('usuarios'); return; }
     $('#qUsuarios').value = f.q;
@@ -3129,9 +3302,10 @@
     let zona = 'UTC';
     try { zona = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'; } catch (e) { /* UTC */ }
 
+    // El resumen de versiones primero: la lista lo usa para marcar las anteriores.
     const [r] = await Promise.all([
       api('/api/admin/usuarios/resumen?zona=' + encodeURIComponent(zona)),
-      cargarUsuarios()
+      cargarVersionesUsuarios().then(cargarUsuarios)
     ]);
     const guardadas = r.conGoogle + r.conApple;
     const promedio = r.conFavoritos ? (r.seguimientos / r.conFavoritos) : 0;
@@ -3166,6 +3340,7 @@
               ${r.posiblesBots ? '<button class="btn" data-accion="ver-bots">Ver estas cuentas</button>' : ''}
             </div></section>
         </div>
+        ${tarjetaVersiones()}
         <section class="panel" id="listaUsuarios">
           <div class="panel-head" style="display:block">
             <div class="toolbar">
@@ -3193,6 +3368,9 @@
     $('#paisUsuarios').addEventListener('change', (e) => { f.pais = e.target.value; f.pagina = 0; repintarUsuarios(); });
     const t = $('#tamanoUsuarios');
     if (t) t.addEventListener('change', () => { f.tamano = Number(t.value); f.pagina = 0; repintarUsuarios(); });
+    const auto = $('#autoUsuarios');
+    if (auto) auto.addEventListener('change', () => { estado.autoUsuarios = auto.checked; });
+    vigilarUsuarios();
   }
 
   async function abrirUsuario(id) {
@@ -3231,6 +3409,8 @@
             ? insigniasLlave(u) + ` <span class="muted">en su última petición, ${esc(relativo(u.llaveVistaEn))}</span>`
             : '<span class="muted">Sin datos: no ha usado la app desde que se mira</span>'}</dd>
           <dt>Versión de la app</dt><dd>${u.appVersion ? esc(nombrePlataforma(u.appPlataforma) + ' ' + u.appVersion) : '<span class="muted">Sin identificar</span>'}</dd>
+          ${u.llaveNumero === undefined ? '' : `<dt>Número de llave</dt><dd>${u.llaveNumero != null ? esc(textoLlave(u.llaveNumero)) + ' <span class="muted">(APP_LLAVES)</span>' : '<span class="muted">Sin dato: su última petición no venía firmada, o es anterior a que se guarde</span>'}</dd>
+          <dt>App de App Check</dt><dd>${u.llaveAppCheckApp ? esc(u.llaveAppCheckApp) : '<span class="muted">Sin dato</span>'}</dd>`}
           <dt>Tamaño de letra</dt><dd>${esc(ESCALAS[u.escalaTexto] || u.escalaTexto)}</dd>
           <dt>Fondo</dt><dd>${esc(TEMAS[u.tema] || u.tema)}</dd>
           <dt>Enlaces reportados</dt><dd>${num(d.reportes)}</dd>
@@ -4825,8 +5005,17 @@
 
         case 'limpiar-usuarios': await filtrarUsuarios({}); break;
 
+        case 'ver-version': await filtrarUsuarios(b.dataset.llave ? { versiones: [b.dataset.version], llaves: [b.dataset.llave] } : { versiones: [b.dataset.version] }); break;
+        case 'ver-numero-llave': await filtrarUsuarios({ llaves: [b.dataset.llave] }); break;
+        case 'refrescar-versiones': {
+          b.disabled = true;
+          await refrescarVersionesYUsuarios();
+          b.disabled = false;
+          break;
+        }
+
         case 'ver-admins': {
-          Object.assign(filtroUsuarios(), { q: '', tipos: [], marcas: ['admin'], pais: '', pagina: 0 });
+          Object.assign(filtroUsuarios(), { q: '', tipos: [], marcas: ['admin'], pais: '', versiones: [], llaves: [], pagina: 0 });
           ir('usuarios');
           break;
         }
