@@ -72,7 +72,8 @@ Flyway aplica 28 migraciones (`V1`–`V28`) al arrancar y Hibernate solo valida 
 | V26 | Huellas para buscar correo, IP y comprobantes cifrados; `sesiones_desde` para cerrar sesiones |
 | V27 | `llave_firma`, `llave_app_check`, `llave_vista_en`: cómo llegó la última petición de cada cuenta |
 | V28 | `videos_vistos`: los videos que cada cuenta abrió o marcó «Ya lo vi» |
-| V29 | `llave_numero`, `llave_app_check_app`, `app_version_orden`: número de llave, app de App Check y versión ordenable de cada cuenta |
+| V29 | `clase` en creadores, productoras y canales: el tipo de cuenta (general, televisión pública, política) |
+| V30 | `llave_numero`, `llave_app_check_app`, `app_version_orden`: número de llave, app de App Check y versión ordenable de cada cuenta |
 
 Tablas centrales: `usuarios`, `creadores`, `productoras`, `canales`, `canales_creadores`, `creadores_productoras`, `publicaciones`, `favoritos*`, `ajustes`, `fotos`, `folios`, `compras`, `mensajes_chat`, `paquetes_stickers`, `stickers`.
 

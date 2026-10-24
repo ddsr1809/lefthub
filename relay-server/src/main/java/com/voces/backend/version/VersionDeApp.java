@@ -59,7 +59,7 @@ public final class VersionDeApp {
     /**
      * La versión como un número que ordena igual que comparar(): 1.2.2 es
      * 1002002. Cada parte se queda en 999 como mucho; la cuarta no cuenta.
-     * Null si no hay versión. Es lo que se guarda en usuarios.app_version_orden (V29).
+     * Null si no hay versión. Es lo que se guarda en usuarios.app_version_orden (V30).
      */
     public static Integer orden(String version) {
         String limpia = limpia(version);

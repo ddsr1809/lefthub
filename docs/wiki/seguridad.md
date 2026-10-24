@@ -88,7 +88,7 @@ Cada hora el registro del servidor también resume: `Llave de la app, última ho
 - **Apps → Llave de la app → Por cuenta**: cuántas cuentas de las que abrieron la app en 7 días traen cada cosa, con un botón **Ver** que lleva a esas cuentas.
 - **Usuarios**: la fila «Llave» de filtros (Firma bien, Sin firma, Firma con error, App Check bien, Sin App Check, App Check con error, Sin datos de llave), insignias en cada cuenta y el detalle en su ficha, junto con su versión de la app.
 
-**Versión de la app, número de llave y app de App Check.** Con la misma anotación de cada minuto se guarda también, de la última petición de cada cuenta (V29):
+**Versión de la app, número de llave y app de App Check.** Con la misma anotación de cada minuto se guarda también, de la última petición de cada cuenta (V30):
 
 - `app_version` / `app_plataforma` / `app_version_orden`: la versión de la app (cabecera `X-App-Version`). Antes solo cambiaba al entrar o renovar la sesión; ahora cambia en cuanto la cuenta abre la app con una versión nueva. `app_version_orden` es `mayor·1.000.000 + menor·1.000 + parche`, para ordenar 1.1.10 después de 1.1.8.
 - `llave_numero`: el número de `APP_LLAVES` con que firmó (`X-App-Llave`: 1, 2…).

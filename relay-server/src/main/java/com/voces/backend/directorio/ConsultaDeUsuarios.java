@@ -66,7 +66,7 @@ public class ConsultaDeUsuarios {
             "visto", "u.vistoEn",
             // Primero los marcados como posibles bots; entre ellos, los más recientes.
             "bot", "case when u.posibleBot = true then 1 else 0 end",
-            // Por número y no por texto: 1.1.10 va después de 1.1.9 (V29).
+            // Por número y no por texto: 1.1.10 va después de 1.1.9 (V30).
             "app", "u.appVersionOrden",
             "llave", "u.llaveNumero");
 
