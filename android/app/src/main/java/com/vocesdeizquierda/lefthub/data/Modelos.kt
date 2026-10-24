@@ -37,7 +37,12 @@ data class Canal(
      * Su nombre en YouTube ("Claudia Sheinbaum Clips"). Lo pone el servidor
      * solo; puede no estar todavía, y un servidor anterior no lo manda.
      */
-    val titulo: String? = null
+    val titulo: String? = null,
+    /**
+     * Su tipo de cuenta, ya resuelto por el servidor con el de su dueño. Ver
+     * ClaseDeCuenta. Un servidor anterior no lo manda: es general.
+     */
+    val clase: String = ClaseDeCuenta.GENERAL
 ) {
     val esDeYouTube: Boolean get() = plataforma == "youtube" && !channelId.isNullOrBlank()
 
@@ -85,7 +90,9 @@ data class Creador(
      * directorio como uno más: su id es el de la productora, y al tocarla se
      * abre su ficha y se la sigue como productora.
      */
-    val esProductora: Boolean = false
+    val esProductora: Boolean = false,
+    /** General, televisión pública o política y gobierno. Ver ClaseDeCuenta. */
+    val clase: String = ClaseDeCuenta.GENERAL
 ) {
     /** Plataformas en el orden en que se muestran, filtrando las vacías. */
     val conexionesOrdenadas: List<Pair<String, Conexion>>
@@ -137,7 +144,9 @@ data class Productora(
     val canales: List<Canal> = emptyList(),
     val creadores: List<String> = emptyList(),
     /** Aparece también en el listado de creadores, como una fila más. */
-    val enDirectorio: Boolean = false
+    val enDirectorio: Boolean = false,
+    /** General, televisión pública o política y gobierno. Ver ClaseDeCuenta. */
+    val clase: String = ClaseDeCuenta.GENERAL
 ) {
     /** Los que no son de ningún creador: el canal oficial de la casa. */
     val canalesPropios: List<Canal> get() = canales.filter { it.creadorId == null }
@@ -174,7 +183,9 @@ data class CanalListado(
     /** "Del medio Estudio X", "Con Ana y Luis"… lo que haya; vacío si es solo de su creador. */
     val deQuien: String = "",
     /** Es el canal propio de un medio, sin creador. */
-    val duenoEsMedio: Boolean = false
+    val duenoEsMedio: Boolean = false,
+    /** Su tipo de cuenta: el suyo o el de su dueño. */
+    val clase: String = ClaseDeCuenta.GENERAL
 ) {
     /** En una frase, para un aviso: "Clips, de Juan Pérez", o solo el dueño si se llama igual. */
     val titulo: String
@@ -221,9 +232,61 @@ fun canalesDelDirectorio(creadores: List<Creador>, productoras: List<Productora>
                 nombreCasa?.takeIf { dueno != null }?.let { "Del medio $it" },
                 con.takeIf { it.isNotEmpty() }?.let { "Con ${enumerar(it)}" }
             ).joinToString(" · "),
-            duenoEsMedio = dueno == null && nombreCasa != null
+            duenoEsMedio = dueno == null && nombreCasa != null,
+            clase = canal.clase
         )
     }.sortedWith(compareBy({ it.nombreCanal.lowercase() }, { it.dueno.lowercase() }))
+}
+
+/**
+ * El tipo de cuenta de un creador, un medio o un canal, que el equipo elige
+ * en el panel. Las listas del Directorio van en este orden: primero lo
+ * general, después la televisión pública y al final la política y el gobierno.
+ */
+object ClaseDeCuenta {
+    const val GENERAL = "general"
+    const val TELEVISION_PUBLICA = "television_publica"
+    const val POLITICA = "politica"
+
+    val ORDEN = listOf(GENERAL, TELEVISION_PUBLICA, POLITICA)
+
+    /** Una que esta versión no conoce cuenta como general. */
+    fun normal(clase: String?): String = if (clase in ORDEN) clase!! else GENERAL
+}
+
+/**
+ * Una lista del Directorio en grupos, cada uno con su título (o sin él).
+ *
+ * Si hay de más de un tipo de cuenta, un grupo por tipo, en el orden de
+ * ClaseDeCuenta, con el título de [titulos]; dentro de cada uno, arriba lo que
+ * sigue. Si todo es del mismo tipo, como antes: lo que sigue con
+ * [tituloSigues] y lo demás con [tituloDemas] (sin títulos si solo hay de una
+ * de las dos). En todos los casos, dentro de cada parte, lo más nuevo arriba.
+ */
+fun <T> enGruposDelDirectorio(
+    lista: List<T>,
+    clase: (T) -> String,
+    sigue: (T) -> Boolean,
+    cuando: (T) -> Instant?,
+    titulos: Map<String, String>,
+    tituloSigues: String,
+    tituloDemas: String
+): List<Pair<String?, List<T>>> {
+    val ordenada = porNovedad(lista, cuando)
+    val porClase = ClaseDeCuenta.ORDEN
+        .map { c -> c to ordenada.filter { ClaseDeCuenta.normal(clase(it)) == c } }
+        .filter { it.second.isNotEmpty() }
+
+    if (porClase.size <= 1) {
+        val (siguidos, demas) = ordenada.partition(sigue)
+        return if (siguidos.isNotEmpty() && demas.isNotEmpty())
+            listOf(tituloSigues to siguidos, tituloDemas to demas)
+        else listOf(null to ordenada)
+    }
+    return porClase.map { (c, grupo) ->
+        val (siguidos, demas) = grupo.partition(sigue)
+        titulos[c] to (siguidos + demas)
+    }
 }
 
 /** Cuándo publicó por última vez alguien con estos canales; null si nunca (o no se sabe). */

@@ -36,7 +36,8 @@ internal fun creadorDe(json: JSONObject): Creador {
         active = true,
         canales = json.optJSONArray("canales")?.mapJson { canalDe(it) } ?: emptyList(),
         productoras = json.optJSONArray("productoras").mapJsonStrings(),
-        esProductora = json.optBoolean("esProductora", false)
+        esProductora = json.optBoolean("esProductora", false),
+        clase = ClaseDeCuenta.normal(json.optStringONull("clase"))
     )
 }
 
@@ -50,7 +51,8 @@ internal fun canalDe(json: JSONObject) = Canal(
     creadorId = json.optStringONull("creadorId"),
     productoraId = json.optStringONull("productoraId"),
     tambien = json.optJSONArray("creadores").mapJsonStrings(),
-    titulo = json.optStringONull("titulo")
+    titulo = json.optStringONull("titulo"),
+    clase = ClaseDeCuenta.normal(json.optStringONull("clase"))
 )
 
 internal fun productoraDe(json: JSONObject) = Productora(
@@ -60,7 +62,8 @@ internal fun productoraDe(json: JSONObject) = Productora(
     logoUrl = json.optStringONull("logoUrl"),
     canales = json.optJSONArray("canales")?.mapJson { canalDe(it) } ?: emptyList(),
     creadores = json.optJSONArray("creadores").mapJsonStrings(),
-    enDirectorio = json.optBoolean("enDirectorio", false)
+    enDirectorio = json.optBoolean("enDirectorio", false),
+    clase = ClaseDeCuenta.normal(json.optStringONull("clase"))
 )
 
 internal fun etiquetaDe(json: JSONObject) = Etiqueta(
