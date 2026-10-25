@@ -127,7 +127,8 @@ public class AdminController {
                             List.copyOf(c.getProductoras()),
                             vista.compartidosCon(c.getId()).stream()
                                     .map(k -> canalAdmin(k, vista, estados)).toList(),
-                            c.getAnunciadoEn());
+                            c.getAnunciadoEn(),
+                            c.getClase());
                 })
                 .toList();
     }
@@ -176,7 +177,7 @@ public class AdminController {
                                 .map(Creador::getId)
                                 .toList(),
                         usuarios.cuantosSiguenProductora(p.getId()),
-                        p.isEnDirectorio(), p.getCategoria()))
+                        p.isEnDirectorio(), p.getCategoria(), p.getClase()))
                 .toList();
     }
 
@@ -279,7 +280,9 @@ public class AdminController {
                 s != null ? s.getEstado() : null,
                 s != null ? s.getExpiraEn() : null,
                 List.copyOf(k.getVinculados()),
-                k.getTitulo());
+                k.getTitulo(),
+                k.getClase(),
+                Clase.deCanal(k, dueno, vista.productora(k.getProductoraId())));
     }
 
     /**

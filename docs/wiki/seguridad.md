@@ -88,6 +88,20 @@ Cada hora el registro del servidor también resume: `Llave de la app, última ho
 - **Apps → Llave de la app → Por cuenta**: cuántas cuentas de las que abrieron la app en 7 días traen cada cosa, con un botón **Ver** que lleva a esas cuentas.
 - **Usuarios**: la fila «Llave» de filtros (Firma bien, Sin firma, Firma con error, App Check bien, Sin App Check, App Check con error, Sin datos de llave), insignias en cada cuenta y el detalle en su ficha, junto con su versión de la app.
 
+**Versión de la app, número de llave y app de App Check.** Con la misma anotación de cada minuto se guarda también, de la última petición de cada cuenta (V30):
+
+- `app_version` / `app_plataforma` / `app_version_orden`: la versión de la app (cabecera `X-App-Version`). Antes solo cambiaba al entrar o renovar la sesión; ahora cambia en cuanto la cuenta abre la app con una versión nueva. `app_version_orden` es `mayor·1.000.000 + menor·1.000 + parche`, para ordenar 1.1.10 después de 1.1.8.
+- `llave_numero`: el número de `APP_LLAVES` con que firmó (`X-App-Llave`: 1, 2…).
+- `llave_app_check_app`: de qué app de Firebase venía su App Check (el `sub` del token, solo si era bueno). El panel lo traduce: Producción, Pruebas, Developer; una que no conoce sale como «Otra app (…últimos 6)» (`VerificadorAppCheck.NOMBRES_DE_APPS`).
+
+En **Usuarios**:
+
+- La tarjeta **Versiones y llaves** (`GET /api/admin/usuarios/versiones`): cada versión con sus cuentas, las activas en 7 días, con qué número de llave firman y de qué app viene su App Check, y botones **Ver**. Debajo, el total por número de llave (de qué versión a qué versión) y por app de App Check. Se pone al día sola cada minuto mientras está a la vista (sin ventana abierta y con la pestaña visible); la casilla «Actualizar cada minuto» lo apaga.
+- Las columnas **Versión** y **Llave** de la lista ordenan con un clic; la versión anterior a la más nueva lleva la insignia «Anterior».
+- Las filas de filtros **Versión** (`versiones=android:1.2.2,sin`) y **N.º llave** (`llaves=1,2,sin`): vale cualquiera de las marcadas, y se combinan con los demás filtros.
+
+Ejemplo: con 1.1.8 (llave 1) y 1.2.2 (llave 2) publicadas, quien instala la 1.2.2 deja de contar en la fila de la 1.1.8 y suma en la de la 1.2.2 en cuanto abre la app. Cuando la tarjeta dice que la llave 1 ya no tiene cuentas activas, se puede quitar `1:` de `APP_LLAVES`.
+
 «Sin firma» con una versión anterior a 1.0.18 es lo normal. «Firma con error» casi siempre es una app compilada con otra llave: comparar `llave_app_*` de `firma.properties` con `APP_LLAVES` del servidor.
 
 ### Poner la firma
@@ -103,7 +117,7 @@ Cada hora el registro del servidor también resume: `Llave de la app, última ho
    ```
 3. Compila la app como siempre. Si falta `llave_app_produccion`, Gradle lo avisa y la app sale sin firma.
 
-**Cambiar de llave** (si sospechas que alguien la sacó): agrega una nueva sin quitar la vieja, `APP_LLAVES=1:vieja,2:nueva`, y recrea el servidor. Pon la línea completa en `firma.properties` (la app firma con la de número más alto) y publica la app. Cuando casi nadie use versiones anteriores, quita la `1:` del servidor.
+**Cambiar de llave** (si sospechas que alguien la sacó): agrega una nueva sin quitar la vieja, `APP_LLAVES=1:vieja,2:nueva`, y recrea el servidor. Pon la línea completa en `firma.properties` (la app firma con la de número más alto) y publica la app. Cuando en **Usuarios → Versiones y llaves** la llave 1 diga «Nadie activo firma con ella», quita la `1:` del servidor.
 
 ### Poner App Check (Play Integrity)
 

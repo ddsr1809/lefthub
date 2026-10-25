@@ -539,6 +539,33 @@ para no tener en el servidor qué videos abre cada quien. Ahora el servidor sí
 lo guarda (solo el id del video, si fue a mano y cuándo), a cambio de que no
 se pierdan al cambiar de sesión o de teléfono.
 
+## Tipo de cuenta: general, televisión pública, política y gobierno
+
+Cada creador, medio y canal tiene un **tipo de cuenta**, que se elige en el
+panel:
+
+- **General (no político)**: lo de siempre. Es el que tienen todos de entrada.
+- **Televisión pública**: canales de televisión pública.
+- **Política y gobierno**: figuras políticas y cuentas de gobierno.
+
+Se elige en el formulario del creador y en el del medio (*Tipo de cuenta*). Un
+canal, en su ficha (sección Canales), puede tener el suyo o dejar *Igual que su
+dueño*: entonces es el del creador o, si no tiene, el del medio. Las listas del
+panel lo marcan con una etiqueta cuando no es general.
+
+En la app, cada lista del Directorio (Creadores, Canales de YouTube y Medios)
+va en grupos, en este orden: primero lo general, después **Televisión
+pública** y al final **Política y gobierno**, cada grupo con su título. Dentro
+de cada grupo, arriba lo que la persona sigue y, después, quien publicó más
+reciente. Si todo es del mismo tipo, la lista se ve como antes ("Creadores que
+sigues" y "Los demás creadores").
+
+Por dentro: `creadores.clase`, `productoras.clase` y `canales.clase` (V29). La
+API lo manda en el campo `clase`: en cada canal, ya resuelto con el de su
+dueño. La copia a testing y la migración de pruebas a producción lo llevan
+también; en las versiones solo se escribe cuando no es general, para que las
+fichas que ya estaban no aparezcan como cambiadas.
+
 ## Etiquetas
 
 Las etiquetas son la forma de agrupar el directorio, y las decide el equipo:

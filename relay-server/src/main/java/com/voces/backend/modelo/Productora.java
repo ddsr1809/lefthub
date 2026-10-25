@@ -50,6 +50,10 @@ public class Productora {
     @Column(nullable = false)
     private String categoria = "otros";
 
+    /** General, televisión pública o política y gobierno. Ver Clase. */
+    @Column(nullable = false)
+    private String clase = Clase.GENERAL;
+
     /**
      * Solo en testing: id que tiene esta productora en producción, cuando
      * llegó copiada desde allá. Ver V5__origen_de_replica.sql.
@@ -83,6 +87,9 @@ public class Productora {
 
     public String getCategoria() { return categoria; }
     public void setCategoria(String categoria) { this.categoria = categoria; }
+
+    public String getClase() { return clase; }
+    public void setClase(String clase) { this.clase = clase; }
 
     public UUID getOrigenId() { return origenId; }
     public void setOrigenId(UUID origenId) { this.origenId = origenId; }

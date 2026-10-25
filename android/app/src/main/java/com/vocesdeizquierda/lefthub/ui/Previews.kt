@@ -19,6 +19,7 @@ import androidx.compose.ui.tooling.preview.Preview
 import java.time.Instant
 import com.vocesdeizquierda.lefthub.EstadoApp
 import com.vocesdeizquierda.lefthub.data.Canal
+import com.vocesdeizquierda.lefthub.data.ClaseDeCuenta
 import com.vocesdeizquierda.lefthub.data.Conexion
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
@@ -154,6 +155,8 @@ private val luis = Creador(
     id = "luis",
     name = "Luis Mendoza",
     category = "noticias",
+    // Una figura política: en el Directorio sale en su propio grupo, al final.
+    clase = ClaseDeCuenta.POLITICA,
     platforms = mapOf(
         "youtube" to Conexion(url = "https://www.youtube.com/channel/UC789"),
         "twitch" to Conexion(url = "https://www.twitch.tv/luismendoza")

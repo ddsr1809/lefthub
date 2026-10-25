@@ -56,6 +56,18 @@ public final class VersionDeApp {
         return partes;
     }
 
+    /**
+     * La versión como un número que ordena igual que comparar(): 1.2.2 es
+     * 1002002. Cada parte se queda en 999 como mucho; la cuarta no cuenta.
+     * Null si no hay versión. Es lo que se guarda en usuarios.app_version_orden (V30).
+     */
+    public static Integer orden(String version) {
+        String limpia = limpia(version);
+        if (limpia == null) return null;
+        int[] p = numeros(limpia);
+        return Math.min(p[0], 999) * 1_000_000 + Math.min(p[1], 999) * 1_000 + Math.min(p[2], 999);
+    }
+
     /** Negativo si a es anterior a b, cero si son la misma, positivo si es posterior. */
     public static int comparar(String a, String b) {
         int[] x = numeros(a);

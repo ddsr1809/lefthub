@@ -232,7 +232,7 @@ public class ReplicaService {
         return new Dtos.GuardarCreador(creador.getId(), creador.getNombre(), creador.getCategoria(),
                 creador.getBio(), creador.getFotoUrl(), conexiones, creador.isActivo(),
                 suyos.stream().map(CanalesService::comoPedido).toList(),
-                List.copyOf(creador.getProductoras()));
+                List.copyOf(creador.getProductoras()), creador.getClase());
     }
 
     /**
@@ -243,7 +243,7 @@ public class ReplicaService {
         return new Dtos.GuardarProductora(productora.getId(), productora.getNombre(),
                 productora.getDescripcion(), productora.getLogoUrl(), productora.isActivo(),
                 propios.stream().map(CanalesService::comoPedido).toList(), null,
-                productora.isEnDirectorio(), productora.getCategoria());
+                productora.isEnDirectorio(), productora.getCategoria(), productora.getClase());
     }
 
     static String destino(String url) {
@@ -338,7 +338,7 @@ public class ReplicaService {
                                 .filter(Objects::nonNull)
                                 .map(k -> sinIds(k, null))
                                 .toList(),
-                null, peticion.enDirectorio(), peticion.categoria());
+                null, peticion.enDirectorio(), peticion.categoria(), peticion.clase());
 
         Cambio cambio = servicioDeProductoras.aplicar(productora, local);
 
@@ -384,7 +384,7 @@ public class ReplicaService {
 
         return new Dtos.GuardarCreador(peticion.id(), peticion.nombre(), peticion.categoria(),
                 peticion.bio(), peticion.fotoUrl(), peticion.conexiones(), peticion.activo(),
-                suyos, casas);
+                suyos, casas, peticion.clase());
     }
 
     /**
@@ -401,7 +401,7 @@ public class ReplicaService {
                         .toList();
 
         return new Dtos.GuardarCanal(null, k.plataforma(), k.nombre(), k.url(),
-                k.handle(), k.channelId(), productoraLocal, conQuien);
+                k.handle(), k.channelId(), productoraLocal, conQuien, k.clase());
     }
 
     /**

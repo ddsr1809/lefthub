@@ -122,4 +122,50 @@ class ConsultaDeUsuariosTest {
         assertFalse(jpql.contains("delete"));
         assertTrue(jpql.contains("u.vistoEn desc"));
     }
+
+    private static Filtro versionesYLlaves(List<String> versiones, List<String> llaves) {
+        return new Filtro(List.of(), List.of(), "", "", "", "", versiones, llaves);
+    }
+
+    @Test
+    @DisplayName("Varias versiones de la app a la vez: vale cualquiera, como parámetros")
+    void versiones() {
+        Consulta c = ConsultaDeUsuarios.armar(versionesYLlaves(List.of("android:1.1.8", "android:1.2.2", "sin"), List.of()),
+                "visto", false, AHORA);
+        assertTrue(c.jpql().contains(" where ((u.appPlataforma = :vp0 and u.appVersion = :vv0)"
+                + " or (u.appPlataforma = :vp1 and u.appVersion = :vv1) or u.appVersion is null) order by"), c.jpql());
+        assertEquals("1.1.8", c.parametros().get("vv0"));
+        assertEquals("1.2.2", c.parametros().get("vv1"));
+        assertEquals("android", c.parametros().get("vp1"));
+    }
+
+    @Test
+    @DisplayName("Una versión mal escrita o de otra plataforma no llega a la consulta")
+    void versionesRaras() {
+        Consulta c = ConsultaDeUsuarios.armar(versionesYLlaves(
+                List.of("android:1.2.2' or '1'='1", "windows:1.0.0", "1.2.2", "ios:2.0"), List.of()), "visto", false, AHORA);
+        assertTrue(c.jpql().contains(" where ((u.appPlataforma = :vp0 and u.appVersion = :vv0)) order by"), c.jpql());
+        assertEquals("ios", c.parametros().get("vp0"));
+        assertEquals("2.0", c.parametros().get("vv0"));
+        assertFalse(c.jpql().contains("'1'='1"));
+    }
+
+    @Test
+    @DisplayName("Por número de llave, o las que firman sin llave")
+    void llaves() {
+        Consulta c = ConsultaDeUsuarios.armar(versionesYLlaves(List.of(), List.of("2", "1", "sin", "x", "0")), "visto", false, AHORA);
+        assertTrue(c.jpql().contains(" where (u.llaveNumero in :llaves or u.llaveNumero is null) order by"), c.jpql());
+        assertEquals(List.of((short) 1, (short) 2), c.parametros().get("llaves"));
+
+        Consulta solo = ConsultaDeUsuarios.armar(versionesYLlaves(List.of(), List.of("1")), "visto", false, AHORA);
+        assertTrue(solo.jpql().contains(" where u.llaveNumero in :llaves order by"), solo.jpql());
+    }
+
+    @Test
+    @DisplayName("Ordenar por versión de la app es por número, no por texto")
+    void ordenPorVersion() {
+        assertTrue(ConsultaDeUsuarios.armar(TODO, "app", false, AHORA).jpql()
+                .contains("case when u.appVersionOrden is null then 1 else 0 end, u.appVersionOrden desc"));
+        assertTrue(ConsultaDeUsuarios.armar(TODO, "llave", true, AHORA).jpql().contains("u.llaveNumero asc"));
+    }
 }

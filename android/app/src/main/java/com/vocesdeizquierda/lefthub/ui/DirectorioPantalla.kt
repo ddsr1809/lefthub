@@ -33,7 +33,8 @@ import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.Productora
 import com.vocesdeizquierda.lefthub.data.VideosDeCanal
 import com.vocesdeizquierda.lefthub.data.canalesDelDirectorio
-import com.vocesdeizquierda.lefthub.data.porNovedad
+import com.vocesdeizquierda.lefthub.data.ClaseDeCuenta
+import com.vocesdeizquierda.lefthub.data.enGruposDelDirectorio
 import com.vocesdeizquierda.lefthub.data.ultimoVideoDe
 import java.time.Instant
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -49,7 +50,9 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 
 // Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
 // de debajo filtran dentro de la que esté elegida. Van en este orden:
-// Creadores, Canales de YouTube y Medios. Dentro de cada una, arriba quien
+// Creadores, Canales de YouTube y Medios. Dentro de cada una, primero lo
+// general, después la televisión pública y al final la política y el
+// gobierno (ver ClaseDeCuenta); y en cada grupo, arriba lo que sigue y quien
 // publicó más reciente.
 //
 // Cuál se ve no lo guarda esta pantalla sino la navegación (Navegacion en
@@ -248,11 +251,17 @@ fun DirectorioPantalla(
                 contentPadding = PaddingValues(horizontal = Espacio.md),
                 modifier = Modifier.fillMaxSize()
             ) {
-                // Arriba lo que sigue; dentro de cada parte, quien publicó más reciente.
-                val (seguidas, demas) = seguidosPrimero(
-                    porNovedad(productorasVisibles) { ultimoVideoDe(it.canales, ultimosVideos) }
-                ) { it.id in seguidosAlAbrir.productoras }
-                enDosGrupos(seguidas, demas, "Medios que sigues", "Los demás medios", { it.id }) { productora, franja ->
+                // Por tipo de cuenta (lo general, la televisión pública, la
+                // política); dentro, arriba lo que sigue y lo más nuevo.
+                enGrupos(enGruposDelDirectorio(
+                    productorasVisibles,
+                    clase = { it.clase },
+                    sigue = { it.id in seguidosAlAbrir.productoras },
+                    cuando = { ultimoVideoDe(it.canales, ultimosVideos) },
+                    titulos = titulosDeClase("Medios"),
+                    tituloSigues = "Medios que sigues",
+                    tituloDemas = "Los demás medios"
+                ), { it.id }) { productora, franja ->
                     FilaProductora(
                         productora = productora,
                         siguiendo = productora.id in productorasSeguidas,
@@ -276,10 +285,15 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                val (seguidos, demas) = seguidosPrimero(
-                    porNovedad(canalesVisibles) { ultimosVideos[it.canal.id] }
-                ) { it.canal.id in seguidosAlAbrir.canales }
-                enDosGrupos(seguidos, demas, "Canales que sigues", "Los demás canales", { it.canal.id }) { listado, franja ->
+                enGrupos(enGruposDelDirectorio(
+                    canalesVisibles,
+                    clase = { it.clase },
+                    sigue = { it.canal.id in seguidosAlAbrir.canales },
+                    cuando = { ultimosVideos[it.canal.id] },
+                    titulos = titulosDeClase("Canales"),
+                    tituloSigues = "Canales que sigues",
+                    tituloDemas = "Los demás canales"
+                ), { it.canal.id }) { listado, franja ->
                     FilaCanal(
                         listado = listado,
                         onAbrir = { onAbrirCanal(listado.canal.id) },
@@ -306,10 +320,15 @@ fun DirectorioPantalla(
                         LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
                     }
                 }
-                val (seguidos, demas) = seguidosPrimero(
-                    porNovedad(creadoresVisibles) { ultimoVideoDe(it.canalesDeYouTube, ultimosVideos) }
-                ) { it.id in seguidosAlAbrir.creadores }
-                enDosGrupos(seguidos, demas, "Creadores que sigues", "Los demás creadores", { it.id }) { creador, franja ->
+                enGrupos(enGruposDelDirectorio(
+                    creadoresVisibles,
+                    clase = { it.clase },
+                    sigue = { it.id in seguidosAlAbrir.creadores },
+                    cuando = { ultimoVideoDe(it.canalesDeYouTube, ultimosVideos) },
+                    titulos = titulosDeClase("Creadores"),
+                    tituloSigues = "Creadores que sigues",
+                    tituloDemas = "Los demás creadores"
+                ), { it.id }) { creador, franja ->
                     FilaCreador(
                         creador = creador,
                         siguiendo = creador.id in favoritos,
@@ -334,24 +353,26 @@ private data class SeguidosAlAbrir(
     val canales: Set<String>
 )
 
+/** Los títulos de los grupos por tipo de cuenta; el de lo general es el de la lista. */
+private fun titulosDeClase(general: String) = mapOf(
+    ClaseDeCuenta.GENERAL to general,
+    ClaseDeCuenta.TELEVISION_PUBLICA to "Televisión pública",
+    ClaseDeCuenta.POLITICA to "Política y gobierno"
+)
+
 /**
- * Una lista en dos partes: arriba lo que sigue, debajo lo demás. Cada parte
- * lleva su título solo si hay de las dos; si sigue todo o nada, sobra. Las
- * franjas alternas empiezan de nuevo en cada parte.
+ * Una lista en grupos, cada uno con su título si lo tiene. Las franjas
+ * alternas empiezan de nuevo en cada grupo. Ver enGruposDelDirectorio.
  */
-private fun <T> LazyListScope.enDosGrupos(
-    seguidos: List<T>,
-    demas: List<T>,
-    tituloSeguidos: String,
-    tituloDemas: String,
+private fun <T> LazyListScope.enGrupos(
+    grupos: List<Pair<String?, List<T>>>,
     clave: (T) -> String,
     fila: @Composable (T, Boolean) -> Unit
 ) {
-    val conTitulos = seguidos.isNotEmpty() && demas.isNotEmpty()
-    if (conTitulos) item(key = "titulo-seguidos") { TituloDeGrupo(tituloSeguidos) }
-    itemsIndexed(seguidos, key = { _, it -> clave(it) }) { i, x -> fila(x, i % 2 == 0) }
-    if (conTitulos) item(key = "titulo-demas") { TituloDeGrupo(tituloDemas) }
-    itemsIndexed(demas, key = { _, it -> clave(it) }) { i, x -> fila(x, i % 2 == 0) }
+    grupos.filter { it.second.isNotEmpty() }.forEachIndexed { i, (titulo, lista) ->
+        if (titulo != null) item(key = "titulo-$i-$titulo") { TituloDeGrupo(titulo) }
+        itemsIndexed(lista, key = { _, x -> clave(x) }) { j, x -> fila(x, j % 2 == 0) }
+    }
 }
 
 @Composable

@@ -65,7 +65,13 @@ public class ConsultaDeUsuarios {
             "alta", "u.creadoEn",
             "visto", "u.vistoEn",
             // Primero los marcados como posibles bots; entre ellos, los más recientes.
-            "bot", "case when u.posibleBot = true then 1 else 0 end");
+            "bot", "case when u.posibleBot = true then 1 else 0 end",
+            // Por número y no por texto: 1.1.10 va después de 1.1.9 (V30).
+            "app", "u.appVersionOrden",
+            "llave", "u.llaveNumero");
+
+    /** Lo más que se puede elegir de una vez en los filtros de versión y de llave. */
+    static final int MAX_ELEGIDOS = 30;
 
     /**
      * @param tipos  anonimo, google, apple; vacío = todos
@@ -80,11 +86,18 @@ public class ConsultaDeUsuarios {
      * completos, comparando huellas. Ver seguridad/CifradorDeDatos.
      */
     public record Filtro(Collection<String> tipos, Collection<String> marcas, String pais, String texto,
-                         String huellaCorreo, String huellaIp) {
+                         String huellaCorreo, String huellaIp,
+                         Collection<String> versiones, Collection<String> llaves) {
 
         /** Sin búsqueda por correo ni IP. */
         public Filtro(Collection<String> tipos, Collection<String> marcas, String pais, String texto) {
             this(tipos, marcas, pais, texto, "", "");
+        }
+
+        /** Sin filtros de versión ni de llave. */
+        public Filtro(Collection<String> tipos, Collection<String> marcas, String pais, String texto,
+                      String huellaCorreo, String huellaIp) {
+            this(tipos, marcas, pais, texto, huellaCorreo, huellaIp, List.of(), List.of());
         }
     }
 
@@ -155,6 +168,48 @@ public class ConsultaDeUsuarios {
             donde.add("lower(u.red) like :texto");
             parametros.put("texto", f.texto());
             y(w, "(" + String.join(" or ", donde) + ")");
+        }
+
+        // Versiones de la app: "android:1.2.2", o "sin" (la app no lo dijo).
+        // Vale cualquiera de las elegidas.
+        if (f.versiones() != null) {
+            List<String> donde = new java.util.ArrayList<>();
+            int i = 0;
+            for (String v : f.versiones().stream().distinct().limit(MAX_ELEGIDOS).toList()) {
+                if ("sin".equals(v)) {
+                    donde.add("u.appVersion is null");
+                    continue;
+                }
+                int dos = v.indexOf(':');
+                if (dos < 0) continue;
+                String plataforma = v.substring(0, dos), version = v.substring(dos + 1);
+                if (!Set.of("android", "ios").contains(plataforma) || !version.matches("[0-9]{1,4}(\\.[0-9]{1,4}){0,3}")) continue;
+                donde.add("(u.appPlataforma = :vp" + i + " and u.appVersion = :vv" + i + ")");
+                parametros.put("vp" + i, plataforma);
+                parametros.put("vv" + i, version);
+                i++;
+            }
+            if (!donde.isEmpty()) y(w, "(" + String.join(" or ", donde) + ")");
+        }
+
+        // Número de llave con que firma: "1", "2"... o "sin". Vale cualquiera.
+        if (f.llaves() != null) {
+            List<Short> numeros = new java.util.ArrayList<>();
+            boolean sinLlave = false;
+            for (String l : f.llaves().stream().distinct().limit(MAX_ELEGIDOS).toList()) {
+                if ("sin".equals(l)) { sinLlave = true; continue; }
+                try {
+                    short n = Short.parseShort(l);
+                    if (n >= 1 && n <= 999) numeros.add(n);
+                } catch (NumberFormatException e) { /* se ignora */ }
+            }
+            List<String> donde = new java.util.ArrayList<>();
+            if (!numeros.isEmpty()) {
+                donde.add("u.llaveNumero in :llaves");
+                parametros.put("llaves", numeros.stream().sorted().toList());
+            }
+            if (sinLlave) donde.add("u.llaveNumero is null");
+            if (!donde.isEmpty()) y(w, donde.size() == 1 ? donde.get(0) : "(" + String.join(" or ", donde) + ")");
         }
 
         String expresion = ORDENES.getOrDefault(orden, ORDENES.get("visto"));

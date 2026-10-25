@@ -53,6 +53,9 @@ public class CreadoresService {
 
         creador.setNombre(peticion.nombre().trim());
         creador.setCategoria(peticion.categoriaOtros());
+        // Sin clase en la petición (un panel anterior, la réplica de antes), no se toca.
+        String clase = com.voces.backend.modelo.Clase.validar(peticion.clase());
+        if (clase != null) creador.setClase(clase);
         creador.setBio(recortar(peticion.bio(), 600));
         creador.setFotoUrl(peticion.fotoUrl());
         creador.setActivo(peticion.estaActivo());
