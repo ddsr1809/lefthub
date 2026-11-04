@@ -329,6 +329,19 @@ object ApiRelay {
     }
 
     /**
+     * Quién está al aire en todo el directorio, en el orden en que se enseña:
+     * lo decide el servidor, que sabe a quién sigue la persona y a qué está
+     * suscrita en YouTube.
+     *
+     * Un servidor anterior no tiene la ruta: para la app eso es "nadie".
+     */
+    suspend fun enVivo(): List<DirectoEnVivo> = try {
+        getArray("/api/publicaciones/en-vivo").mapJson { directoEnVivoDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
      * Un video por su id, para su ficha. null si el servidor no lo tiene (o
      * es anterior a la ruta): la ficha se arregla con lo que traía el aviso.
      */

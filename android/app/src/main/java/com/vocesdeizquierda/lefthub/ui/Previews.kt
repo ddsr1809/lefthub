@@ -22,8 +22,11 @@ import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.ClaseDeCuenta
 import com.vocesdeizquierda.lefthub.data.Conexion
 import com.vocesdeizquierda.lefthub.data.Creador
+import com.vocesdeizquierda.lefthub.data.DirectoEnVivo
 import com.vocesdeizquierda.lefthub.data.EstadoYouTube
 import com.vocesdeizquierda.lefthub.data.Etiqueta
+import com.vocesdeizquierda.lefthub.data.GrupoEnVivo
+import com.vocesdeizquierda.lefthub.data.ListaEnVivo
 import com.vocesdeizquierda.lefthub.data.PermisoYouTube
 import com.vocesdeizquierda.lefthub.data.SuscripcionesYouTube
 import com.vocesdeizquierda.lefthub.data.Perfil
@@ -304,6 +307,35 @@ private fun PreviaNovedadesConCortos() {
             cortos = publicaciones.take(1).map { it.copy(tipo = "short") },
             verCortos = true
         )
+    }
+}
+
+/** Los tres grupos de «En vivo», en su orden. */
+@VistaPreviaTemas
+@Composable
+private fun PreviaEnVivo() {
+    val directo = publicaciones.first().copy(esEnVivo = true)
+    Marco {
+        EnVivoPantalla(
+            enVivo = ListaEnVivo(
+                cargando = false,
+                lista = listOf(
+                    DirectoEnVivo(GrupoEnVivo.SEGUIDOS, directo.copy(id = "v1")),
+                    DirectoEnVivo(GrupoEnVivo.SUSCRITOS, directo.copy(id = "v2", creatorName = "Ana Ruiz")),
+                    DirectoEnVivo(GrupoEnVivo.OTROS, directo.copy(id = "v3", creatorName = "Luis Mora"))
+                )
+            ),
+            onCargar = {}
+        )
+    }
+}
+
+/** Sin nadie al aire: dice qué esperar, no solo que no hay nada. */
+@VistaPreviaTemas
+@Composable
+private fun PreviaEnVivoVacio() {
+    Marco {
+        EnVivoPantalla(enVivo = ListaEnVivo(cargando = false), onCargar = {})
     }
 }
 

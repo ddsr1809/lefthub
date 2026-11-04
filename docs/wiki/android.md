@@ -28,6 +28,7 @@ La barra inferior tiene **Directorio** (inicio), **Novedades**, **Stickers** (si
 | Ficha de canal | `CanalPantalla.kt` | De quién es, con quién aparece y últimos videos |
 | Elegir canales | `ElegirCanales.kt` | Ventana al seguir: todos los canales o solo algunos |
 | Novedades | `NovedadesPantalla.kt` | Videos, Videos cortos (si están encendidos) y Lo más visto |
+| En vivo | `EnVivoPantalla.kt` | Pestaña con quién está al aire en el directorio: primero a quienes sigue, después sus suscripciones de YouTube y al final los demás |
 | Ficha del video | `VideoPantalla.kt` | Se abre al tocar una notificación; botón Ver el video y espacio para anuncio |
 | Stickers | `StickersPantalla.kt` | Paquetes por creador para WhatsApp, Telegram, Signal y otras |
 | Ajustes | `AjustesPantalla.kt` | Cuenta, letra, cortos, YouTube, anuncios, chat, recomendar, agregar |

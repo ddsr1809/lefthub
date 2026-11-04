@@ -33,6 +33,8 @@ data class EstadoApp(
      * el periodo.
      */
     val masVistas: Map<String, VideosDeCanal> = emptyMap(),
+    /** Quién está al aire. Se pide mientras se ve la pestaña «En vivo». */
+    val enVivo: ListaEnVivo = ListaEnVivo(),
     val perfil: Perfil = Perfil(),
     /** Ya llegó el perfil del servidor al menos una vez: se sabe qué sigue. */
     val perfilCargado: Boolean = false,
@@ -324,6 +326,23 @@ class AppViewModel(
                 lista = resultado.getOrDefault(antes),
                 fallo = resultado.isFailure
             )))
+        }
+    }
+
+    /**
+     * Trae quién está al aire. Se llama cada minuto, así que mientras llega
+     * no cambia nada en pantalla: se sigue viendo lo que había. Si falla
+     * también; solo se habla del fallo si no hay nada que enseñar.
+     */
+    fun cargarEnVivo() = viewModelScope.launch {
+        val resultado = runCatching { directorio.enVivo() }
+
+        _estado.update { e ->
+            e.copy(enVivo = ListaEnVivo(
+                lista = resultado.getOrDefault(e.enVivo.lista),
+                cargando = false,
+                fallo = resultado.isFailure
+            ))
         }
     }
 

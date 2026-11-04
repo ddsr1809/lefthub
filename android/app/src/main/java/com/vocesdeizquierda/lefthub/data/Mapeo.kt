@@ -109,6 +109,11 @@ internal fun publicacionDe(json: JSONObject): Publicacion {
     )
 }
 
+internal fun directoEnVivoDe(json: JSONObject): DirectoEnVivo = DirectoEnVivo(
+    grupo = json.optString("grupo", GrupoEnVivo.OTROS),
+    publicacion = publicacionDe(json.optJSONObject("video") ?: JSONObject())
+)
+
 internal fun perfilDe(json: JSONObject): Perfil {
     val productoras = json.optJSONArray("productoras").mapJsonStrings()
 

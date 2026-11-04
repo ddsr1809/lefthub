@@ -19,6 +19,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
@@ -374,6 +377,27 @@ private const val FICHA_DE_VIDEO = "video/"
  */
 private val TIPOS_DEL_EQUIPO = setOf("creador", "productora", "canal", "retirado", "bloqueado", "mensaje")
 
+/**
+ * La letra de las pestañas: la de siempre mientras la etiqueta más larga
+ * quepa en su lugar. Si no cabe (con cinco pestañas, un teléfono angosto o la
+ * letra grande), se achica lo justo para que ninguna se parta en dos renglones
+ * ni pierda letras. El espacio que se resta es el que deja la barra entre
+ * pestañas.
+ */
+@Composable
+private fun estiloDePestanas(etiquetas: List<String>): TextStyle {
+    val base = MaterialTheme.typography.bodySmall
+    val medidor = rememberTextMeasurer()
+    val densidad = LocalDensity.current
+    val anchoDePantalla = LocalConfiguration.current.screenWidthDp.dp
+
+    return remember(etiquetas, base, anchoDePantalla, densidad) {
+        val cabe = with(densidad) { (anchoDePantalla / etiquetas.size - Espacio.sm).toPx() }
+        val necesita = etiquetas.maxOf { medidor.measure(it, base).size.width }
+        if (necesita <= cabe) base else base.copy(fontSize = base.fontSize * (cabe / necesita))
+    }
+}
+
 @Composable
 private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val nav = rememberNavController()
@@ -469,6 +493,7 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     val destinos = buildList {
         add("directorio" to "Directorio")
         add("novedades" to "Novedades")
+        add("en-vivo" to "En vivo")
         // Su propia pestaña, aparte de Novedades. Solo si el equipo los
         // encendió para esta cuenta desde el panel.
         if (estado.perfil.stickers) add("stickers" to "Stickers")
@@ -518,6 +543,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
         }
     }
 
+    val letraDePestanas = estiloDePestanas(destinos.map { it.second })
+
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -556,7 +583,9 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                         // que adivinarla, y a este público los pictogramas
                         // abstractos le cuestan más que una palabra.
                         icon = { },
-                        label = { Text(etiqueta, style = MaterialTheme.typography.bodySmall) },
+                        label = {
+                            Text(etiqueta, style = letraDePestanas, maxLines = 1, softWrap = false)
+                        },
                         alwaysShowLabel = true
                     )
                 }
@@ -585,6 +614,15 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
                     ayudaTele = AyudaTele.pendiente,
                     onAyudaTeleEntendida = { AyudaTele.entendida(contexto) },
                     onIrAlDirectorio = { nav.navigate("directorio") }
+                )
+            }
+
+            composable("en-vivo") {
+                EnVivoPantalla(
+                    enVivo = estado.enVivo,
+                    onCargar = { modelo.cargarEnVivo() },
+                    creadores = estado.creadores,
+                    productoras = estado.productoras
                 )
             }
 

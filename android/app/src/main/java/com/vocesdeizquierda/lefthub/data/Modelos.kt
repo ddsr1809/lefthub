@@ -363,6 +363,31 @@ data class Publicacion(
         }
 }
 
+/** Los grupos de la pestaña «En vivo», como los manda el servidor. */
+object GrupoEnVivo {
+    /** Lo sigue en la app. */
+    const val SEGUIDOS = "app"
+
+    /** Está suscrita a ese canal en YouTube. */
+    const val SUSCRITOS = "youtube"
+
+    /** Todos los demás del directorio. */
+    const val OTROS = "otros"
+}
+
+/** Alguien al aire: su directo y en qué grupo de la pestaña «En vivo» va. */
+data class DirectoEnVivo(
+    val grupo: String = GrupoEnVivo.OTROS,
+    val publicacion: Publicacion = Publicacion()
+)
+
+/** La pestaña «En vivo», ya en el orden del servidor. */
+data class ListaEnVivo(
+    val lista: List<DirectoEnVivo> = emptyList(),
+    val cargando: Boolean = true,
+    val fallo: Boolean = false
+)
+
 /**
  * Los últimos videos de un canal, para su ficha. Se piden al abrirla; no son
  * las novedades de la persona, sino lo que hay en ese canal.
