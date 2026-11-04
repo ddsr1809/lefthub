@@ -30,7 +30,7 @@ El servidor es una app Spring Boot 3.4.1 en Java 21 con PostgreSQL 17, Flyway y 
 | --- | --- |
 | Sesión | `POST /api/auth/anonimo`, `/google`, `/apple`, `/renovar`, `/salir` (desliga el teléfono al cerrar sesión) |
 | Directorio | `GET /api/creadores`, `/api/creadores/{id}`, `/api/creadores/{id}/publicaciones?parte=propios\|compartidos`, `/api/productoras[/{id}]`, `/api/productoras/{id}/publicaciones`, `/api/canales/{id}/publicaciones`, `/api/canales/ultimos-videos`, `/api/etiquetas` |
-| Novedades | `GET /api/publicaciones[?tipo=cortos]`, `/api/publicaciones/mas-vistas?periodo=hoy\|semana`, `/api/videos/{videoId}` |
+| Novedades | `GET /api/publicaciones[?tipo=cortos]`, `/api/publicaciones/mas-vistas?periodo=hoy\|semana`, `/api/publicaciones/en-vivo`, `/api/videos/{videoId}` |
 | Perfil | `GET /api/perfil`, `PUT /api/preferencias`, `PUT/DELETE /api/favoritos/{id}`, `/api/favoritos/productoras/{id}`, `/api/favoritos/canales/{id}` |
 | Cuenta | `POST /api/reportes`, `DELETE /api/cuenta`, `POST /api/cuenta/cerrar-sesiones` |
 | Funciones | `/api/youtube/suscripciones`, `/api/anuncios/folio`, `/api/anuncios/compra`, `/api/chat/*`, `/api/recomendaciones`, `/api/editor/*`, `/api/stickers/*`, `/api/fotos/{id}` |

@@ -209,6 +209,14 @@ public final class Dtos {
     }
 
     /**
+     * Un directo de la pestaña «En vivo».
+     *
+     * @param grupo app (lo sigue en la app) | youtube (suscrita en YouTube) | otros
+     * @param video el directo, igual que en cualquier otra lista de la app
+     */
+    public record EnVivoDto(String grupo, PublicacionDto video) {}
+
+    /**
      * Un video como lo ve el panel: lo mismo que la app y, además, sus cifras
      * y lo que pasó con él en el servidor. La app no recibe nada de esto.
      *
