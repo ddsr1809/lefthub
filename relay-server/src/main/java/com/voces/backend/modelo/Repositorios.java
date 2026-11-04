@@ -279,6 +279,21 @@ public final class Repositorios {
                                     @Param("desde") Instant desde,
                                     Pageable pagina);
 
+        /**
+         * Lo que está al aire ahora en el directorio, para la pestaña «En
+         * vivo». Las mismas colecciones que masVistas, y tampoco pueden llegar
+         * vacías. El orden no va aquí porque depende de la persona: ver EnVivo.
+         */
+        @Query("""
+                select p from Publicacion p
+                where (p.canalId in :canales or (p.canalId is null and p.creadorId in :creadores))
+                  and p.directo = 'en_vivo'
+                  and p.estado <> 'removed'
+                  and p.tipo <> 'short'
+                """)
+        List<Publicacion> enVivo(@Param("canales") Collection<UUID> canales,
+                                 @Param("creadores") Collection<UUID> creadores);
+
         @Modifying
         @Query("update Publicacion p set p.reportes = p.reportes + 1 where p.videoId = :videoId")
         void sumarReporte(@Param("videoId") String videoId);

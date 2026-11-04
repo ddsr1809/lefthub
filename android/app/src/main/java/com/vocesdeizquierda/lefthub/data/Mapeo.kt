@@ -109,6 +109,11 @@ internal fun publicacionDe(json: JSONObject): Publicacion {
     )
 }
 
+internal fun directoEnVivoDe(json: JSONObject): DirectoEnVivo = DirectoEnVivo(
+    grupo = json.optString("grupo", GrupoEnVivo.OTROS),
+    publicacion = publicacionDe(json.optJSONObject("video") ?: JSONObject())
+)
+
 internal fun perfilDe(json: JSONObject): Perfil {
     val productoras = json.optJSONArray("productoras").mapJsonStrings()
 
@@ -241,12 +246,65 @@ internal fun suscripcionesDe(json: JSONObject) = SuscripcionesYouTube(
     canalesNoSuscritos = json.optJSONArray("canalesNoSuscritos").mapJsonStrings().toSet()
 )
 
+private fun entradaDelMapaDe(json: JSONObject) = EntradaDelMapa(
+    id = json.getString("id"),
+    voces = json.optBoolean("voces", false),
+    youtube = json.optBooleanONull("youtube")
+)
+
+private fun canalDelMapaDe(json: JSONObject) = CanalDelMapa(
+    id = json.getString("id"),
+    voces = json.optBoolean("voces", false),
+    suelto = json.optBoolean("suelto", false),
+    youtube = json.optBooleanONull("youtube")
+)
+
+/** Lo que contesta GET /api/mapa, y también lo que AlmacenDeMapa guarda. */
+internal fun mapaDe(json: JSONObject) = MapaDeSeleccion(
+    huella = json.optString("huella", ""),
+    youtubeVerificadoEn = json.optStringONull("youtubeVerificadoEn")?.let {
+        runCatching { Instant.parse(it) }.getOrNull()
+    },
+    creadores = json.optJSONArray("creadores")?.mapJson(::entradaDelMapaDe) ?: emptyList(),
+    medios = json.optJSONArray("medios")?.mapJson(::entradaDelMapaDe) ?: emptyList(),
+    canales = json.optJSONArray("canales")?.mapJson(::canalDelMapaDe) ?: emptyList()
+)
+
+/** El camino de vuelta de [mapaDe], para guardarlo en el teléfono. */
+internal fun MapaDeSeleccion.aJson(): JSONObject {
+    fun entradas(lista: List<EntradaDelMapa>) = JSONArray().also { arr ->
+        lista.forEach { e ->
+            arr.put(JSONObject()
+                .put("id", e.id)
+                .put("voces", e.voces)
+                .put("youtube", e.youtube ?: JSONObject.NULL))
+        }
+    }
+    return JSONObject()
+        .put("huella", huella)
+        .put("youtubeVerificadoEn", youtubeVerificadoEn?.toString() ?: JSONObject.NULL)
+        .put("creadores", entradas(creadores))
+        .put("medios", entradas(medios))
+        .put("canales", JSONArray().also { arr ->
+            canales.forEach { c ->
+                arr.put(JSONObject()
+                    .put("id", c.id)
+                    .put("voces", c.voces)
+                    .put("suelto", c.suelto)
+                    .put("youtube", c.youtube ?: JSONObject.NULL))
+            }
+        })
+}
+
 // --- Utilidades de JSON ------------------------------------------------------
 // org.json devuelve la cadena "null" en vez de null cuando el campo viene nulo,
 // que es una fuente clásica de textos con "null" impreso en la pantalla.
 
 internal fun JSONObject.optStringONull(clave: String): String? =
     if (isNull(clave)) null else optString(clave).takeIf { it.isNotBlank() }
+
+internal fun JSONObject.optBooleanONull(clave: String): Boolean? =
+    if (isNull(clave)) null else optBoolean(clave)
 
 internal fun <T> JSONArray.mapJson(transformar: (JSONObject) -> T): List<T> =
     (0 until length()).map { transformar(getJSONObject(it)) }

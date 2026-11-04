@@ -209,6 +209,14 @@ public final class Dtos {
     }
 
     /**
+     * Un directo de la pestaña «En vivo».
+     *
+     * @param grupo app (lo sigue en la app) | youtube (suscrita en YouTube) | otros
+     * @param video el directo, igual que en cualquier otra lista de la app
+     */
+    public record EnVivoDto(String grupo, PublicacionDto video) {}
+
+    /**
      * Un video como lo ve el panel: lo mismo que la app y, además, sus cifras
      * y lo que pasó con él en el servidor. La app no recibe nada de esto.
      *
@@ -507,6 +515,37 @@ public final class Dtos {
             List<UUID> canalesSuscritos,
             List<UUID> canalesNoSuscritos
     ) {}
+
+    /**
+     * El mapa de selección de una cuenta. Ver directorio/MapaDeSeleccion.
+     *
+     * @param huella              resume todo lo demás, salvo la fecha
+     * @param youtubeVerificadoEn cuándo contestó YouTube; null si nunca
+     */
+    public record Mapa(
+            String huella,
+            Instant youtubeVerificadoEn,
+            List<EntradaDelMapa> creadores,
+            List<EntradaDelMapa> medios,
+            List<CanalDelMapa> canales
+    ) {}
+
+    /**
+     * Un creador o un medio en el mapa.
+     *
+     * @param voces   lo sigue en esta app
+     * @param youtube suscrita a su canal principal; null si no se sabe
+     */
+    public record EntradaDelMapa(UUID id, boolean voces, Boolean youtube) {}
+
+    /**
+     * Un canal de YouTube en el mapa.
+     *
+     * @param voces   recibe sus videos aquí, por la vía que sea
+     * @param suelto  lo sigue por sí solo, sin seguir a su creador ni a su medio
+     * @param youtube suscrita a él en YouTube; null si no se sabe
+     */
+    public record CanalDelMapa(UUID id, boolean voces, boolean suelto, Boolean youtube) {}
 
     // -------------------------------------------------------------------------
     // Moderación

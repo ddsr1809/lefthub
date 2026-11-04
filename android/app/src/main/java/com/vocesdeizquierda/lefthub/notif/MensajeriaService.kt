@@ -13,6 +13,7 @@ import com.vocesdeizquierda.lefthub.LeftVocesApp
 import com.vocesdeizquierda.lefthub.chat.ChatAvisos
 import com.vocesdeizquierda.lefthub.data.ApiRelay
 import com.vocesdeizquierda.lefthub.data.DirectorioRepo
+import com.vocesdeizquierda.lefthub.data.TopicosDelTelefono
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -95,6 +96,11 @@ class MensajeriaService : FirebaseMessagingService() {
     override fun onNewToken(token: String) {
         Log.d(TAG, "Token de FCM renovado")
 
+        // Con token nuevo no queda ninguna suscripción, y lo anotado ya no
+        // vale. Aunque no haya sesión: esto corre también al restaurar un
+        // respaldo en otro teléfono, donde la nota llega pero los topics no.
+        TopicosDelTelefono.olvidar()
+
         alcance.launch {
             runCatching {
                 if (!ApiRelay.haySesion) {
@@ -108,7 +114,6 @@ class MensajeriaService : FirebaseMessagingService() {
                 // Creadores y productoras: cada uno tiene su topic.
                 val perfil = ApiRelay.perfil()
                 // Y, si la persona ve los videos cortos, los de esos también.
-                DirectorioRepo.olvidarCortos()
                 DirectorioRepo().sincronizarTopics(
                     perfil.favoritos, perfil.productoras, perfil.recibeAvisosCortos, perfil.canales
                 )

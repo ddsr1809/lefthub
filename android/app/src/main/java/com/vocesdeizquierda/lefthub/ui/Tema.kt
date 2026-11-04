@@ -44,6 +44,9 @@ object Colores {
     val Exito = Color(0xFF4FD1A5)      //  9.3:1 sobre Carbon
     val ExitoTexto = Color(0xFF06281C) //  8.3:1 sobre Exito
     val Peligro = Color(0xFFFF7A69)
+    // El rojo de YouTube, un poco más oscuro: con texto blanco da 5.9:1, y el
+    // FF0000 original se queda en 4:1. Es el mismo en el tema claro y el oscuro.
+    val RojoYouTube = Color(0xFFCC0000)
 
     val FondoClaro = Color(0xFFFAFAF8)
     // Las filas alternas de las listas. Bastante más oscura que el fondo para

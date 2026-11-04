@@ -13,17 +13,20 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
+import com.vocesdeizquierda.lefthub.data.Canal
 import com.vocesdeizquierda.lefthub.data.CanalListado
 import com.vocesdeizquierda.lefthub.data.Creador
 import com.vocesdeizquierda.lefthub.data.Productora
+import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import java.time.Instant
 
-enum class VarianteBoton { PRIMARIO, SECUNDARIO, PELIGRO }
+enum class VarianteBoton { PRIMARIO, SECUNDARIO, PELIGRO, YOUTUBE }
 
 /**
  * Botón principal. 56dp de alto mínimo (no fijo: tiene que poder crecer si el
@@ -37,6 +40,8 @@ fun BotonGrande(
     subtitulo: String? = null,
     variante: VarianteBoton = VarianteBoton.PRIMARIO,
     habilitado: Boolean = true,
+    /** Lo que lee el lector de pantalla, si el texto no basta: de quién es el botón. */
+    descripcion: String? = null,
     onClick: () -> Unit
 ) {
     val esquema = MaterialTheme.colorScheme
@@ -44,14 +49,16 @@ fun BotonGrande(
         VarianteBoton.PRIMARIO -> esquema.primary
         VarianteBoton.SECUNDARIO -> esquema.surface
         VarianteBoton.PELIGRO -> Color.Transparent
+        VarianteBoton.YOUTUBE -> Colores.RojoYouTube
     }
     val tinte = when (variante) {
         VarianteBoton.PRIMARIO -> esquema.onPrimary
         VarianteBoton.SECUNDARIO -> esquema.onSurface
         VarianteBoton.PELIGRO -> esquema.error
+        VarianteBoton.YOUTUBE -> Color.White
     }
     val borde = when (variante) {
-        VarianteBoton.PRIMARIO -> null
+        VarianteBoton.PRIMARIO, VarianteBoton.YOUTUBE -> null
         VarianteBoton.SECUNDARIO -> esquema.outline
         VarianteBoton.PELIGRO -> esquema.error
     }
@@ -71,7 +78,8 @@ fun BotonGrande(
             // fragmentos sueltos que TalkBack leería como si no tuvieran
             // relación entre sí.
             .semantics(mergeDescendants = true) {
-                contentDescription = if (subtitulo != null) "$titulo. $subtitulo" else titulo
+                contentDescription = descripcion
+                    ?: if (subtitulo != null) "$titulo. $subtitulo" else titulo
             }
     ) {
         Column(Modifier.fillMaxWidth()) {
@@ -130,8 +138,8 @@ fun FilaCreador(
         onSeguir = onSeguir,
         descripcionAlAbrir = "${creador.name}. " +
             (textoYouTube?.let { "$it. " } ?: "") + "Ver su perfil.",
-        lineaExtra = textoYouTube,
-        lineaExtraDestacada = suscritoEnYouTube == true,
+        suscritoEnYouTube = suscritoEnYouTube,
+        canalYouTube = creador.canalPrincipalDeYouTube,
         conFranja = conFranja
     )
 }
@@ -146,7 +154,9 @@ fun FilaProductora(
     conFranja: Boolean = false,
     sueltos: Int = 0,
     deCuantos: Int = 0,
-    ultimoVideo: Instant? = null
+    ultimoVideo: Instant? = null,
+    /** Si está suscrito a su canal principal de YouTube; null si no se sabe. */
+    suscritoEnYouTube: Boolean? = null
 ) {
     val canales = productora.canales.size
     val parcial = !siguiendo && sueltos > 0
@@ -169,6 +179,8 @@ fun FilaProductora(
         onAbrir = onAbrir,
         onSeguir = onSeguir,
         descripcionAlAbrir = "${productora.nombre}, medio. Ver sus canales y creadores.",
+        suscritoEnYouTube = suscritoEnYouTube,
+        canalYouTube = productora.canalPrincipalDeYouTube,
         conFranja = conFranja
     )
 }
@@ -199,7 +211,9 @@ fun FilaCanal(
     siguiendo: Boolean = false,
     onSeguir: () -> Unit = {},
     conFranja: Boolean = false,
-    ultimoVideo: Instant? = null
+    ultimoVideo: Instant? = null,
+    /** El botón rojo a YouTube. Al elegir qué canales seguir, sobra. */
+    conBotonDeYouTube: Boolean = true
 ) {
     val textoYouTube = when (suscritoEnYouTube) {
         true -> "Suscrito en YouTube"
@@ -224,15 +238,20 @@ fun FilaCanal(
         onSeguir = onSeguir,
         descripcionAlAbrir = "Canal de YouTube ${listado.nombreCanal}. $deQuien. " +
             (textoYouTube?.let { "$it. " } ?: "") + "Ver el canal y sus últimos videos.",
-        lineaExtra = textoYouTube,
-        lineaExtraDestacada = suscritoEnYouTube == true,
+        suscritoEnYouTube = suscritoEnYouTube,
+        canalYouTube = listado.canal.takeIf { conBotonDeYouTube },
         conFranja = conFranja
     )
 }
 
 /**
- * Lo que comparten las filas: a la izquierda quién es, y al tocarlo se abre
- * su ficha; a la derecha, el botón de seguir.
+ * Lo que comparten las filas, cada cosa en su línea, porque con la letra
+ * grande y los nombres largos no caben una junto a otra:
+ *
+ *  1. Quién es: foto, nombre y detalles. Al tocarlo se abre su ficha.
+ *  2. YouTube: la etiqueta verde si ya está suscrito; si no, el botón rojo
+ *     que lleva a su canal. Ver LineaDeYouTube.
+ *  3. El botón de seguir aquí, a lo ancho.
  *
  * Con [conFranja] la fila lleva un fondo más oscuro. Las listas lo encienden
  * una fila sí y otra no: así se ve de un vistazo qué botón es de qué fila,
@@ -247,8 +266,10 @@ private fun FilaDeDirectorio(
     onAbrir: () -> Unit,
     onSeguir: () -> Unit,
     descripcionAlAbrir: String,
-    lineaExtra: String? = null,
-    lineaExtraDestacada: Boolean = false,
+    /** true o false si se sabe; null si no. */
+    suscritoEnYouTube: Boolean? = null,
+    /** A dónde lleva el botón rojo. Sin canal de YouTube, no sale. */
+    canalYouTube: Canal? = null,
     /** Una línea entre el nombre y el detalle: de quién es un canal. */
     subtitulo: String? = null,
     conFranja: Boolean = false
@@ -256,8 +277,7 @@ private fun FilaDeDirectorio(
     val esquema = MaterialTheme.colorScheme
     val franja = LocalFranja.current
 
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
@@ -268,7 +288,7 @@ private fun FilaDeDirectorio(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Espacio.md),
             modifier = Modifier
-                .weight(1f)
+                .fillMaxWidth()
                 .heightIn(min = Tactil.minimo)
                 .clip(RoundedCornerShape(8.dp))
                 .clickable(onClick = onAbrir)
@@ -305,23 +325,10 @@ private fun FilaDeDirectorio(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                // Línea aparte y con palabras: la diferencia no puede depender
-                // solo de un color ni de un icono que haya que interpretar.
-                if (lineaExtra != null && lineaExtraDestacada) {
-                    EtiquetaYouTube(lineaExtra, Modifier.padding(top = Espacio.xs))
-                } else if (lineaExtra != null) {
-                    Text(
-                        lineaExtra,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = esquema.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
             }
         }
 
-        Spacer(Modifier.width(Tactil.separacion))
+        LineaDeYouTube(suscritoEnYouTube, canalYouTube, nombre)
 
         OutlinedButton(
             onClick = onSeguir,
@@ -335,8 +342,9 @@ private fun FilaDeDirectorio(
                 if (siguiendo) esquema.primary else esquema.outline
             ),
             modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = Espacio.sm)
                 .heightIn(min = Tactil.minimo)
-                .widthIn(min = 100.dp)
                 .semantics {
                     role = Role.Switch
                     contentDescription = if (siguiendo)
@@ -353,6 +361,35 @@ private fun FilaDeDirectorio(
     }
 
     HorizontalDivider(color = esquema.outline)
+}
+
+/**
+ * La línea de YouTube de una fila: dice si ya está suscrito o lleva a suscribirse.
+ *
+ * Solo se dice "Suscribirme" cuando se sabe que no lo está. Si no se sabe
+ * (no conectó YouTube, o aún no se comprueba), el botón dice "Abrir en
+ * YouTube": puede que ya esté suscrito y no hay que darle a entender otra cosa.
+ * El botón abre la página del canal por Enrutador.abrirCanal, que lo anota:
+ * al volver se le pregunta a YouTube aunque no le toque, y la fila se actualiza.
+ */
+@Composable
+private fun LineaDeYouTube(suscrito: Boolean?, canal: Canal?, nombre: String) {
+    val contexto = LocalContext.current
+
+    if (suscrito == true) {
+        EtiquetaYouTube(modifier = Modifier.padding(top = Espacio.sm))
+    } else if (canal != null && canal.url.isNotBlank()) {
+        val titulo = if (suscrito == false) "Suscribirme en YouTube" else "Abrir en YouTube"
+        BotonGrande(
+            titulo = titulo,
+            descripcion = "$titulo: $nombre",
+            variante = VarianteBoton.YOUTUBE,
+            modifier = Modifier.padding(top = Espacio.sm),
+            onClick = {
+                Enrutador.abrirCanal(contexto, canal.plataforma, canal.url, campana = "directorio")
+            }
+        )
+    }
 }
 
 /**
@@ -400,6 +437,7 @@ fun LeyendaYouTube(modifier: Modifier = Modifier) {
         EtiquetaYouTube()
         Text(
             "Esta etiqueta verde marca a quién ya estás suscrito en YouTube. " +
+                "Si no lo estás, el botón rojo te lleva a su canal. " +
                 "Seguir aquí y suscribirte en YouTube son cosas distintas.",
             style = MaterialTheme.typography.bodySmall,
             color = esquema.onSurface,

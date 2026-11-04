@@ -780,6 +780,39 @@ persona), `avisosCortos` (si quiere sus avisos) y `cortosDisponibles` (lo que
 decidió el equipo). Las dos de la persona se cambian con `PUT /api/preferencias`. El interruptor es
 `GET`/`PUT /api/admin/ajustes`, y se guarda en la tabla `ajustes` (V8).
 
+## En vivo
+
+La app tiene una pestaña **En vivo**, abajo, entre Novedades y Stickers: quién
+está transmitiendo ahora en **todo el directorio**. La lista va en tres grupos,
+cada uno con su título, y un grupo sin nadie no se pinta:
+
+1. **A quienes sigues**: lo que sigue en la app. Es la misma regla de Novedades:
+   el creador, un medio o un canal suelto.
+2. **Tus suscripciones de YouTube**: los canales a los que está suscrita.
+3. **Otros en vivo**: todos los demás.
+
+Reglas que conviene saber:
+
+- **Quien cumple las dos primeras** va en el primer grupo, una sola vez.
+- **Dentro de cada grupo van por nombre.** La lista se vuelve a pedir cada
+  minuto, y un orden por espectadores movería las tarjetas mientras la persona
+  va a tocar una.
+- **El segundo grupo solo existe para quien tiene YouTube conectado**, es decir,
+  si el ajuste de YouTube le alcanza y dio el permiso. Para los demás, esos
+  canales van en *Otros en vivo*.
+- **Sale solo de lo que el equipo curó.** Sin creadores o medios ocultos, sin
+  retirados y sin cortos.
+- **No gasta cuota.** Se lee lo que el vigilante de directos ya guardó; ese
+  vigilante revisa cada dos minutos, así que la lista va como mucho unos dos
+  minutos detrás de YouTube. Un directo sin programar se conoce cuando llega el
+  aviso del hub o, si se pierde, en el sondeo de los feeds.
+- **Solo se pregunta mientras se ve la pestaña**: al entrar, y luego cada minuto.
+
+En la API: `GET /api/publicaciones/en-vivo` da una lista ya ordenada de
+`{grupo, video}`, con `grupo` igual a `app`, `youtube` u `otros`. Una app con un
+servidor anterior recibe 404 y la pestaña dice que nadie está en vivo. Al abrir
+un directo desde aquí, la campaña es `en_vivo`.
+
 ## Lo más visto
 
 Novedades tiene un apartado **Lo más visto**: los videos con más vistas de

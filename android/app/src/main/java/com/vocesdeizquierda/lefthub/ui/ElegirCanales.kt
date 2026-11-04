@@ -250,7 +250,8 @@ fun ElegirCanalesPantalla(
                 suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
                 siguiendo = perfil.recibe(listado.canal),
                 onSeguir = { onSeguirCanal(listado.canal) },
-                conFranja = i % 2 == 0
+                conFranja = i % 2 == 0,
+                conBotonDeYouTube = false
             )
         }
 
