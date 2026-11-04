@@ -246,7 +246,7 @@ Tienes 10,000 unidades al día. El diseño gasta ~1 por video publicado.
 |---|---|---|
 | WebSub | 0 | Detección de publicaciones |
 | `videos.list` | 1 | Rellenar título, descripción y miniatura; de paso trae duración, vistas, "me gusta" y comentarios sin costo extra |
-| `videos.list` (cifras) | 1 por cada 50 videos | Poner al día las vistas del panel: cada media hora los videos que tocan (ver abajo) |
+| `videos.list` (cifras) | 1 por cada 50 videos | Poner al día las vistas que enseñan la app y el panel: los videos de la última semana cada 20 minutos y al abrir la app; los demás, a mano desde el panel (ver abajo) |
 | `channels.list` | 1 | Solo al dar de alta un creador |
 | `subscriptions.list` | 1 por cada 50 creadores | Saber si el usuario está suscrito a los creadores del directorio, al abrir la app |
 | `search.list` | **100** | **Prohibido.** Agotaría el día en 100 llamadas |
@@ -255,11 +255,40 @@ Tienes 10,000 unidades al día. El diseño gasta ~1 por video publicado.
 duración, las vistas, los "me gusta", los comentarios y, en un directo al
 aire, cuántos lo están viendo; tocar el título abre la ficha completa del
 video. Las cifras se guardan en la base (V17) y las pone al día
-`CifrasDeVideos`: los videos de los últimos dos días cada media hora, los del
-último mes cada seis horas y los demás cada tres días; los directos, cada dos
-minutos con el vigilante de siempre. Con mil videos son unas 30 unidades al
-día. El botón «Actualizar cifras» y abrir la ficha de un video las piden al
-momento (1 unidad por cada 50 videos). La app no recibe nada de esto.
+`CifrasDeVideos` (ver *Duración y vistas en la app*); los directos, cada dos
+minutos con el vigilante de siempre. El botón «Actualizar cifras» y abrir la
+ficha de un video las piden al momento (1 unidad por cada 50 videos). La app
+recibe la duración y las vistas; los "me gusta", los comentarios y los
+espectadores son solo del panel.
+
+### Duración y vistas en la app
+
+Cada tarjeta de Novedades, debajo de quién lo publicó y cuándo, dice cuánto
+dura el video y cuántas vistas tiene en YouTube: **«Dura 13 min · 1.2 mil
+vistas»**. Lo mismo en la ficha del video y en las fichas de los canales. Un
+directo al aire no dice duración. En «Lo más visto» las vistas ya van con el
+puesto, así que ahí solo se añade la duración. Lo que no se sabe, no sale.
+
+Las vistas se ponen al día así:
+
+- **Videos de la última semana**: solos, cada **20 minutos**, y además **al
+  abrir la app**: cuando alguien pide Novedades, las de sus videos de la
+  semana con más de 10 minutos se piden a YouTube en ese momento (una sola
+  llamada, 1 unidad). Si YouTube contesta en segundo y medio, ya salen en esa
+  pantalla; si tarda, se guardan para la siguiente.
+- **Videos más viejos**: ya no se actualizan solos. En el panel, en
+  **Publicaciones**, la tarjeta **Vistas de todos los videos** tiene el botón
+  *Actualizar las vistas de todos los videos*: los pide todos en segundo plano
+  (1 unidad por cada 50; con 1,200 videos son 24 unidades), enseña cuántos
+  lleva y guarda cuándo terminó. Si pasan más de 30 días sin usarlo, la
+  tarjeta lo avisa. Un video que nunca ha tenido cifras se pide solo una vez,
+  aunque sea viejo.
+
+Con 300 videos en la última semana, la pasada de cada 20 minutos gasta unas
+450 unidades al día, y lo de al abrir la app hasta unas 900 más en un día de
+mucho uso: lejos de las 10,000. En la API: `GET` y `POST
+/api/admin/videos/cifras/todos`. La app recibe `vistas` y `duracionSegundos`
+en todas las listas de videos.
 
 En Publicaciones se elige qué ver (los videos uno por uno, o sumados **por
 creador**, **por canal** o **por medio**), el tipo (todos, videos o cortos) y
@@ -838,9 +867,9 @@ Reglas que conviene saber:
 - **Sin cortos, sin retirados y sin directos que no han empezado.** Un directo
   que está al aire sí entra, con las vistas que lleve.
 - **No gasta cuota.** Usa las vistas que el servidor ya guarda para el panel
-  (ver *Cuota de la YouTube Data API*). Las de los videos de los últimos dos
-  días se ponen al día cada media hora, así que el orden va como mucho media
-  hora detrás de YouTube. Un video que todavía no tiene cifras no entra hasta
+  (ver *Cuota de la YouTube Data API*). Las de los videos de la última semana
+  se ponen al día cada 20 minutos y al abrir la app, así que el orden va como
+  mucho 20 minutos detrás de YouTube. Un video que todavía no tiene cifras no entra hasta
   la siguiente pasada. Sin `YOUTUBE_API_KEY` no hay cifras, y el apartado sale
   vacío.
 - **Aunque no siga a nadie** se puede ver: la pantalla de «Todavía no sigues a

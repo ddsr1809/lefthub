@@ -406,6 +406,12 @@ internal fun TarjetaPublicacion(
 ) {
     val esquema = MaterialTheme.colorScheme
     val destino = publicacion.destino
+    // Cuánto dura y sus vistas. En «Lo más visto» las vistas ya van con el
+    // puesto, arriba: aquí solo la duración.
+    val detalle = Cifras.detalle(
+        publicacion.duracionSegundos, publicacion.vistas,
+        enVivo = publicacion.esEnVivo, conVistas = puesto == null
+    )
     val lugar = puesto?.let { n ->
         listOfNotNull("Número $n", publicacion.vistas?.let { Cifras.vistas(it) }).joinToString(" · ")
     }
@@ -425,6 +431,7 @@ internal fun TarjetaPublicacion(
                     contentDescription =
                         (lugar?.let { "$it. " } ?: "") +
                         "Abrir el video ${publicacion.title} de ${publicacion.firma}. " +
+                        (detalle?.let { "$it. " } ?: "") +
                         estadoEnPalabras(abierto, publicacion.videoId in Abiertos.aMano, conPunto = true)
                 }
         ) {
@@ -459,6 +466,14 @@ internal fun TarjetaPublicacion(
                     style = MaterialTheme.typography.bodySmall,
                     color = esquema.onSurfaceVariant
                 )
+                if (detalle != null) {
+                    Text(
+                        detalle,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = esquema.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
                 Text(
                     publicacion.title,
                     style = MaterialTheme.typography.bodyMedium,
