@@ -192,7 +192,9 @@ private val publicaciones = listOf(
         url = "https://www.youtube.com/watch?v=v1",
         publishedAt = Instant.ofEpochMilli(
             System.currentTimeMillis() - 45 * 60 * 1000L
-        )
+        ),
+        vistas = 15_300L,
+        duracionSegundos = 754
     ),
     Publicacion(
         id = "v2",

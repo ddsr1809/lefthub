@@ -1667,6 +1667,58 @@
       </div></section>`;
   }
 
+  // Las vistas de los videos de más de una semana ya no se ponen al día
+  // solas: el equipo las actualiza desde aquí cada cierto tiempo. La app las
+  // enseña en cada tarjeta de Novedades.
+  const AVISAR_VISTAS_DESPUES_DE_DIAS = 30;
+
+  function tarjetaVistasDeTodos(t) {
+    return `<section class="panel" id="vistasTodos">${contenidoVistasDeTodos(t)}</section>`;
+  }
+
+  function contenidoVistasDeTodos(t) {
+    const nunca = !t.ultimaCompleta;
+    const dias = nunca ? Infinity : (Date.now() - new Date(t.ultimaCompleta)) / 864e5;
+    const toca = dias >= AVISAR_VISTAS_DESPUES_DE_DIAS;
+    const insignia = t.enMarcha
+      ? '<span class="badge b-info">Actualizando…</span>'
+      : nunca ? '<span class="badge b-warn">Nunca</span>'
+      : `<span class="badge ${toca ? 'b-warn' : 'b-ok'}" title="${esc(fmtFecha(t.ultimaCompleta))}">${esc(relativo(t.ultimaCompleta))}</span>`;
+    const avance = t.enMarcha && t.total
+      ? `<p class="hint"><b>${num(t.hechos)} de ${num(t.total)}</b> videos pedidos (${Math.floor((t.hechos / t.total) * 100)} %). Puedes seguir usando el panel.</p>`
+      : '';
+    const ultima = !t.enMarcha && t.termino
+      ? (t.error
+        ? `<div class="aviso-mal">${esc(t.error)}</div>`
+        : `<p class="hint">La última vez: ${plural(t.actualizados, 'video al día', 'videos al día')}${t.noExisten ? ', ' + plural(t.noExisten, 'ya no está', 'ya no están') + ' en YouTube' : ''}.</p>`)
+      : '';
+    return `<div class="panel-head"><h2>Vistas de todos los videos</h2>${insignia}</div>
+      <div class="ajuste">
+        <p class="hint">La app enseña las vistas en cada video de Novedades. Las de la última semana se ponen al día solas; las de los demás, cuando las actualizas aquí. Hay ${plural(t.videos, 'video', 'videos')} de YouTube: pedir las vistas de todos cuesta unas ${plural(t.unidades, 'unidad', 'unidades')} de cuota (de 10,000 al día) y tarda poco.${toca && !t.enMarcha ? ` <b>${nunca ? 'Todavía no se han actualizado nunca.' : 'Hace más de ' + AVISAR_VISTAS_DESPUES_DE_DIAS + ' días que no se actualizan.'}</b>` : ''}</p>
+        ${avance}${ultima}
+        <p><button class="btn sm ${toca ? 'primary' : ''}" data-accion="cifras-de-todos" ${t.enMarcha ? 'disabled' : ''}>${t.enMarcha ? 'Actualizando…' : 'Actualizar las vistas de todos los videos'}</button></p>
+      </div>`;
+  }
+
+  // Mientras se actualizan, la tarjeta se pone al día sola cada dos segundos.
+  let relojVistasDeTodos = null;
+  function seguirVistasDeTodos() {
+    if (relojVistasDeTodos) return;
+    relojVistasDeTodos = setInterval(async () => {
+      const caja = $('#vistasTodos');
+      if (estado.vista !== 'publicaciones' || !caja) { clearInterval(relojVistasDeTodos); relojVistasDeTodos = null; return; }
+      let t;
+      try { t = await api('/api/admin/videos/cifras/todos'); } catch { return; }
+      caja.innerHTML = contenidoVistasDeTodos(t);
+      if (!t.enMarcha) {
+        clearInterval(relojVistasDeTodos);
+        relojVistasDeTodos = null;
+        if (t.error) toast(t.error, true);
+        else toast('Vistas al día: ' + plural(t.actualizados, 'video', 'videos') + '.');
+      }
+    }, 2000);
+  }
+
   // Las cifras vienen de YouTube y no siempre están: el canal puede ocultar
   // los "me gusta", o el servidor todavía no las ha pedido. Vacío no es cero.
   const hay = (n) => n !== null && n !== undefined;
@@ -1800,7 +1852,7 @@
           <button class="btn sm primary" data-accion="aplicar-fechas">Aplicar</button>` : ''}
         ${o.vista === 'videos' && conCifras ? '<span class="separa"></span><button class="btn sm" data-accion="actualizar-cifras">Actualizar cifras</button>' : ''}
       </div>
-      <p class="hint" style="margin:10px 0 0">Por fecha de publicación en YouTube. Las cifras son las públicas de YouTube y el servidor las pone al día solo: los videos de los últimos dos días cada media hora, los del último mes cada seis horas y los demás cada tres días; los directos al aire, cada dos minutos.</p>
+      <p class="hint" style="margin:10px 0 0">Por fecha de publicación en YouTube. Las cifras son las públicas de YouTube. El servidor pone al día solas las de los videos de la última semana, cada 20 minutos y cuando alguien abre la app; los directos al aire, cada dos minutos. Las de los videos más viejos se actualizan desde aquí, con «Actualizar las vistas de todos los videos».</p>
     </div></section>`;
   }
 
@@ -1833,9 +1885,11 @@
     q.set('orden', o.orden);
     q.set('dir', o.dir);
     if (o.filtro) q.set(o.filtro.tipo, o.filtro.id);
-    const [lista, ajustes] = await Promise.all([
+    const [lista, ajustes, vistasDeTodos] = await Promise.all([
       api('/api/admin/publicaciones?' + q.toString()),
-      api('/api/admin/ajustes').catch(() => null)
+      api('/api/admin/ajustes').catch(() => null),
+      // Un servidor anterior no tiene la ruta: entonces no sale la tarjeta.
+      api('/api/admin/videos/cifras/todos').catch(() => null)
     ]);
     if (estado.vista !== 'publicaciones') return;
     // El servidor ya los manda en orden. Ordenarlos aquí también deja la
@@ -1843,6 +1897,8 @@
     lista.sort(comparar(VALOR_PUB[o.orden] || VALOR_PUB.publicado, o.dir === 'asc'));
     estado.publicaciones = lista;
     estado.ajustes = ajustes;
+    // Si se está actualizando (se empezó antes de entrar aquí), seguirla.
+    if (vistasDeTodos && vistasDeTodos.enMarcha) seguirVistasDeTodos();
     // Un servidor anterior a las cifras no manda detectadoEn (que siempre tiene valor).
     const conCifras = lista.some((p) => 'detectadoEn' in p);
     const columnas = conCifras ? COLUMNAS_PUB : COLUMNAS_PUB.filter(([k]) => !['duracion', 'vistas', 'meGusta', 'comentarios'].includes(k));
@@ -1854,6 +1910,7 @@
       ${barraPub(o, conCifras, ajustes)}
       ${o.filtro ? `<div class="aviso-ok filtro-activo"><span>Solo los videos del ${esc(QUE[o.filtro.tipo] || o.filtro.tipo)} <b>${esc(o.filtro.nombre)}</b></span><button class="btn sm" data-accion="quitar-filtro-pubs">Ver todos</button></div>` : ''}
       ${conCifras ? resumenDeCifras(lista) : ''}
+      ${vistasDeTodos && !o.filtro ? tarjetaVistasDeTodos(vistasDeTodos) : ''}
       ${ajustes && !o.filtro ? tarjetaCortos(ajustes) : ''}
       <section class="panel">
         <div class="tablewrap"><table class="tabla-pubs"><thead><tr>${columnas.map((c) => encabezado(c, o.orden, o.dir, 'ordenar-pubs')).join('')}<th></th></tr></thead><tbody>
@@ -4543,6 +4600,24 @@
           else if (r.ocupada) toast('Ya se estaban actualizando. Prueba otra vez en un momento.');
           else toast('Cifras al día: ' + plural(r.actualizados, 'video', 'videos') + (r.noExisten ? '. ' + plural(r.noExisten, 'ya no está', 'ya no están') + ' en YouTube.' : '.'));
           if (estado.vista === 'publicaciones') await vistaPublicaciones();
+          break;
+        }
+
+        case 'cifras-de-todos': {
+          b.disabled = true;
+          b.textContent = 'Empezando…';
+          let t;
+          try {
+            t = await api('/api/admin/videos/cifras/todos', { metodo: 'POST' });
+          } catch (e) {
+            b.disabled = false;
+            b.textContent = 'Actualizar las vistas de todos los videos';
+            throw e;
+          }
+          const caja = $('#vistasTodos');
+          if (caja) caja.innerHTML = contenidoVistasDeTodos(t);
+          if (t.enMarcha) seguirVistasDeTodos();
+          else if (t.error) toast(t.error, true);
           break;
         }
 

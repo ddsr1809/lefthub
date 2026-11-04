@@ -341,10 +341,14 @@ data class Publicacion(
     /** El canal donde salió: su ficha se abre desde la del video. */
     val canalId: String? = null,
     /**
-     * Cuántas vistas tenía en YouTube la última vez que el servidor preguntó.
-     * Solo viene en «Lo más visto»; en Novedades y las fichas es null.
+     * Cuántas vistas tenía en YouTube la última vez que el servidor preguntó:
+     * en los videos de la última semana, hace 20 minutos como mucho. null si
+     * todavía no se saben, o con un servidor anterior (que solo las mandaba
+     * en «Lo más visto»).
      */
-    val vistas: Long? = null
+    val vistas: Long? = null,
+    /** Cuánto dura, en segundos. null en un directo o si no se sabe. */
+    val duracionSegundos: Int? = null
 ) {
     val fueMovido: Boolean get() = status == "moved" && !overrideUrl.isNullOrBlank()
 

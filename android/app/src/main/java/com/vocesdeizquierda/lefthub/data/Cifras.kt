@@ -23,6 +23,38 @@ object Cifras {
         else -> "${abreviar(n, 1_000_000L)} millones de vistas"
     }
 
+    /**
+     * Cuánto dura un video, en palabras: "Dura 45 s", "Dura 13 min",
+     * "Dura 1 h 5 min". Los minutos se redondean al más cercano: "12:34" es
+     * "13 min". null si no se sabe.
+     */
+    fun duracion(segundos: Int?): String? {
+        if (segundos == null || segundos <= 0) return null
+        if (segundos < 60) return "Dura $segundos s"
+        val minutos = (segundos + 30) / 60
+        val horas = minutos / 60
+        val resto = minutos % 60
+        return when {
+            horas == 0 -> "Dura $minutos min"
+            resto == 0 -> "Dura $horas h"
+            else -> "Dura $horas h $resto min"
+        }
+    }
+
+    /**
+     * La línea de la tarjeta de un video: cuánto dura y sus vistas,
+     * "Dura 13 min · 1.2 mil vistas". Falta lo que no se sabe; null si no
+     * se sabe nada. Un directo al aire no dice duración.
+     *
+     * @param conVistas false donde las vistas ya se dicen en otra parte (en
+     *                  «Lo más visto», junto al puesto).
+     */
+    fun detalle(duracionSegundos: Int?, vistas: Long?, enVivo: Boolean = false, conVistas: Boolean = true): String? =
+        listOfNotNull(
+            if (enVivo) null else duracion(duracionSegundos),
+            if (conVistas) vistas?.let { vistas(it) } else null
+        ).joinToString(" · ").ifBlank { null }
+
     /** 1500 entre 1000 → "1.5"; 12_300 → "12"; 2000 → "2". */
     private fun abreviar(n: Long, unidad: Long): String {
         val enteros = n / unidad
