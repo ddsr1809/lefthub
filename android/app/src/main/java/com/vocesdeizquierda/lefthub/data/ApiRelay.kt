@@ -329,6 +329,19 @@ object ApiRelay {
     }
 
     /**
+     * Quién está al aire en todo el directorio, en el orden en que se enseña:
+     * lo decide el servidor, que sabe a quién sigue la persona y a qué está
+     * suscrita en YouTube.
+     *
+     * Un servidor anterior no tiene la ruta: para la app eso es "nadie".
+     */
+    suspend fun enVivo(): List<DirectoEnVivo> = try {
+        getArray("/api/publicaciones/en-vivo").mapJson { directoEnVivoDe(it) }
+    } catch (e: ErrorHttp) {
+        if (e.codigo == 404) emptyList() else throw e
+    }
+
+    /**
      * Un video por su id, para su ficha. null si el servidor no lo tiene (o
      * es anterior a la ruta): la ficha se arregla con lo que traía el aviso.
      */
@@ -384,6 +397,18 @@ object ApiRelay {
     }
 
     suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
+
+    /**
+     * El mapa de selección de la cuenta. Con [huella], la del mapa que está
+     * guardado en el teléfono: si sigue siendo esa, el servidor contesta sin
+     * cuerpo y aquí sale null.
+     */
+    suspend fun mapa(huella: String?): MapaDeSeleccion? {
+        val consulta = huella?.takeIf { it.isNotBlank() }
+            ?.let { "?huella=" + URLEncoder.encode(it, "UTF-8") }.orEmpty()
+        val cuerpo = ejecutar(Request.Builder().url(BuildConfig.API_BASE + "/api/mapa" + consulta).get())
+        return if (cuerpo.isBlank()) null else mapaDe(JSONObject(cuerpo))
+    }
 
     suspend fun seguir(creadorId: String) {
         ejecutar(Request.Builder()

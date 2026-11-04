@@ -1,12 +1,16 @@
 package com.vocesdeizquierda.lefthub.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,7 +28,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -47,7 +50,8 @@ import java.util.Locale
 //
 // Los videos cortos (Shorts) no van en esa lista. Si el equipo los permite y
 // la persona no los apagó, tienen su propio apartado, al que se entra a
-// propósito con un botón; si no, aquí no hay ni rastro de ellos.
+// propósito, con su botón o deslizando un dedo de lado; si no, aquí no hay ni
+// rastro de ellos.
 //
 // «Lo más visto» es el otro apartado: lo que más se ha visto de todo el
 // directorio, lo siga la persona o no, en las últimas 24 horas o en la
@@ -62,6 +66,7 @@ import java.util.Locale
 // Arriba de la lista, hasta que la persona la da por leída, va la explicación
 // de cómo ver un video en la tele. Después vive en Ajustes.
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun NovedadesPantalla(
     publicaciones: List<Publicacion>,
@@ -92,8 +97,6 @@ fun NovedadesPantalla(
     ayudaTele: Boolean = false,
     onAyudaTeleEntendida: () -> Unit = {}
 ) {
-    val contexto = LocalContext.current
-
     // En qué apartado está, y en «Lo más visto», de qué periodo. Sobreviven
     // a girar el teléfono; al abrir la app siempre se empieza por los videos
     // de siempre.
@@ -101,6 +104,93 @@ fun NovedadesPantalla(
     var periodo by rememberSaveable { mutableStateOf(PERIODO_HOY) }
     // Si los cortos se apagan mientras se estaban viendo, se vuelve a los videos.
     val apartado = if (elegido == Apartado.CORTOS && !verCortos) Apartado.VIDEOS else elegido
+    val apartados = listOfNotNull(
+        Apartado.VIDEOS to "Videos",
+        (Apartado.CORTOS to "Videos cortos").takeIf { verCortos },
+        Apartado.MAS_VISTO to "Lo más visto"
+    )
+
+    val paginas = rememberPaginas(
+        elegida = apartados.indexOfFirst { it.first == apartado },
+        cuantas = apartados.size,
+        onDeslizar = { pagina -> apartados.getOrNull(pagina)?.let { elegido = it.first } }
+    )
+
+    // El título y los botones se quedan fijos arriba: lo que se desliza son
+    // las listas de debajo.
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            "Novedades",
+            style = MaterialTheme.typography.displayLarge,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.padding(start = Espacio.md, end = Espacio.md, top = Espacio.sm)
+        )
+
+        SelectorDePaginas(
+            opciones = apartados,
+            elegida = apartados.getOrNull(paginas.targetPage)?.first ?: apartado,
+            onElegir = { elegido = it },
+            modifier = Modifier.padding(top = Espacio.md)
+        )
+
+        HorizontalPager(
+            state = paginas,
+            key = { apartados[it].first.name },
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) { pagina ->
+            ListaDeNovedades(
+                apartado = apartados[pagina].first,
+                publicaciones = publicaciones,
+                hayFavoritos = hayFavoritos,
+                cuantosFavoritos = cuantosFavoritos,
+                onIrAlDirectorio = onIrAlDirectorio,
+                cuantasProductoras = cuantasProductoras,
+                cuantosCanales = cuantosCanales,
+                cortos = cortos,
+                masVistas = masVistas,
+                periodo = periodo,
+                onElegirPeriodo = { periodo = it },
+                onCargarMasVistas = onCargarMasVistas,
+                onVerMasVisto = { elegido = Apartado.MAS_VISTO },
+                abiertos = abiertos,
+                // Cada anuncio es una sola vista y no puede estar en dos
+                // listas. Al deslizar se ven dos páginas a la vez: lo lleva
+                // solo la que está asentada, y pasa a la otra al llegar.
+                anuncios = anuncios.takeIf { pagina == paginas.settledPage },
+                onQuitarAnuncios = onQuitarAnuncios,
+                ayudaTele = ayudaTele,
+                onAyudaTeleEntendida = onAyudaTeleEntendida
+            )
+        }
+    }
+}
+
+/** La lista de un apartado de Novedades: una página de las que se deslizan. */
+@Composable
+private fun ListaDeNovedades(
+    apartado: Apartado,
+    publicaciones: List<Publicacion>,
+    hayFavoritos: Boolean,
+    cuantosFavoritos: Int,
+    onIrAlDirectorio: () -> Unit,
+    cuantasProductoras: Int,
+    cuantosCanales: Int,
+    cortos: List<Publicacion>,
+    masVistas: Map<String, VideosDeCanal>,
+    periodo: String,
+    onElegirPeriodo: (String) -> Unit,
+    onCargarMasVistas: (String) -> Unit,
+    onVerMasVisto: () -> Unit,
+    abiertos: Set<String>,
+    anuncios: BannersDelFeed?,
+    onQuitarAnuncios: () -> Unit,
+    ayudaTele: Boolean,
+    onAyudaTeleEntendida: () -> Unit
+) {
+    val contexto = LocalContext.current
     val delPeriodo = masVistas[periodo] ?: VideosDeCanal(periodo, cargando = true)
     val lista = when (apartado) {
         Apartado.VIDEOS -> publicaciones
@@ -114,21 +204,29 @@ fun NovedadesPantalla(
     }
 
     if (!hayFavoritos && apartado != Apartado.MAS_VISTO) {
-        Vacio(
-            titulo = "Todavía no sigues a nadie",
-            mensaje = "Elige a los creadores y medios que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
-            accion = {
-                Column {
-                    BotonGrande("Ver el directorio", onClick = onIrAlDirectorio)
-                    BotonGrande(
-                        "Ver lo más visto",
-                        subtitulo = "De todos los creadores del directorio",
-                        variante = VarianteBoton.SECUNDARIO,
-                        onClick = { elegido = Apartado.MAS_VISTO }
-                    )
+        // Se puede bajar: encima van el título y los botones, y con la letra
+        // grande los botones de aquí podrían quedar fuera de la pantalla.
+        Column(
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
+            Vacio(
+                titulo = "Todavía no sigues a nadie",
+                mensaje = "Elige a los creadores y medios que te interesan y te avisaremos aquí cada vez que publiquen algo nuevo.",
+                accion = {
+                    Column {
+                        BotonGrande("Ver el directorio", onClick = onIrAlDirectorio)
+                        BotonGrande(
+                            "Ver lo más visto",
+                            subtitulo = "De todos los creadores del directorio",
+                            variante = VarianteBoton.SECUNDARIO,
+                            onClick = onVerMasVisto
+                        )
+                    }
                 }
-            }
-        )
+            )
+        }
         return
     }
 
@@ -148,26 +246,9 @@ fun NovedadesPantalla(
         contentPadding = PaddingValues(Espacio.md),
         modifier = Modifier.fillMaxSize()
     ) {
-        item {
-            Text(
-                "Novedades",
-                style = MaterialTheme.typography.displayLarge,
-                color = MaterialTheme.colorScheme.onBackground,
-                modifier = Modifier.padding(bottom = Espacio.lg)
-            )
-        }
-
-        item {
-            SelectorDeApartado(
-                apartado = apartado,
-                conCortos = verCortos,
-                onElegir = { elegido = it }
-            )
-        }
-
         if (apartado == Apartado.MAS_VISTO) {
             item(key = "periodo") {
-                ElegirPeriodo(periodo = periodo, onElegir = { periodo = it })
+                ElegirPeriodo(periodo = periodo, onElegir = onElegirPeriodo)
             }
             item(key = "explicacion") {
                 Text(
@@ -267,52 +348,6 @@ internal const val PERIODO_HOY = "hoy"
 internal const val PERIODO_SEMANA = "semana"
 
 /**
- * Los apartados de Novedades: botones grandes con su nombre escrito; el que
- * está elegido va relleno. Tres en una fila no caben con letra grande, así
- * que con los cortos encendidos «Lo más visto» baja a su propia fila, a lo
- * ancho.
- */
-@Composable
-private fun SelectorDeApartado(apartado: Apartado, conCortos: Boolean, onElegir: (Apartado) -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = Espacio.md)
-    ) {
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            BotonDeApartado("Videos", Apartado.VIDEOS, apartado, onElegir, Modifier.weight(1f))
-            if (conCortos) {
-                BotonDeApartado("Videos cortos", Apartado.CORTOS, apartado, onElegir, Modifier.weight(1f))
-            } else {
-                BotonDeApartado("Lo más visto", Apartado.MAS_VISTO, apartado, onElegir, Modifier.weight(1f))
-            }
-        }
-        if (conCortos) {
-            BotonDeApartado("Lo más visto", Apartado.MAS_VISTO, apartado, onElegir)
-        }
-    }
-}
-
-@Composable
-private fun BotonDeApartado(
-    titulo: String,
-    este: Apartado,
-    elegido: Apartado,
-    onElegir: (Apartado) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    BotonGrande(
-        titulo = titulo,
-        modifier = modifier.semantics { selected = este == elegido },
-        variante = if (este == elegido) VarianteBoton.PRIMARIO else VarianteBoton.SECUNDARIO,
-        onClick = { onElegir(este) }
-    )
-}
-
-/**
  * «Hoy» o «Esta semana», dentro de Lo más visto. Más pequeños que los
  * botones de arriba, porque van por debajo de ellos. El elegido va relleno
  * y además lleva una palomita: no depende solo del color.
@@ -371,6 +406,12 @@ internal fun TarjetaPublicacion(
 ) {
     val esquema = MaterialTheme.colorScheme
     val destino = publicacion.destino
+    // Cuánto dura y sus vistas. En «Lo más visto» las vistas ya van con el
+    // puesto, arriba: aquí solo la duración.
+    val detalle = Cifras.detalle(
+        publicacion.duracionSegundos, publicacion.vistas,
+        enVivo = publicacion.esEnVivo, conVistas = puesto == null
+    )
     val lugar = puesto?.let { n ->
         listOfNotNull("Número $n", publicacion.vistas?.let { Cifras.vistas(it) }).joinToString(" · ")
     }
@@ -390,6 +431,7 @@ internal fun TarjetaPublicacion(
                     contentDescription =
                         (lugar?.let { "$it. " } ?: "") +
                         "Abrir el video ${publicacion.title} de ${publicacion.firma}. " +
+                        (detalle?.let { "$it. " } ?: "") +
                         estadoEnPalabras(abierto, publicacion.videoId in Abiertos.aMano, conPunto = true)
                 }
         ) {
@@ -424,6 +466,14 @@ internal fun TarjetaPublicacion(
                     style = MaterialTheme.typography.bodySmall,
                     color = esquema.onSurfaceVariant
                 )
+                if (detalle != null) {
+                    Text(
+                        detalle,
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                        color = esquema.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp)
+                    )
+                }
                 Text(
                     publicacion.title,
                     style = MaterialTheme.typography.bodyMedium,

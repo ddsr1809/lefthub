@@ -507,6 +507,25 @@ public class AdminController {
         return cifras.deVideos(peticion.videoIds() != null ? peticion.videoIds() : List.of());
     }
 
+    /**
+     * Cómo va la actualización de las vistas de todos los videos y cuándo se
+     * hizo por última vez. Los videos de más de una semana ya no se ponen al
+     * día solos: el equipo los actualiza desde aquí cada cierto tiempo.
+     */
+    @GetMapping("/videos/cifras/todos")
+    public Dtos.CifrasDeTodos cifrasDeTodos() {
+        return cifras.estadoDeTodos();
+    }
+
+    /**
+     * Empieza a pedir a YouTube las vistas de todos los videos. Corre aparte;
+     * el panel pregunta cómo va con el GET. 1 unidad de cuota por cada 50.
+     */
+    @PostMapping("/videos/cifras/todos")
+    public Dtos.CifrasDeTodos actualizarCifrasDeTodos() {
+        return cifras.empezarTodos();
+    }
+
     private List<Dtos.PublicacionAdminDto> paraElPanel(List<Publicacion> lista, boolean conDescripcion) {
         Catalogo.Vista vista = catalogo.vista();
         List<Dtos.PublicacionDto> base = DirectorioController.aDtos(lista, vista);

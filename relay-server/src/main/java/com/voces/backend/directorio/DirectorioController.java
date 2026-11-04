@@ -9,6 +9,7 @@ import com.voces.backend.push.PushService;
 import com.voces.backend.recomendaciones.RecomendacionesService;
 import com.voces.backend.editor.EditorService;
 import com.voces.backend.version.VersionDeApp;
+import com.voces.backend.youtube.SuscripcionesYouTubeService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +24,7 @@ import java.text.Collator;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -57,6 +59,8 @@ public class DirectorioController {
     private final UltimosVideos ultimosVideos;
     private final AvisoDeChat avisoDeChat;
     private final ChatService chat;
+    private final SuscripcionesYouTubeService suscripciones;
+    private final CifrasDeVideos cifras;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
@@ -64,7 +68,11 @@ public class DirectorioController {
                                 Repositorios.Usuarios usuarios,
                                 Catalogo catalogo, AjustesService ajustes,
                                 TiendaGoogle tienda, UltimosVideos ultimosVideos,
-                                AvisoDeChat avisoDeChat, ChatService chat) {
+                                AvisoDeChat avisoDeChat, ChatService chat,
+                                SuscripcionesYouTubeService suscripciones,
+                                CifrasDeVideos cifras) {
+        this.suscripciones = suscripciones;
+        this.cifras = cifras;
         this.ultimosVideos = ultimosVideos;
         this.avisoDeChat = avisoDeChat;
         this.chat = chat;
@@ -284,6 +292,9 @@ public class DirectorioController {
                 cortos,
                 PageRequest.of(0, Math.min(limite, 100)));
 
+        // Al abrir la app: las vistas de los videos recientes, de ahora.
+        cifras.alAbrirLaApp(lista);
+
         return aDtos(lista, vista);
     }
 
@@ -296,7 +307,8 @@ public class DirectorioController {
      * siendo solo lo de quienes eligió, en orden de tiempo. Las reglas están
      * en LoMasVisto.
      *
-     * Cada video trae sus vistas, para que la app las enseñe.
+     * Cada video trae sus vistas, para que la app las enseñe (igual que en
+     * todas las listas).
      */
     @GetMapping("/publicaciones/mas-vistas")
     @Transactional(readOnly = true)
@@ -315,12 +327,52 @@ public class DirectorioController {
                 LoMasVisto.Periodo.de(periodo).desde(Instant.now()),
                 PageRequest.of(0, LoMasVisto.cuantos(limite)));
 
+        return aDtos(lista, vista);
+    }
+
+    /**
+     * «En vivo»: todo lo que está al aire en el directorio, primero lo que
+     * sigue la persona en la app, después los canales a los que está suscrita
+     * en YouTube y al final los demás. Las reglas están en EnVivo.
+     *
+     * Lee lo que el vigilante de directos ya guardó, sin gastar cuota: va como
+     * mucho dos minutos detrás de YouTube. Las suscripciones también son las
+     * guardadas; solo cuentan si a esta cuenta se le ofrece YouTube.
+     */
+    @GetMapping("/publicaciones/en-vivo")
+    @Transactional(readOnly = true)
+    public List<Dtos.EnVivoDto> enVivo() {
+        Catalogo.Vista vista = catalogo.vista();
+
+        List<UUID> canales = vista.canalesVivos();
+        List<UUID> creadoresVisibles = vista.creadoresVisibles();
+        if (canales.isEmpty() && creadoresVisibles.isEmpty()) return List.of();
+
+        List<Publicacion> lista = publicaciones.enVivo(
+                // La consulta no admite una colección vacía.
+                canales.isEmpty() ? List.of(NINGUNO) : canales,
+                creadoresVisibles.isEmpty() ? List.of(NINGUNO) : creadoresVisibles);
+        if (lista.isEmpty()) return List.of();
+
+        Usuario usuario = usuarioActual();
+        Set<UUID> canalesSeguidos = new HashSet<>(canalesSeguidos(usuario, vista));
+        Set<UUID> canalesSuscritos = AjustesService.permite(ajustes.youtube(), usuario.isEsAdmin(),
+                usuario.isYoutubeHabilitado())
+                ? new HashSet<>(suscripciones.guardadas(usuario.getId()).canalesSuscritos())
+                : Set.of();
+
         List<Dtos.PublicacionDto> dtos = aDtos(lista, vista);
-        List<Dtos.PublicacionDto> conVistas = new ArrayList<>(dtos.size());
+        List<Dtos.EnVivoDto> filas = new ArrayList<>(dtos.size());
         for (int i = 0; i < dtos.size(); i++) {
-            conVistas.add(dtos.get(i).conVistas(lista.get(i).getVistas()));
+            Publicacion p = lista.get(i);
+            filas.add(new Dtos.EnVivoDto(
+                    EnVivo.grupoDe(p.getCreadorId(), p.getCanalId(), usuario.getFavoritos(),
+                            canalesSeguidos, canalesSuscritos),
+                    dtos.get(i)));
         }
-        return conVistas;
+
+        return EnVivo.ordenar(filas, Dtos.EnVivoDto::grupo,
+                f -> f.video().creadorNombre(), f -> f.video().videoId());
     }
 
     /**

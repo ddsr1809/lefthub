@@ -6,7 +6,9 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.vocesdeizquierda.lefthub.chat.ChatAvisos
+import com.vocesdeizquierda.lefthub.data.AlmacenDeMapa
 import com.vocesdeizquierda.lefthub.data.ApiRelay
+import com.vocesdeizquierda.lefthub.data.TopicosDelTelefono
 
 
 /**
@@ -33,6 +35,8 @@ class LeftVocesApp : Application() {
         ProveedorAppCheck.instalar()
         ApiRelay.inicializar(this)
         ChatAvisos.inicializar(this)
+        AlmacenDeMapa.inicializar(this)
+        TopicosDelTelefono.inicializar(this)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             crearCanales()

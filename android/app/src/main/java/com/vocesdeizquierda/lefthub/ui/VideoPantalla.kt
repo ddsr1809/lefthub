@@ -18,10 +18,12 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import coil.compose.AsyncImage
 import androidx.compose.ui.unit.dp
+import com.vocesdeizquierda.lefthub.data.Cifras
 import com.vocesdeizquierda.lefthub.data.Destino
 import com.vocesdeizquierda.lefthub.data.FichaDeVideo
 import com.vocesdeizquierda.lefthub.enlaces.Enrutador
@@ -100,6 +102,14 @@ fun VideoPantalla(
                     style = MaterialTheme.typography.bodyLarge,
                     color = esquema.onSurfaceVariant
                 )
+                Cifras.detalle(publicacion.duracionSegundos, publicacion.vistas, enVivo = publicacion.esEnVivo)
+                    ?.let { detalle ->
+                        Text(
+                            detalle,
+                            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                            color = esquema.onSurfaceVariant
+                        )
+                    }
             }
             Text(
                 when {

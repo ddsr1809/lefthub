@@ -9,6 +9,7 @@
 | Canal | Canal de YouTube o red social. Su dueño es un creador o, si no tiene, un medio. Puede «aparecer con» otros creadores |
 | Publicación | Un video detectado: normal, corto (Short) o directo |
 | Topic | Canal de FCM al que se suscribe el teléfono: `creator_<id>`, `productora_<id>`, `canal_<id>`, `todos` |
+| Mapa de selección | Qué sigue una cuenta en Voces y a qué está suscrita en YouTube, por creador, medio y canal. El teléfono guarda una copia y compara su huella al abrir |
 | WebSub | Protocolo con que Google avisa al servidor de cada video nuevo, sin gastar cuota |
 | Réplica | Copia automática de creadores y medios de producción a testing, con id distinto (`origen_id`) |
 | Versión del directorio | Foto numerada del directorio de un ambiente, usada para migrar de pruebas a producción |

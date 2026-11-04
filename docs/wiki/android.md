@@ -22,12 +22,13 @@ La barra inferior tiene **Directorio** (inicio), **Novedades**, **Stickers** (si
 | --- | --- | --- |
 | Bienvenida | `BienvenidaPantalla.kt` | Condiciones y privacidad; se vuelve a pedir si cambia `Aceptacion.VERSION` |
 | Unirse con Google | `UnirseConGoogle.kt` | Invitación a guardar la cuenta, cada apertura mientras sea invitado |
-| Directorio | `DirectorioPantalla.kt` | Listas Creadores, Canales de YouTube y Medios; lo seguido arriba; filtro de etiquetas |
+| Directorio | `DirectorioPantalla.kt` | Listas Canales de YouTube (la primera), Creadores y Medios, con botones o deslizando (`Paginas.kt`); lo seguido arriba; filtro de etiquetas; cada fila en líneas: quién es, YouTube (etiqueta verde o botón rojo que abre su canal) y Seguir |
 | Ficha de creador | `DirectorioPantalla.kt` | Canal principal, sus últimos videos, videos donde aparece, redes y medios |
 | Ficha de medio | `ProductoraPantalla.kt` | Sus últimos videos, creadores y canales |
 | Ficha de canal | `CanalPantalla.kt` | De quién es, con quién aparece y últimos videos |
 | Elegir canales | `ElegirCanales.kt` | Ventana al seguir: todos los canales o solo algunos |
-| Novedades | `NovedadesPantalla.kt` | Videos, Videos cortos (si están encendidos) y Lo más visto |
+| Novedades | `NovedadesPantalla.kt` | Videos, Videos cortos (si están encendidos) y Lo más visto, con botones o deslizando (`Paginas.kt`) |
+| En vivo | `EnVivoPantalla.kt` | Pestaña con quién está al aire en el directorio: primero a quienes sigue, después sus suscripciones de YouTube y al final los demás |
 | Ficha del video | `VideoPantalla.kt` | Se abre al tocar una notificación; botón Ver el video y espacio para anuncio |
 | Stickers | `StickersPantalla.kt` | Paquetes por creador para WhatsApp, Telegram, Signal y otras |
 | Ajustes | `AjustesPantalla.kt` | Cuenta, letra, cortos, YouTube, anuncios, chat, recomendar, agregar |
@@ -45,6 +46,17 @@ La barra inferior tiene **Directorio** (inicio), **Novedades**, **Stickers** (si
 - Los avisos del chat van a topics derivados con HMAC, para que nadie se suscriba al de otra cuenta.
 - Desde la 1.0.19 el perfil le da a Android los topics `chatr_` / `chatequipor_`, de solo datos: la app pinta el aviso (`notif/AvisoDelChat.kt`) con el botón «Responder», que también sale en el reloj (Wear OS, Galaxy Watch), y `notif/RespuestaDelChat.kt` manda lo escrito. iOS y las apps anteriores siguen en `chat_` / `chatequipo_` con el aviso que pinta el sistema; el servidor manda a los dos.
 - Los demás avisos (videos, avisos del equipo) llegan al reloj solos: el teléfono pasa al reloj todo lo que pinta, si en la app del reloj (Wear OS, Galaxy Wearable) están permitidas las notificaciones de Voces.
+
+## Mapa de selección
+
+El mapa dice, para cada creador, medio y canal, si la cuenta lo sigue en Voces y si está suscrita en YouTube. Son dos cosas distintas: de cinco canales puede seguir los cinco aquí y tres en YouTube. El servidor lo arma con los favoritos, las suscripciones guardadas y el directorio (`directorio/MapaDeSeleccion.java`); no tiene tabla propia.
+
+- `data/AlmacenDeMapa.kt` guarda una copia en el teléfono. Al abrir, lo que la persona sigue se pinta con esa copia, sin esperar a la red.
+- Cada vez que la app pasa a primer plano manda la huella a `GET /api/mapa?huella=`. Si es la misma, el servidor contesta 204 y no se hace nada más. Si no, llega el mapa entero y reemplaza la copia.
+- YouTube solo se consulta si pasaron 6 horas desde la última vez, si la persona vuelve de la página de un canal o si el mapa aún no sabe nada de YouTube. Lo que hace en YouTube fuera de la app no se ve hasta entonces.
+- Lo de YouTube se borra del teléfono al desconectar y a los 30 días sin comprobar, igual que en el servidor. Al cerrar sesión o borrar la cuenta se borra la copia entera.
+- `data/TopicosDelTelefono.kt` anota a qué topics está suscrito el aparato y solo llama a FCM con lo que cambió, también para dar de baja. Una vez al día vuelve a pedir todos, por si FCM perdió alguno.
+- Con un servidor anterior a `/api/mapa` (404) la app funciona como antes, con el perfil.
 
 ## Menú del ícono
 

@@ -72,19 +72,25 @@ class LoMasVistoTest {
     }
 
     @Test
-    @DisplayName("Las vistas solo viajan cuando se ponen a propósito")
+    @DisplayName("Las vistas y la duración van en todas las listas")
     void vistasEnElDto() {
         Publicacion p = new Publicacion();
         p.setVideoId("abc");
         p.setVistas(1234L);
+        p.setDuracion("PT12M34S");
 
-        Dtos.PublicacionDto normal = Dtos.PublicacionDto.de(p, "Alguien", null);
-        assertNull(normal.vistas(), "Novedades y las fichas no las llevan");
+        Dtos.PublicacionDto dto = Dtos.PublicacionDto.de(p, "Alguien", null);
+        assertEquals(1234L, dto.vistas());
+        assertEquals(754, dto.duracionSegundos());
+        assertEquals("abc", dto.videoId());
+        assertEquals("Alguien", dto.creadorNombre());
 
-        Dtos.PublicacionDto conVistas = normal.conVistas(p.getVistas());
-        assertEquals(1234L, conVistas.vistas());
-        assertEquals("abc", conVistas.videoId());
-        assertEquals("Alguien", conVistas.creadorNombre());
+        Publicacion directo = new Publicacion();
+        directo.setVideoId("vivo");
+        directo.setDuracion("P0D");
+        Dtos.PublicacionDto d = Dtos.PublicacionDto.de(directo, "Alguien", null);
+        assertNull(d.vistas(), "sin pedir todavía");
+        assertNull(d.duracionSegundos(), "un directo no tiene duración");
     }
 
     private static Creador creador(boolean activo) {

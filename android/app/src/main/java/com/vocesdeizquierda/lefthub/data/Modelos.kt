@@ -116,6 +116,13 @@ data class Creador(
     val canalesDeYouTube: List<Canal>
         get() = canalesVisibles.filter { it.plataforma == "youtube" }
 
+    /**
+     * Su canal principal: el primero de los suyos. Si solo aparece en canales
+     * de otros, el primero de esos.
+     */
+    val canalPrincipalDeYouTube: Canal?
+        get() = canalesDeYouTube.firstOrNull { it.creadorId == id } ?: canalesDeYouTube.firstOrNull()
+
     /** Todo lo demás: X, Instagram, TikTok, su página. Son enlaces, no avisan. */
     val redes: List<Canal>
         get() = canalesVisibles.filter { it.plataforma != "youtube" }
@@ -150,6 +157,10 @@ data class Productora(
 ) {
     /** Los que no son de ningún creador: el canal oficial de la casa. */
     val canalesPropios: List<Canal> get() = canales.filter { it.creadorId == null }
+
+    /** Su canal oficial de YouTube; si no tiene, el primero de sus creadores. */
+    val canalPrincipalDeYouTube: Canal?
+        get() = canalesPropios.firstOrNull { it.esDeYouTube } ?: canales.firstOrNull { it.esDeYouTube }
 }
 
 /**
@@ -330,10 +341,14 @@ data class Publicacion(
     /** El canal donde salió: su ficha se abre desde la del video. */
     val canalId: String? = null,
     /**
-     * Cuántas vistas tenía en YouTube la última vez que el servidor preguntó.
-     * Solo viene en «Lo más visto»; en Novedades y las fichas es null.
+     * Cuántas vistas tenía en YouTube la última vez que el servidor preguntó:
+     * en los videos de la última semana, hace 20 minutos como mucho. null si
+     * todavía no se saben, o con un servidor anterior (que solo las mandaba
+     * en «Lo más visto»).
      */
-    val vistas: Long? = null
+    val vistas: Long? = null,
+    /** Cuánto dura, en segundos. null en un directo o si no se sabe. */
+    val duracionSegundos: Int? = null
 ) {
     val fueMovido: Boolean get() = status == "moved" && !overrideUrl.isNullOrBlank()
 
@@ -362,6 +377,31 @@ data class Publicacion(
             Destino(platform, url, videoId)
         }
 }
+
+/** Los grupos de la pestaña «En vivo», como los manda el servidor. */
+object GrupoEnVivo {
+    /** Lo sigue en la app. */
+    const val SEGUIDOS = "app"
+
+    /** Está suscrita a ese canal en YouTube. */
+    const val SUSCRITOS = "youtube"
+
+    /** Todos los demás del directorio. */
+    const val OTROS = "otros"
+}
+
+/** Alguien al aire: su directo y en qué grupo de la pestaña «En vivo» va. */
+data class DirectoEnVivo(
+    val grupo: String = GrupoEnVivo.OTROS,
+    val publicacion: Publicacion = Publicacion()
+)
+
+/** La pestaña «En vivo», ya en el orden del servidor. */
+data class ListaEnVivo(
+    val lista: List<DirectoEnVivo> = emptyList(),
+    val cargando: Boolean = true,
+    val fallo: Boolean = false
+)
 
 /**
  * Los últimos videos de un canal, para su ficha. Se piden al abrirla; no son

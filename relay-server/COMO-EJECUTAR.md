@@ -86,6 +86,7 @@ Authorization: Bearer <token>
 | `GET` | `/api/admin/canal?query=` |
 | `GET` | `/api/admin/publicaciones` |
 | `POST` | `/api/admin/videos/{videoId}/mover` |
+| `GET` `POST` | `/api/admin/videos/cifras/todos` (cómo va / empezar a actualizar las vistas de todos los videos) |
 | `GET` | `/api/admin/reportes` |
 | `POST` | `/api/admin/administradores?correo=` |
 | `GET` | `/api/admin/anuncios` |
