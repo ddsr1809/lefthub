@@ -60,6 +60,7 @@ public class DirectorioController {
     private final AvisoDeChat avisoDeChat;
     private final ChatService chat;
     private final SuscripcionesYouTubeService suscripciones;
+    private final CifrasDeVideos cifras;
 
     public DirectorioController(Repositorios.Creadores creadores,
                                 Repositorios.Productoras productoras,
@@ -68,8 +69,10 @@ public class DirectorioController {
                                 Catalogo catalogo, AjustesService ajustes,
                                 TiendaGoogle tienda, UltimosVideos ultimosVideos,
                                 AvisoDeChat avisoDeChat, ChatService chat,
-                                SuscripcionesYouTubeService suscripciones) {
+                                SuscripcionesYouTubeService suscripciones,
+                                CifrasDeVideos cifras) {
         this.suscripciones = suscripciones;
+        this.cifras = cifras;
         this.ultimosVideos = ultimosVideos;
         this.avisoDeChat = avisoDeChat;
         this.chat = chat;
@@ -289,6 +292,9 @@ public class DirectorioController {
                 cortos,
                 PageRequest.of(0, Math.min(limite, 100)));
 
+        // Al abrir la app: las vistas de los videos recientes, de ahora.
+        cifras.alAbrirLaApp(lista);
+
         return aDtos(lista, vista);
     }
 
@@ -301,7 +307,8 @@ public class DirectorioController {
      * siendo solo lo de quienes eligió, en orden de tiempo. Las reglas están
      * en LoMasVisto.
      *
-     * Cada video trae sus vistas, para que la app las enseñe.
+     * Cada video trae sus vistas, para que la app las enseñe (igual que en
+     * todas las listas).
      */
     @GetMapping("/publicaciones/mas-vistas")
     @Transactional(readOnly = true)
@@ -320,12 +327,7 @@ public class DirectorioController {
                 LoMasVisto.Periodo.de(periodo).desde(Instant.now()),
                 PageRequest.of(0, LoMasVisto.cuantos(limite)));
 
-        List<Dtos.PublicacionDto> dtos = aDtos(lista, vista);
-        List<Dtos.PublicacionDto> conVistas = new ArrayList<>(dtos.size());
-        for (int i = 0; i < dtos.size(); i++) {
-            conVistas.add(dtos.get(i).conVistas(lista.get(i).getVistas()));
-        }
-        return conVistas;
+        return aDtos(lista, vista);
     }
 
     /**

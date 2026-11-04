@@ -184,24 +184,45 @@ public final class Repositorios {
         List<Publicacion> findByVideoIdIn(Collection<String> videoIds);
 
         /**
-         * Los videos cuyas cifras toca pedir otra vez. Cuanto más nuevo el
-         * video, más rápido cambian: los de dos días, cada media hora; los del
-         * último mes, cada seis horas; los demás, cada tres días. Primero los
-         * que nunca se han pedido. Los retirados no: YouTube ya no los tiene.
+         * Los videos cuyas cifras toca pedir en la pasada de cada 20 minutos
+         * (CifrasDeVideos): los de los últimos siete días cuyas cifras tienen
+         * más de 19 minutos, y los que nunca las han tenido, sean de cuando
+         * sean (una sola vez). Los más viejos ya no se piden solos: se
+         * actualizan desde el panel. Los retirados no: YouTube ya no los tiene.
          */
         @Query(value = """
                 select * from publicaciones
                 where plataforma = 'youtube'
                   and estado <> 'removed'
                   and (cifras_en is null
-                       or cifras_en < now() - case
-                            when publicado_en > now() - interval '2 days' then interval '30 minutes'
-                            when publicado_en > now() - interval '30 days' then interval '6 hours'
-                            else interval '3 days' end)
+                       or (publicado_en > now() - interval '7 days'
+                           and cifras_en < now() - interval '19 minutes'))
                 order by cifras_en asc nulls first, publicado_en desc nulls last
                 limit :limite
                 """, nativeQuery = true)
         List<Publicacion> porActualizarCifras(@Param("limite") int limite);
+
+        /**
+         * Todos los videos de YouTube del directorio, para actualizar sus
+         * cifras desde el panel. Primero los que las tienen más viejas.
+         */
+        @Query(value = """
+                select video_id from publicaciones
+                where plataforma = 'youtube'
+                  and estado <> 'removed'
+                  and video_id is not null and video_id <> ''
+                order by cifras_en asc nulls first, publicado_en desc nulls last
+                """, nativeQuery = true)
+        List<String> idsParaCifras();
+
+        /** Cuántos son: para que el panel diga cuánta cuota gastará. */
+        @Query(value = """
+                select count(*) from publicaciones
+                where plataforma = 'youtube'
+                  and estado <> 'removed'
+                  and video_id is not null and video_id <> ''
+                """, nativeQuery = true)
+        long cuantosParaCifras();
 
         /** Directos pendientes de arrancar o de terminar. */
         List<Publicacion> findByDirectoIn(Collection<String> estados);

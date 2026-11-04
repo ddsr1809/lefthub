@@ -5,6 +5,7 @@ import com.voces.backend.youtube.YouTubeClient;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
@@ -46,5 +47,45 @@ class CifrasDeVideosTest {
         assertEquals(700L, borrado.getVistas(), "lo último que se supo de él");
         assertNull(borrado.getEspectadores(), "ya nadie lo está viendo en directo");
         assertEquals(ahora, borrado.getCifrasEn(), "para no preguntar por él hasta su siguiente turno");
+    }
+
+    private static Publicacion reciente(String id, Instant publicado, Instant cifras) {
+        Publicacion p = video(id, 1L);
+        p.setPlataforma("youtube");
+        p.setEstado("ok");
+        p.setPublicadoEn(publicado);
+        p.setCifrasEn(cifras);
+        return p;
+    }
+
+    @Test
+    @DisplayName("Al abrir la app se piden solo las de videos recientes con cifras de hace más de 10 minutos")
+    void alAbrir() {
+        Instant ahora = Instant.parse("2026-11-04T20:00:00Z");
+        Instant ayer = ahora.minus(Duration.ofDays(1));
+        List<Publicacion> lista = List.of(
+                reciente("viejas", ayer, ahora.minus(Duration.ofMinutes(12))),
+                reciente("frescas", ayer, ahora.minus(Duration.ofMinutes(8))),
+                reciente("nunca", ayer, null),
+                reciente("de-hace-un-mes", ahora.minus(Duration.ofDays(30)), ahora.minus(Duration.ofDays(9))),
+                reciente("de-hace-6-dias", ahora.minus(Duration.ofDays(6)), ahora.minus(Duration.ofHours(1))));
+        Publicacion retirado = reciente("retirado", ayer, null);
+        retirado.setEstado("removed");
+        Publicacion otraPlataforma = reciente("tiktok", ayer, null);
+        otraPlataforma.setPlataforma("tiktok");
+
+        List<String> ids = CifrasDeVideos.porPedirAlAbrir(
+                java.util.stream.Stream.concat(lista.stream(), java.util.stream.Stream.of(retirado, otraPlataforma)).toList(),
+                ahora);
+        assertEquals(List.of("viejas", "nunca", "de-hace-6-dias"), ids);
+    }
+
+    @Test
+    @DisplayName("Al abrir la app, nunca más de una llamada a YouTube")
+    void alAbrirTope() {
+        Instant ahora = Instant.parse("2026-11-04T20:00:00Z");
+        List<Publicacion> muchos = new java.util.ArrayList<>();
+        for (int i = 0; i < 80; i++) muchos.add(reciente("v" + i, ahora.minus(Duration.ofHours(3)), null));
+        assertEquals(CifrasDeVideos.MAXIMO_AL_ABRIR, CifrasDeVideos.porPedirAlAbrir(muchos, ahora).size());
     }
 }

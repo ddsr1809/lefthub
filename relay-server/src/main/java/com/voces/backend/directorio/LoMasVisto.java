@@ -11,8 +11,8 @@ import java.time.Instant;
  * medios que el equipo eligió a mano; no es un ranking de YouTube.
  *
  * Se ordena por las vistas que el servidor ya guarda (CifrasDeVideos), sin
- * gastar cuota extra. Las de los videos de los últimos dos días se piden
- * cada media hora, así que el orden de «Hoy» va como mucho media hora
+ * gastar cuota extra. Las de los videos de los últimos siete días se piden
+ * cada 20 minutos, así que el orden de «Hoy» y de «Semana» va como mucho 20 minutos
  * detrás de YouTube.
  *
  * Lógica pura, sin Spring, para poder probarla sola.

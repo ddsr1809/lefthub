@@ -178,18 +178,15 @@ public final class Dtos {
             String productoraNombre,
             /**
              * Cuántas vistas tenía en YouTube la última vez que se pidieron.
-             * Solo viene en «Lo más visto»; en las demás listas falta, porque
-             * ahí no dice nada.
+             * null si YouTube no las da o todavía no se han pedido. Las de
+             * los videos de la última semana tienen como mucho 20 minutos;
+             * las de los demás, lo que haya pasado desde que el equipo las
+             * actualizó en el panel (ver CifrasDeVideos).
              */
-            Long vistas
+            Long vistas,
+            /** Cuánto dura, en segundos. null en un directo o si no se sabe. */
+            Integer duracionSegundos
     ) {
-        /** El mismo video, con sus vistas. */
-        public PublicacionDto conVistas(Long vistas) {
-            return new PublicacionDto(videoId, creadorId, creadorNombre, plataforma, titulo,
-                    miniaturaUrl, url, tipo, enVivo, estado, destinoUrl, destinoPlataforma,
-                    publicadoEn, canalId, productoraId, productoraNombre, vistas);
-        }
-
         /**
          * @param nombreCreador el del creador; en el canal propio de una
          *                      productora, el de la productora, para que quien
@@ -204,7 +201,52 @@ public final class Dtos {
                     p.getPublicadoEn(), p.getCanalId(),
                     productora != null ? productora.getId() : null,
                     productora != null ? productora.getNombre() : null,
-                    null);
+                    p.getVistas(),
+                    p.getDuracionSegundos());
+        }
+    }
+
+    /**
+     * La actualización de las vistas de todos los videos, desde el panel.
+     *
+     * @param enMarcha       pidiendo ahora
+     * @param total          cuántos videos se están pidiendo en esta vuelta
+     * @param hechos         cuántos van
+     * @param empezo         cuándo empezó esta vuelta (o la última)
+     * @param termino        cuándo terminó la última vuelta, bien o mal
+     * @param error          por qué se paró la última vuelta; null si fue bien
+     * @param videos         cuántos videos de YouTube hay en el directorio
+     * @param unidades       cuánta cuota de YouTube cuesta pedirlos todos
+     * @param ultimaCompleta cuándo terminó bien la última vez; null si nunca
+     */
+    public record CifrasDeTodos(boolean enMarcha, int total, int hechos, int actualizados, int noExisten,
+                                Instant empezo, Instant termino, String error,
+                                long videos, long unidades, Instant ultimaCompleta) {
+
+        public static CifrasDeTodos parada() {
+            return new CifrasDeTodos(false, 0, 0, 0, 0, null, null, null, 0, 0, null);
+        }
+
+        public static CifrasDeTodos empezando(int total, Instant empezo) {
+            return new CifrasDeTodos(true, total, 0, 0, 0, empezo, null, null, 0, 0, null);
+        }
+
+        public CifrasDeTodos avance(int hechos, int actualizados, int noExisten) {
+            return new CifrasDeTodos(true, total, hechos, actualizados, noExisten, empezo, null, null, 0, 0, null);
+        }
+
+        public CifrasDeTodos terminada(int hechos, int actualizados, int noExisten, Instant termino, String error) {
+            return new CifrasDeTodos(false, total, hechos, actualizados, noExisten, empezo, termino, error, 0, 0, null);
+        }
+
+        public CifrasDeTodos conError(String error) {
+            return new CifrasDeTodos(false, total, hechos, actualizados, noExisten, empezo, Instant.now(), error, 0, 0, null);
+        }
+
+        /** Lo de esta vuelta, con lo que se sabe del directorio. */
+        public CifrasDeTodos con(long videos, long unidades, Instant ultimaCompleta) {
+            return new CifrasDeTodos(enMarcha, total, hechos, actualizados, noExisten, empezo, termino, error,
+                    videos, unidades, ultimaCompleta);
         }
     }
 

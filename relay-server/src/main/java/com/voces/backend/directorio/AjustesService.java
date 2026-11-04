@@ -198,6 +198,32 @@ public class AjustesService {
         ajustes.save(ajuste);
     }
 
+    /** Cuándo terminó bien la última actualización de las cifras de todos los videos. */
+    static final String CIFRAS_DE_TODOS = "cifras_de_todos";
+
+    /**
+     * Cuándo se actualizaron por última vez las vistas de todos los videos
+     * desde el panel. null si nunca. Ver CifrasDeVideos.
+     */
+    @Transactional(readOnly = true)
+    public Instant cifrasDeTodosEn() {
+        return ajustes.findById(CIFRAS_DE_TODOS).map(Ajuste::getValor).map(v -> {
+            try {
+                return Instant.parse(v);
+            } catch (Exception e) {
+                return null;
+            }
+        }).orElse(null);
+    }
+
+    @Transactional
+    public void ponerCifrasDeTodosEn(Instant cuando) {
+        Ajuste ajuste = ajustes.findById(CIFRAS_DE_TODOS).orElseGet(() -> new Ajuste(CIFRAS_DE_TODOS));
+        ajuste.setValor(cuando.toString());
+        ajuste.setActualizadoEn(Instant.now());
+        ajustes.save(ajuste);
+    }
+
     private boolean encendido(String clave) {
         return ajustes.findById(clave).map(a -> "true".equals(a.getValor())).orElse(false);
     }
