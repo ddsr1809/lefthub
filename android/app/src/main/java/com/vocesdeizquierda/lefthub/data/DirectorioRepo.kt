@@ -5,6 +5,7 @@ import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.tasks.await
 
 /**
@@ -51,6 +52,27 @@ class DirectorioRepo(
      * llegó tarde y pisaría un cambio que acaba de hacerse en pantalla.
      */
     suspend fun perfil(): Perfil = ApiRelay.perfil()
+
+    /**
+     * ¿El mapa guardado en el teléfono sigue siendo el de la cuenta?
+     *
+     * Si sí, o si no se pudo saber, null: lo guardado se queda como está. Si
+     * no, deja guardado el nuevo y lo devuelve. Un servidor anterior a esta
+     * ruta contesta 404: no se insiste, y la app funciona con el perfil.
+     */
+    suspend fun mapaNuevo(): MapaDeSeleccion? {
+        if (servidorSinMapa) return null
+        val nuevo = try {
+            ApiRelay.mapa(AlmacenDeMapa.leer()?.huella)
+        } catch (e: ApiRelay.ErrorHttp) {
+            if (e.codigo == 404) servidorSinMapa = true
+            null
+        } catch (e: Exception) {
+            Log.w(TAG, "No se pudo comprobar el mapa: ${e.message}")
+            null
+        }
+        return nuevo?.also { AlmacenDeMapa.guardar(it) }
+    }
 
     /**
      * Los parámetros ya no se usan para filtrar: el servidor sabe a quién
@@ -124,14 +146,13 @@ class DirectorioRepo(
         siguiendoAhora: Boolean,
         conCortos: Boolean = false
     ) {
+        val topic = topicDe(creatorId)
         if (siguiendoAhora) {
             ApiRelay.dejarDeSeguir(creatorId)
-            runCatching { mensajeria.unsubscribeFromTopic(topicDe(creatorId)).await() }
-            dejarCortos(topicDe(creatorId) + SUFIJO_CORTOS)
+            darDeBaja(topic)
         } else {
             ApiRelay.seguir(creatorId)
-            runCatching { mensajeria.subscribeToTopic(topicDe(creatorId)).await() }
-            if (conCortos) recibirCortos(topicDe(creatorId) + SUFIJO_CORTOS)
+            darDeAlta(topic, conCortos)
         }
     }
 
@@ -148,12 +169,10 @@ class DirectorioRepo(
         val topic = topicDeProductora(productoraId)
         if (siguiendoAhora) {
             ApiRelay.dejarDeSeguirProductora(productoraId)
-            runCatching { mensajeria.unsubscribeFromTopic(topic).await() }
-            dejarCortos(topic + SUFIJO_CORTOS)
+            darDeBaja(topic)
         } else {
             ApiRelay.seguirProductora(productoraId)
-            runCatching { mensajeria.subscribeToTopic(topic).await() }
-            if (conCortos) recibirCortos(topic + SUFIJO_CORTOS)
+            darDeAlta(topic, conCortos)
         }
     }
 
@@ -170,106 +189,76 @@ class DirectorioRepo(
         val topic = topicDeCanal(canalId)
         if (siguiendoAhora) {
             ApiRelay.dejarDeSeguirCanal(canalId)
-            runCatching { mensajeria.unsubscribeFromTopic(topic).await() }
-            dejarCortos(topic + SUFIJO_CORTOS)
+            darDeBaja(topic)
         } else {
             ApiRelay.seguirCanal(canalId)
-            runCatching { mensajeria.subscribeToTopic(topic).await() }
-            if (conCortos) recibirCortos(topic + SUFIJO_CORTOS)
+            darDeAlta(topic, conCortos)
         }
     }
 
     /**
-     * Vuelve a alinear los topics tras iniciar sesión en otro teléfono.
-     * Los favoritos viven en la cuenta, pero los topics son por dispositivo:
-     * un teléfono nuevo no está suscrito a nada aunque la cuenta sí lo esté.
+     * Deja el teléfono suscrito a lo que le toca, y solo toca FCM si algo
+     * cambió: se puede llamar en cada lectura del perfil. Los favoritos viven
+     * en la cuenta y los topics son por dispositivo, así que esto es lo que
+     * alinea un teléfono nuevo, lo que se dejó de seguir en otro y un cambio
+     * de cuenta.
+     *
+     * Las listas vacías dan de baja de todo: llamar solo con lo que dijo el
+     * servidor, nunca con un perfil que todavía no ha llegado.
      */
     suspend fun sincronizarTopics(
         favoritos: List<String>,
         productoras: List<String> = emptyList(),
         conCortos: Boolean = false,
         canales: List<String> = emptyList()
-    ) {
-        val topics = favoritos.map { topicDe(it) } + productoras.map { topicDeProductora(it) } +
+    ) = TopicosDelTelefono.turno.withLock {
+        val seguidos = favoritos.map { topicDe(it) } + productoras.map { topicDeProductora(it) } +
             canales.map { topicDeCanal(it) }
+        val cortos = seguidos.map { it + SUFIJO_CORTOS }
 
         // El de toda la app, siga a quien siga: por ahí llegan los avisos del
         // equipo para todos (un creador, medio o canal nuevo, un mensaje).
         // Va aunque no siga a nadie todavía: justo a esa persona le sirve
         // enterarse de quién llega.
-        runCatching { mensajeria.subscribeToTopic(TOPIC_TODOS).await() }
-            .onFailure { Log.w(TAG, "No se pudo suscribir a $TOPIC_TODOS", it) }
+        val queridos = (listOf(TOPIC_TODOS) + seguidos + if (conCortos) cortos else emptyList()).toSet()
 
-        topics.forEach { topic ->
-            runCatching { mensajeria.subscribeToTopic(topic).await() }
-                // Sin este registro, un teléfono que no logra suscribirse
-                // (sin Play Services, google-services.json de otro proyecto)
-                // es indistinguible de uno que sí.
-                .onSuccess { Log.d(TAG, "Suscrito a $topic") }
-                .onFailure { Log.w(TAG, "No se pudo suscribir a $topic", it) }
+        // Hasta la 1.0.6 los avisos de cortos iban por topics que terminaban
+        // en "_cortos", y la app se suscribía a ellos con solo ver los cortos.
+        // El servidor ya no manda nada ahí; darse de baja es solo para no
+        // dejar suscripciones muertas en el aparato.
+        val dudosos = (cortos + seguidos.map { it + SUFIJO_CORTOS_VIEJO }).toSet()
+
+        val plan = TopicosDelTelefono.planPara(queridos, dudosos, System.currentTimeMillis())
+        plan.bajas.forEach { dejar(it) }
+        plan.altas.forEach { recibir(it) }
+    }
+
+    private suspend fun darDeAlta(topic: String, conCortos: Boolean) =
+        TopicosDelTelefono.turno.withLock {
+            recibir(topic)
+            if (conCortos) recibir(topic + SUFIJO_CORTOS)
         }
 
-        sincronizarCortos(topics.map { it + SUFIJO_CORTOS }, conCortos)
-        dejarCortosViejos(topics)
+    private suspend fun darDeBaja(topic: String) = TopicosDelTelefono.turno.withLock {
+        dejar(topic)
+        dejar(topic + SUFIJO_CORTOS)
     }
 
-    /**
-     * Hasta la 1.0.6 los avisos de cortos iban por topics que terminaban en
-     * "_cortos", y la app se suscribía a ellos con solo ver los cortos. El
-     * servidor ya no manda nada ahí; darse de baja es solo para no dejar
-     * suscripciones muertas en el aparato. Una vez por proceso basta.
-     */
-    private suspend fun dejarCortosViejos(topics: List<String>) {
-        // Con la lista vacía (todavía sin perfil) no se marca: se haría una
-        // sola vez y sin nada que quitar.
-        if (viejosQuitados || topics.isEmpty()) return
-        viejosQuitados = true
-        topics.forEach { topic ->
-            runCatching { mensajeria.unsubscribeFromTopic(topic + SUFIJO_CORTOS_VIEJO).await() }
-        }
-    }
-
-    /**
-     * Los avisos de videos cortos llegan por topics aparte: los mismos de
-     * siempre con otro final. Quien los ve está suscrito a ellos; quien no,
-     * no, y así no le llega ninguno.
-     *
-     * A diferencia de los de arriba, aquí también hay que darse de baja (la
-     * persona los apagó, o el equipo). Para no repetirlo en cada lectura del
-     * perfil, se recuerda a cuáles está suscrito este aparato y solo se toca
-     * lo que cambió.
-     */
-    private suspend fun sincronizarCortos(deQuienesSigue: List<String>, conCortos: Boolean) {
-        val queridos = if (conCortos) deQuienesSigue.toSet() else emptySet()
-        // La primera vez no se sabe a qué quedó suscrito el aparato en un uso
-        // anterior: se supone que a todo, para darse de baja de lo que no
-        // toque, y se suscribe a todo lo querido.
-        //
-        // Antes se anotaba "a nada" antes de darse de baja. Si una baja
-        // fallaba (sin red al abrir la app), el aparato seguía suscrito pero
-        // aquí constaba que no, y nunca se reintentaba: los avisos de cortos
-        // seguían llegando aunque estuvieran apagados. Ahora lo que no se
-        // logra quitar sigue anotado y se reintenta en la siguiente lectura
-        // del perfil.
-        val primera = cortosSuscritos == null
-        val actuales = cortosSuscritos ?: deQuienesSigue.toSet()
-        val sobran = actuales - queridos
-        val faltan = if (primera) queridos else queridos - actuales
-
-        if (primera) cortosSuscritos = actuales
-        sobran.forEach { dejarCortos(it) }
-        faltan.forEach { recibirCortos(it) }
-    }
-
-    private suspend fun recibirCortos(topic: String) {
+    // Sin estos registros, un teléfono que no logra suscribirse (sin Play
+    // Services, google-services.json de otro proyecto) es indistinguible de
+    // uno que sí.
+    private suspend fun recibir(topic: String) {
         runCatching { mensajeria.subscribeToTopic(topic).await() }
-            .onSuccess { cortosSuscritos = (cortosSuscritos ?: emptySet()) + topic }
+            .onSuccess {
+                TopicosDelTelefono.anotar(topic)
+                Log.d(TAG, "Suscrito a $topic")
+            }
             .onFailure { Log.w(TAG, "No se pudo suscribir a $topic", it) }
     }
 
-    private suspend fun dejarCortos(topic: String) {
+    private suspend fun dejar(topic: String) {
         runCatching { mensajeria.unsubscribeFromTopic(topic).await() }
-            .onSuccess { cortosSuscritos = cortosSuscritos?.minus(topic) }
+            .onSuccess { TopicosDelTelefono.quitar(topic) }
             .onFailure { Log.w(TAG, "No se pudo dar de baja de $topic", it) }
     }
 
@@ -317,27 +306,12 @@ class DirectorioRepo(
 
         /**
          * Lo mismo que PushService.SUFIJO_CORTOS en el servidor. Cambió para
-         * que los avisos de cortos empiecen apagados para todos: ver
-         * dejarCortosViejos.
+         * que los avisos de cortos empiecen apagados para todos.
          */
         const val SUFIJO_CORTOS = "_avisos_cortos"
         private const val SUFIJO_CORTOS_VIEJO = "_cortos"
 
         @Volatile
-        private var viejosQuitados = false
-
-        // A qué topics de cortos está suscrito este aparato, hasta donde se
-        // sabe. Es del proceso y no de cada DirectorioRepo, porque los topics
-        // son del aparato. null: todavía no se ha comprobado.
-        @Volatile
-        private var cortosSuscritos: Set<String>? = null
-
-        /**
-         * FCM cambió el token: las suscripciones se perdieron todas y lo que
-         * se recordaba ya no vale.
-         */
-        fun olvidarCortos() {
-            cortosSuscritos = null
-        }
+        private var servidorSinMapa = false
     }
 }

@@ -172,8 +172,8 @@ class MainActivity : ComponentActivity() {
 
     /**
      * Cada vez que la app pasa a primer plano: al abrirla y al volver de
-     * YouTube. Es el momento de comprobar si la persona está suscrita a los
-     * creadores, porque es cuando pudo haber cambiado.
+     * YouTube. Se comprueba que el mapa de selección del teléfono siga siendo
+     * el de la cuenta y, si toca, si la persona está suscrita a los creadores.
      *
      * El ViewModel es el mismo que usa la interfaz (ambos salen del almacén de
      * esta Activity), y él decide si toca: espera a que haya sesión, ignora a
@@ -187,6 +187,7 @@ class MainActivity : ComponentActivity() {
         // Cada vez que se entra: ¿está vivo el servidor? ¿en mantenimiento?
         comprobarServidor()
         val modelo = ViewModelProvider(this)[AppViewModel::class.java]
+        modelo.comprobarMapa()
         modelo.verificarYouTube(applicationContext)
         // Si al abrir no se pudo hablar con Google Play (sin conexión, por
         // ejemplo), se reintenta al volver. Si ya se pudo, esto no hace nada.

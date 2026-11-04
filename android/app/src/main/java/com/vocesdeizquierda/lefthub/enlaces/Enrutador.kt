@@ -27,6 +27,9 @@ object Enrutador {
 
     private const val TAG = "Enrutador"
 
+    @Volatile
+    private var fueAUnCanal = false
+
     /**
      * Paquetes oficiales. TikTok publica dos según la región: `musically` es
      * el internacional y `trill` aparece en varios mercados asiáticos.
@@ -97,8 +100,16 @@ object Enrutador {
     /** Abre el perfil del creador en la plataforma elegida. */
     fun abrirCanal(contexto: Context, plataforma: String, url: String?, campana: String = "perfil") {
         if (url.isNullOrBlank()) return avisarSinDestino(contexto)
+        if (plataforma == "youtube") fueAUnCanal = true
         abrir(contexto, plataforma, conAtribucion(url, campana))
     }
+
+    /**
+     * La persona fue a la página de un canal de YouTube desde la app. Allí se
+     * suscribe, y al volver espera verlo reflejado: es la única vuelta que
+     * justifica preguntarle a YouTube fuera de su turno. Contesta una vez.
+     */
+    fun volvioDeUnCanal(): Boolean = fueAUnCanal.also { fueAUnCanal = false }
 
     private fun abrir(contexto: Context, plataforma: String, url: String) {
         val uri = Uri.parse(url)

@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vocesdeizquierda.lefthub.chat.ChatAvisos
 import com.vocesdeizquierda.lefthub.data.*
+import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
@@ -114,9 +115,13 @@ class AppViewModel(
     // Y una sola consulta a Google Play a la vez.
     private val turnoTienda = Mutex()
     private var ultimaComprobacionYouTube = 0L
+    private var ultimaComprobacionMapa = 0L
 
     init {
         viewModelScope.launch {
+            // Lo que sigue la persona se pinta con lo guardado en el teléfono,
+            // sin esperar a la red. comprobarMapa dice después si sigue igual.
+            AlmacenDeMapa.leer()?.let { aplicarMapa(it) }
             // Sesión anónima antes que nada: sin UID no hay lecturas posibles.
             runCatching { autenticacion.iniciarSesionInvisible() }
             _estado.update {
@@ -395,8 +400,14 @@ class AppViewModel(
         perfilFlow.value = p
         _estado.update { it.copy(perfil = p, perfilCargado = true) }
         // Los favoritos viven en la cuenta, pero los topics son por aparato.
-        // Un teléfono nuevo no está suscrito a nada.
-        directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+        // Si nada cambió, esto no toca FCM. Va en turno y revisando la versión
+        // porque también da de baja: un perfil leído antes de seguir a alguien
+        // le quitaría el topic que se acaba de suscribir.
+        escrituras.withLock {
+            if (version == versionPerfil) {
+                directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+            }
+        }
         // Lo que se marcó sin conexión llega a la cuenta en cuanto vuelve.
         Abiertos.enviarPendientes()
         // Los avisos del chat: el de esta cuenta si tiene el chat, y el del
@@ -415,6 +426,43 @@ class AppViewModel(
     private suspend fun recargarPerfil() {
         versionPerfil++
         refrescarPerfil()
+        actualizarMapa()
+    }
+
+    /**
+     * Comprueba que el mapa de selección del teléfono siga siendo el de la
+     * cuenta. La llama MainActivity cada vez que la app pasa a primer plano.
+     * Si es el mismo no hay nada más que hacer: ni se baja ni se repinta nada.
+     */
+    fun comprobarMapa() = viewModelScope.launch {
+        // onResume llega antes de que exista la sesión; esperamos a que esté.
+        estado.first { it.listo }
+
+        val ahora = SystemClock.elapsedRealtime()
+        if (ultimaComprobacionMapa != 0L && ahora - ultimaComprobacionMapa < PAUSA_YOUTUBE_MS) return@launch
+        ultimaComprobacionMapa = ahora
+
+        actualizarMapa()
+    }
+
+    /**
+     * Trae el mapa si cambió. Va en turno: nunca a medio guardar un cambio.
+     *
+     * @param pintar false cuando el cambio salió de este teléfono: la pantalla
+     *               ya lo tiene, y solo falta dejarlo guardado. Pintar ahí
+     *               apagaría un botón recién tocado que aún no llega al servidor.
+     */
+    private suspend fun actualizarMapa(pintar: Boolean = true) {
+        val version = versionPerfil
+        val nuevo = escrituras.withLock { directorio.mapaNuevo() } ?: return
+        // Si mientras tanto se tocó algo, lo que está en pantalla es más nuevo.
+        if (pintar && version == versionPerfil) aplicarMapa(nuevo)
+    }
+
+    /** Lo que sigue la persona. Lo de YouTube lo pone verificarYouTube, si toca. */
+    private fun aplicarMapa(mapa: MapaDeSeleccion) {
+        perfilFlow.update { it.conMapa(mapa) }
+        _estado.update { it.copy(perfil = it.perfil.conMapa(mapa)) }
     }
 
     /**
@@ -442,6 +490,7 @@ class AppViewModel(
                 _estado.update { e -> e.copy(perfil = e.perfil.conFavorito(id, siguiendo)) }
                 avisar("No se pudo guardar el cambio. Revisa tu conexión.")
             }
+        if (resultado.isSuccess) actualizarMapa(pintar = false)
     }
 
     /** Seguir o dejar de seguir a una productora: mismo trato que un creador. */
@@ -464,6 +513,7 @@ class AppViewModel(
                 _estado.update { e -> e.copy(perfil = e.perfil.conProductora(id, siguiendo)) }
                 avisar("No se pudo guardar el cambio. Revisa tu conexión.")
             }
+        if (resultado.isSuccess) actualizarMapa(pintar = false)
     }
 
     /**
@@ -499,6 +549,7 @@ class AppViewModel(
                 _estado.update { e -> e.copy(perfil = e.perfil.conCanal(id, siguiendo)) }
                 avisar("No se pudo guardar el cambio. Revisa tu conexión.")
             }
+        if (resultado.isSuccess) actualizarMapa(pintar = false)
     }
 
     /** Tema, tamaño de letra, avisos y videos cortos: mismo trato que los favoritos. */
@@ -519,8 +570,12 @@ class AppViewModel(
                 // la lista que se pide al servidor y los avisos que llegan a
                 // este aparato. Sus avisos, solo lo segundo.
                 perfilFlow.update { p -> p.conPreferencia(clave, valor) }
+                // Sin el perfil del servidor no se sabe a quién sigue, y una
+                // lista vacía daría de baja de todo. Lo hará su lectura.
                 val p = _estado.value.perfil
-                directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+                if (_estado.value.perfilCargado) {
+                    directorio.sincronizarTopics(p.favoritos, p.productoras, p.recibeAvisosCortos, p.canales)
+                }
             }
         }
 
@@ -551,6 +606,11 @@ class AppViewModel(
      * app pasa a primer plano: al abrirla y al volver de YouTube, que es justo
      * cuando alguien acaba de suscribirse y espera verlo reflejado.
      *
+     * Solo se le pregunta a YouTube si hace falta: si el mapa del teléfono ya
+     * lo sabe y es reciente, se usa eso. Hace falta al volver de la página de
+     * un canal, y cuando pasó el tiempo de AlmacenDeMapa, porque lo que la
+     * persona hace en YouTube ni el mapa ni el servidor lo pueden saber.
+     *
      * Es silenciosa de principio a fin. Si falta el permiso no lo pide; solo
      * deja el estado en SIN_PERMISO para que la pantalla ofrezca el botón. Y
      * si algo falla no avisa: nadie pidió nada, así que no hay nada que
@@ -562,11 +622,25 @@ class AppViewModel(
         // onResume llega antes de que exista la sesión; esperamos a que esté.
         estado.first { it.listo }
         if (autenticacion.esAnonimo) return@launch
+        // Al abrir, el perfil todavía no llega, y sin él no se sabe si el
+        // panel la tiene encendida. Sin red no llega: se deja para la próxima.
+        withTimeoutOrNull(ESPERA_PERFIL_MS) { estado.first { it.perfilCargado } }
         // Apagada desde el panel: ni se ofrece ni se consulta.
         if (!_estado.value.perfil.youtubeActivo) return@launch
 
         val ahora = SystemClock.elapsedRealtime()
         if (ahora - ultimaComprobacionYouTube < PAUSA_YOUTUBE_MS) return@launch
+
+        val guardado = AlmacenDeMapa.leer()?.takeIf { it.sabeDeYouTube }
+        if (guardado != null && !youtube.apagado(contexto) && !Enrutador.volvioDeUnCanal() &&
+            AlmacenDeMapa.youtubeAlDia(System.currentTimeMillis())
+        ) {
+            _estado.update {
+                if (it.youtube.verificando) it
+                else it.copy(youtube = EstadoYouTube(PermisoYouTube.CONCEDIDO, guardado.suscripciones))
+            }
+            return@launch
+        }
 
         comprobarYouTube(contexto.applicationContext, interactivo = false)
     }
@@ -622,7 +696,8 @@ class AppViewModel(
 
         // Lo que el servidor ya sabía, para pintar sin esperar a Google. Solo
         // la primera vez: después, lo que hay en pantalla es igual de reciente.
-        if (primeraVez) {
+        // Y si el mapa del teléfono ya lo trajo, tampoco.
+        if (primeraVez && _estado.value.youtube.suscripciones.verificadoEn == null) {
             youtube.guardadas()?.let { guardadas ->
                 _estado.update { it.copy(youtube = it.youtube.copy(suscripciones = guardadas)) }
             }
@@ -646,6 +721,11 @@ class AppViewModel(
                     it.copy(youtube = EstadoYouTube(PermisoYouTube.CONCEDIDO, resultado.suscripciones))
                 }
                 anotarBajasDeYouTube(antes, resultado.suscripciones)
+                // Lo que contestó YouTube ya es parte del mapa de la cuenta.
+                actualizarMapa(pintar = false)
+                AlmacenDeMapa.youtubeComprobado(
+                    System.currentTimeMillis(), resultado.suscripciones.verificadoEn
+                )
             }
 
             is YouTubeRepo.Resultado.FaltaPermiso -> {
@@ -913,6 +993,7 @@ class AppViewModel(
         // entrar con ella, ahí estará.
         Abiertos.enviarPendientes()
         runCatching { autenticacion.cerrarSesion(contexto) }
+        AlmacenDeMapa.olvidar()
         // La sesión de ahora es otra (de invitado): sus marcas, no las de antes.
         Abiertos.sincronizar(cambioDeCuenta = true)
         youtube.alCerrarSesion(contexto)
@@ -938,6 +1019,7 @@ class AppViewModel(
                 reiniciarYouTube()
                 // Borrar la cuenta es empezar de cero también en el teléfono.
                 Abiertos.olvidar(contexto)
+                AlmacenDeMapa.olvidar()
                 avisar("Cuenta borrada. Puedes seguir usando la app como invitado.")
             }
             .onFailure { avisar("No se pudo borrar la cuenta: ${it.localizedMessage}") }
@@ -960,6 +1042,8 @@ class AppViewModel(
         // onResume se dispara varias veces seguidas al arrancar y al cerrarse
         // la pantalla de permiso; con esto solo cuenta la primera.
         const val PAUSA_YOUTUBE_MS = 3_000L
+
+        const val ESPERA_PERFIL_MS = 15_000L
     }
 }
 
@@ -975,6 +1059,12 @@ private data class Seguidos(
     val productoras: List<String>,
     val canales: List<String>,
     val veCortos: Boolean = false
+)
+
+private fun Perfil.conMapa(mapa: MapaDeSeleccion): Perfil = copy(
+    favoritos = mapa.favoritos,
+    productoras = mapa.productoras,
+    canales = mapa.canalesSueltos
 )
 
 private fun Perfil.conCanal(id: String, siguiendo: Boolean): Perfil = copy(

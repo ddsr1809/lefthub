@@ -398,6 +398,18 @@ object ApiRelay {
 
     suspend fun perfil(): Perfil = perfilDe(getObject("/api/perfil"))
 
+    /**
+     * El mapa de selección de la cuenta. Con [huella], la del mapa que está
+     * guardado en el teléfono: si sigue siendo esa, el servidor contesta sin
+     * cuerpo y aquí sale null.
+     */
+    suspend fun mapa(huella: String?): MapaDeSeleccion? {
+        val consulta = huella?.takeIf { it.isNotBlank() }
+            ?.let { "?huella=" + URLEncoder.encode(it, "UTF-8") }.orEmpty()
+        val cuerpo = ejecutar(Request.Builder().url(BuildConfig.API_BASE + "/api/mapa" + consulta).get())
+        return if (cuerpo.isBlank()) null else mapaDe(JSONObject(cuerpo))
+    }
+
     suspend fun seguir(creadorId: String) {
         ejecutar(Request.Builder()
             .url(BuildConfig.API_BASE + "/api/favoritos/$creadorId")

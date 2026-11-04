@@ -109,6 +109,7 @@ class YouTubeRepo {
      * persona retiró el permiso desde su cuenta de Google, fuera de la app.
      */
     suspend fun olvidar() {
+        AlmacenDeMapa.quitarYouTube()
         runCatching { ApiRelay.olvidarSuscripcionesYouTube() }
             .onFailure { Log.w(TAG, "El servidor no confirmó el borrado: ${it.message}") }
     }
@@ -159,7 +160,8 @@ class YouTubeRepo {
         .setRequestedScopes(PERMISOS)
         .build()
 
-    private fun apagado(contexto: Context) = prefs(contexto).getBoolean(CLAVE_APAGADO, false)
+    /** La persona desconectó YouTube en este teléfono. */
+    fun apagado(contexto: Context) = prefs(contexto).getBoolean(CLAVE_APAGADO, false)
 
     private fun guardarApagado(contexto: Context, valor: Boolean) {
         prefs(contexto).edit().putBoolean(CLAVE_APAGADO, valor).apply()
