@@ -116,6 +116,13 @@ data class Creador(
     val canalesDeYouTube: List<Canal>
         get() = canalesVisibles.filter { it.plataforma == "youtube" }
 
+    /**
+     * Su canal principal: el primero de los suyos. Si solo aparece en canales
+     * de otros, el primero de esos.
+     */
+    val canalPrincipalDeYouTube: Canal?
+        get() = canalesDeYouTube.firstOrNull { it.creadorId == id } ?: canalesDeYouTube.firstOrNull()
+
     /** Todo lo demás: X, Instagram, TikTok, su página. Son enlaces, no avisan. */
     val redes: List<Canal>
         get() = canalesVisibles.filter { it.plataforma != "youtube" }
@@ -150,6 +157,10 @@ data class Productora(
 ) {
     /** Los que no son de ningún creador: el canal oficial de la casa. */
     val canalesPropios: List<Canal> get() = canales.filter { it.creadorId == null }
+
+    /** Su canal oficial de YouTube; si no tiene, el primero de sus creadores. */
+    val canalPrincipalDeYouTube: Canal?
+        get() = canalesPropios.firstOrNull { it.esDeYouTube } ?: canales.firstOrNull { it.esDeYouTube }
 }
 
 /**

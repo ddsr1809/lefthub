@@ -363,7 +363,8 @@ private fun PreviaDirectorio() {
             onSeguir = {},
             onAbrirCreador = {},
             // Con YouTube conectado: sale la leyenda arriba, Juan con su
-            // etiqueta verde y Ana sin suscripción.
+            // etiqueta verde y Ana con el botón rojo.
+            seccionElegida = SeccionDirectorio.CREADORES,
             youtube = EstadoYouTube(
                 PermisoYouTube.CONCEDIDO,
                 SuscripcionesYouTube(suscritos = setOf("juan"), noSuscritos = setOf("ana"))

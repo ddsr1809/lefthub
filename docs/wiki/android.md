@@ -22,12 +22,12 @@ La barra inferior tiene **Directorio** (inicio), **Novedades**, **Stickers** (si
 | --- | --- | --- |
 | Bienvenida | `BienvenidaPantalla.kt` | Condiciones y privacidad; se vuelve a pedir si cambia `Aceptacion.VERSION` |
 | Unirse con Google | `UnirseConGoogle.kt` | Invitación a guardar la cuenta, cada apertura mientras sea invitado |
-| Directorio | `DirectorioPantalla.kt` | Listas Creadores, Canales de YouTube y Medios; lo seguido arriba; filtro de etiquetas |
+| Directorio | `DirectorioPantalla.kt` | Listas Canales de YouTube (la primera), Creadores y Medios, con botones o deslizando (`Paginas.kt`); lo seguido arriba; filtro de etiquetas; cada fila en líneas: quién es, YouTube (etiqueta verde o botón rojo que abre su canal) y Seguir |
 | Ficha de creador | `DirectorioPantalla.kt` | Canal principal, sus últimos videos, videos donde aparece, redes y medios |
 | Ficha de medio | `ProductoraPantalla.kt` | Sus últimos videos, creadores y canales |
 | Ficha de canal | `CanalPantalla.kt` | De quién es, con quién aparece y últimos videos |
 | Elegir canales | `ElegirCanales.kt` | Ventana al seguir: todos los canales o solo algunos |
-| Novedades | `NovedadesPantalla.kt` | Videos, Videos cortos (si están encendidos) y Lo más visto |
+| Novedades | `NovedadesPantalla.kt` | Videos, Videos cortos (si están encendidos) y Lo más visto, con botones o deslizando (`Paginas.kt`) |
 | En vivo | `EnVivoPantalla.kt` | Pestaña con quién está al aire en el directorio: primero a quienes sigue, después sus suscripciones de YouTube y al final los demás |
 | Ficha del video | `VideoPantalla.kt` | Se abre al tocar una notificación; botón Ver el video y espacio para anuncio |
 | Stickers | `StickersPantalla.kt` | Paquetes por creador para WhatsApp, Telegram, Signal y otras |

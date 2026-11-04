@@ -1,11 +1,13 @@
 package com.vocesdeizquierda.lefthub.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -48,9 +50,10 @@ import com.vocesdeizquierda.lefthub.enlaces.Enrutador
 // directorio se filtra con las etiquetas que el equipo crea y enciende en el
 // panel; mientras no haya ninguna encendida que alguien lleve, no hay filtro.
 
-// Las tres listas del directorio. Se elige arriba cuál se ve; las etiquetas
-// de debajo filtran dentro de la que esté elegida. Van en este orden:
-// Creadores, Canales de YouTube y Medios. Dentro de cada una, primero lo
+// Las tres listas del directorio. Se elige arriba cuál se ve, o se pasa de una
+// a otra deslizando un dedo; las etiquetas de debajo filtran dentro de la que
+// esté elegida. Van en este orden: Canales de YouTube, Creadores y Medios, y
+// se empieza por los canales. Dentro de cada una, primero lo
 // general, después la televisión pública y al final la política y el
 // gobierno (ver ClaseDeCuenta); y en cada grupo, arriba lo que sigue y quien
 // publicó más reciente.
@@ -68,6 +71,7 @@ private const val CREADORES = SeccionDirectorio.CREADORES
 private const val CANALES = SeccionDirectorio.CANALES
 private const val PRODUCTORAS = SeccionDirectorio.PRODUCTORAS
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun DirectorioPantalla(
     creadores: List<Creador>,
@@ -96,8 +100,8 @@ fun DirectorioPantalla(
     /** Cuándo salió el último video de cada canal, por id: ordena las listas. */
     ultimosVideos: Map<String, Instant> = emptyMap(),
     /** La lista que se ve: una de SeccionDirectorio. */
-    seccionElegida: String = CREADORES,
-    /** La persona tocó otra de las listas de arriba. */
+    seccionElegida: String = CANALES,
+    /** La persona tocó otra de las listas de arriba, o deslizó hasta ella. */
     onElegirSeccion: (String) -> Unit = {}
 ) {
     // El id de la etiqueta elegida; null es "Todos". Se guarda también al ir
@@ -114,13 +118,22 @@ fun DirectorioPantalla(
     // Solo se ofrecen las listas que tienen algo. Una pestaña vacía es una
     // promesa incumplida.
     val secciones = listOfNotNull(
-        CREADORES to "Creadores",
         (CANALES to "Canales de YouTube").takeIf { canales.isNotEmpty() },
+        CREADORES to "Creadores",
         (PRODUCTORAS to "Medios").takeIf { productoras.isNotEmpty() }
     )
     // Si la lista que se estaba viendo se queda vacía (se retiró la última
     // productora, por ejemplo), su pestaña desaparece y se vuelve a la primera.
     val seccion = if (secciones.any { it.first == seccionElegida }) seccionElegida else secciones.first().first
+
+    val paginas = rememberPaginas(
+        elegida = secciones.indexOfFirst { it.first == seccion },
+        cuantas = secciones.size,
+        onDeslizar = { pagina -> secciones.getOrNull(pagina)?.let { onElegirSeccion(it.first) } }
+    )
+    // Hacia dónde va: el botón y las etiquetas cambian sin esperar a que las
+    // páginas terminen de moverse.
+    val enPantalla = secciones.getOrNull(paginas.targetPage)?.first ?: seccion
 
     // Lo que sigue va arriba en cada lista. Se decide al abrir el Directorio,
     // al cambiar de lista y cada vez que se refresca, pero no en cada toque:
@@ -139,29 +152,40 @@ fun DirectorioPantalla(
         )
     }
 
-    // Las etiquetas que de verdad llevan a alguien de la lista elegida. Una
-    // etiqueta sin nadie no se enseña; y sin ninguna, no hay fila de filtros.
-    val etiquetasConGente = remember(etiquetas, seccion, personas, canales, productoras) {
-        etiquetas.filter { e ->
-            when (seccion) {
-                CANALES -> canales.any { it.canal.id in e.canales }
-                PRODUCTORAS -> productoras.any { it.id in e.productoras }
-                else -> personas.any { it.id in e.creadores }
-            }
+    // Si una etiqueta lleva a alguien de esa lista.
+    val llevaA = { e: Etiqueta, lista: String ->
+        when (lista) {
+            CANALES -> canales.any { it.canal.id in e.canales }
+            PRODUCTORAS -> productoras.any { it.id in e.productoras }
+            else -> personas.any { it.id in e.creadores }
         }
     }
-    // Al cambiar de lista, o si el equipo apaga la etiqueta mientras estaba
-    // elegida, se vuelve a "Todos".
-    val etiqueta = etiquetasConGente.firstOrNull { it.id == etiquetaElegida }
+    // Las etiquetas que de verdad llevan a alguien de la lista elegida. Una
+    // etiqueta sin nadie no se enseña; y sin ninguna, no hay fila de filtros.
+    val etiquetasConGente = remember(etiquetas, enPantalla, personas, canales, productoras) {
+        etiquetas.filter { llevaA(it, enPantalla) }
+    }
+    // Cada lista se filtra con la elegida solo si la lleva: al deslizar se ven
+    // dos a la vez, y la de al lado no debe salir vacía. Por eso mismo, en la
+    // lista donde no lleva a nadie, o si el equipo la apaga, se ve "Todos".
+    val etiquetaDe = remember(etiquetas, etiquetaElegida, personas, canales, productoras) {
+        listOf(CREADORES, CANALES, PRODUCTORAS).associateWith { lista ->
+            etiquetas.firstOrNull { it.id == etiquetaElegida && llevaA(it, lista) }
+        }
+    }
+    val etiqueta = etiquetaDe[enPantalla]
 
-    val creadoresVisibles = remember(personas, etiqueta) {
-        if (etiqueta == null) personas else personas.filter { it.id in etiqueta.creadores }
+    val creadoresVisibles = remember(personas, etiquetaDe) {
+        val filtro = etiquetaDe[CREADORES]
+        if (filtro == null) personas else personas.filter { it.id in filtro.creadores }
     }
-    val canalesVisibles = remember(canales, etiqueta) {
-        if (etiqueta == null) canales else canales.filter { it.canal.id in etiqueta.canales }
+    val canalesVisibles = remember(canales, etiquetaDe) {
+        val filtro = etiquetaDe[CANALES]
+        if (filtro == null) canales else canales.filter { it.canal.id in filtro.canales }
     }
-    val productorasVisibles = remember(productoras, etiqueta) {
-        if (etiqueta == null) productoras else productoras.filter { it.id in etiqueta.productoras }
+    val productorasVisibles = remember(productoras, etiquetaDe) {
+        val filtro = etiquetaDe[PRODUCTORAS]
+        if (filtro == null) productoras else productoras.filter { it.id in filtro.productoras }
     }
 
     // El anuncio que explica la etiqueta verde solo sale cuando hay etiquetas
@@ -178,36 +202,12 @@ fun DirectorioPantalla(
 
         // Qué lista se ve. Solo aparece si hay más de una entre las que elegir.
         if (secciones.size > 1) {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(Espacio.sm),
-                modifier = Modifier
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = Espacio.md)
-                    .padding(top = Espacio.md)
-            ) {
-                secciones.forEach { (clave, nombre) ->
-                    val activa = clave == seccion
-                    Button(
-                        onClick = { onElegirSeccion(clave) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (activa) esquema.primary else esquema.surface,
-                            contentColor = if (activa) esquema.onPrimary else esquema.onSurface
-                        ),
-                        border = if (activa) null
-                        else androidx.compose.foundation.BorderStroke(1.dp, esquema.outline),
-                        contentPadding = PaddingValues(horizontal = Espacio.lg, vertical = Espacio.sm),
-                        modifier = Modifier
-                            .heightIn(min = Tactil.principal)
-                            .semantics {
-                                role = Role.Tab
-                                selected = activa
-                            }
-                    ) {
-                        Text(nombre, style = MaterialTheme.typography.labelLarge)
-                    }
-                }
-            }
+            SelectorDePaginas(
+                opciones = secciones,
+                elegida = enPantalla,
+                onElegir = onElegirSeccion,
+                modifier = Modifier.padding(top = Espacio.md)
+            )
         }
 
         // Las etiquetas filtran la lista que se esté viendo. Solo sale la
@@ -246,100 +246,115 @@ fun DirectorioPantalla(
             }
         }
 
-        if (seccion == PRODUCTORAS) {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = Espacio.md),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                // Por tipo de cuenta (lo general, la televisión pública, la
-                // política); dentro, arriba lo que sigue y lo más nuevo.
-                enGrupos(enGruposDelDirectorio(
-                    productorasVisibles,
-                    clase = { it.clase },
-                    sigue = { it.id in seguidosAlAbrir.productoras },
-                    cuando = { ultimoVideoDe(it.canales, ultimosVideos) },
-                    titulos = titulosDeClase("Medios"),
-                    tituloSigues = "Medios que sigues",
-                    tituloDemas = "Los demás medios"
-                ), { it.id }) { productora, franja ->
-                    FilaProductora(
-                        productora = productora,
-                        siguiendo = productora.id in productorasSeguidas,
-                        onAbrir = { onAbrirProductora(productora.id) },
-                        onSeguir = { onSeguirProductora(productora.id) },
-                        conFranja = franja,
-                        sueltos = perfil.sueltosDe(productora.canales),
-                        deCuantos = productora.canales.count { it.sePuedeSeguir },
-                        ultimoVideo = ultimoVideoDe(productora.canales, ultimosVideos)
-                    )
-                }
-            }
-        } else if (seccion == CANALES) {
-            // No puede quedar vacía: solo se ofrecen etiquetas que lleva algún canal.
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = Espacio.md),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (verLeyendaYouTube) {
-                    item(key = "leyenda-youtube") {
-                        LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+        // Una página por lista: se pasa de una a otra deslizando un dedo. Cada
+        // una guarda hasta dónde bajó la persona.
+        HorizontalPager(
+            state = paginas,
+            key = { secciones[it].first },
+            verticalAlignment = Alignment.Top,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+        ) { pagina ->
+            val seccionDeLaPagina = secciones[pagina].first
+            if (seccionDeLaPagina == PRODUCTORAS) {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = Espacio.md),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    // Por tipo de cuenta (lo general, la televisión pública, la
+                    // política); dentro, arriba lo que sigue y lo más nuevo.
+                    enGrupos(enGruposDelDirectorio(
+                        productorasVisibles,
+                        clase = { it.clase },
+                        sigue = { it.id in seguidosAlAbrir.productoras },
+                        cuando = { ultimoVideoDe(it.canales, ultimosVideos) },
+                        titulos = titulosDeClase("Medios"),
+                        tituloSigues = "Medios que sigues",
+                        tituloDemas = "Los demás medios"
+                    ), { it.id }) { productora, franja ->
+                        FilaProductora(
+                            productora = productora,
+                            siguiendo = productora.id in productorasSeguidas,
+                            onAbrir = { onAbrirProductora(productora.id) },
+                            onSeguir = { onSeguirProductora(productora.id) },
+                            conFranja = franja,
+                            sueltos = perfil.sueltosDe(productora.canales),
+                            deCuantos = productora.canales.count { it.sePuedeSeguir },
+                            ultimoVideo = ultimoVideoDe(productora.canales, ultimosVideos),
+                            suscritoEnYouTube = productora.canalPrincipalDeYouTube?.let {
+                                youtube.suscritoAlCanal(it)
+                            }
+                        )
                     }
                 }
-                enGrupos(enGruposDelDirectorio(
-                    canalesVisibles,
-                    clase = { it.clase },
-                    sigue = { it.canal.id in seguidosAlAbrir.canales },
-                    cuando = { ultimosVideos[it.canal.id] },
-                    titulos = titulosDeClase("Canales"),
-                    tituloSigues = "Canales que sigues",
-                    tituloDemas = "Los demás canales"
-                ), { it.canal.id }) { listado, franja ->
-                    FilaCanal(
-                        listado = listado,
-                        onAbrir = { onAbrirCanal(listado.canal.id) },
-                        suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
-                        siguiendo = perfil.recibe(listado.canal),
-                        onSeguir = { onSeguirCanal(listado.canal) },
-                        conFranja = franja,
-                        ultimoVideo = ultimosVideos[listado.canal.id]
-                    )
-                }
-            }
-        } else if (creadoresVisibles.isEmpty()) {
-            Vacio(
-                titulo = "Todavía no hay creadores",
-                mensaje = "Estamos sumando creadores poco a poco. Vuelve pronto."
-            )
-        } else {
-            LazyColumn(
-                contentPadding = PaddingValues(horizontal = Espacio.md),
-                modifier = Modifier.fillMaxSize()
-            ) {
-                if (verLeyendaYouTube) {
-                    item(key = "leyenda-youtube") {
-                        LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+            } else if (seccionDeLaPagina == CANALES) {
+                // No puede quedar vacía: solo se ofrecen etiquetas que lleva algún canal.
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = Espacio.md),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (verLeyendaYouTube) {
+                        item(key = "leyenda-youtube") {
+                            LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+                        }
+                    }
+                    enGrupos(enGruposDelDirectorio(
+                        canalesVisibles,
+                        clase = { it.clase },
+                        sigue = { it.canal.id in seguidosAlAbrir.canales },
+                        cuando = { ultimosVideos[it.canal.id] },
+                        titulos = titulosDeClase("Canales"),
+                        tituloSigues = "Canales que sigues",
+                        tituloDemas = "Los demás canales"
+                    ), { it.canal.id }) { listado, franja ->
+                        FilaCanal(
+                            listado = listado,
+                            onAbrir = { onAbrirCanal(listado.canal.id) },
+                            suscritoEnYouTube = youtube.suscritoAlCanal(listado.canal),
+                            siguiendo = perfil.recibe(listado.canal),
+                            onSeguir = { onSeguirCanal(listado.canal) },
+                            conFranja = franja,
+                            ultimoVideo = ultimosVideos[listado.canal.id]
+                        )
                     }
                 }
-                enGrupos(enGruposDelDirectorio(
-                    creadoresVisibles,
-                    clase = { it.clase },
-                    sigue = { it.id in seguidosAlAbrir.creadores },
-                    cuando = { ultimoVideoDe(it.canalesDeYouTube, ultimosVideos) },
-                    titulos = titulosDeClase("Creadores"),
-                    tituloSigues = "Creadores que sigues",
-                    tituloDemas = "Los demás creadores"
-                ), { it.id }) { creador, franja ->
-                    FilaCreador(
-                        creador = creador,
-                        siguiendo = creador.id in favoritos,
-                        onAbrir = { onAbrirCreador(creador.id) },
-                        onSeguir = { onSeguir(creador.id) },
-                        suscritoEnYouTube = youtube.suscritoA(creador.id),
-                        conFranja = franja,
-                        sueltos = perfil.sueltosDe(creador.canalesDeYouTube),
-                        deCuantos = creador.canalesDeYouTube.count { it.sePuedeSeguir },
-                        ultimoVideo = ultimoVideoDe(creador.canalesDeYouTube, ultimosVideos)
-                    )
+            } else if (creadoresVisibles.isEmpty()) {
+                Vacio(
+                    titulo = "Todavía no hay creadores",
+                    mensaje = "Estamos sumando creadores poco a poco. Vuelve pronto."
+                )
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = Espacio.md),
+                    modifier = Modifier.fillMaxSize()
+                ) {
+                    if (verLeyendaYouTube) {
+                        item(key = "leyenda-youtube") {
+                            LeyendaYouTube(Modifier.padding(bottom = Espacio.sm))
+                        }
+                    }
+                    enGrupos(enGruposDelDirectorio(
+                        creadoresVisibles,
+                        clase = { it.clase },
+                        sigue = { it.id in seguidosAlAbrir.creadores },
+                        cuando = { ultimoVideoDe(it.canalesDeYouTube, ultimosVideos) },
+                        titulos = titulosDeClase("Creadores"),
+                        tituloSigues = "Creadores que sigues",
+                        tituloDemas = "Los demás creadores"
+                    ), { it.id }) { creador, franja ->
+                        FilaCreador(
+                            creador = creador,
+                            siguiendo = creador.id in favoritos,
+                            onAbrir = { onAbrirCreador(creador.id) },
+                            onSeguir = { onSeguir(creador.id) },
+                            suscritoEnYouTube = youtube.suscritoA(creador.id),
+                            conFranja = franja,
+                            sueltos = perfil.sueltosDe(creador.canalesDeYouTube),
+                            deCuantos = creador.canalesDeYouTube.count { it.sePuedeSeguir },
+                            ultimoVideo = ultimoVideoDe(creador.canalesDeYouTube, ultimosVideos)
+                        )
+                    }
                 }
             }
         }
@@ -501,9 +516,7 @@ fun CreadorPantalla(
         val deYouTube = creador.canalesDeYouTube
         val redes = creador.redes
 
-        // Su canal principal: el primero de los suyos. Si solo aparece en
-        // canales de otros, el primero de esos.
-        val principal = deYouTube.firstOrNull { it.creadorId == creador.id } ?: deYouTube.firstOrNull()
+        val principal = creador.canalPrincipalDeYouTube
         val otrosCanales = deYouTube.filter { it !== principal }
 
         // Con varios canales de YouTube, el botón para dar el permiso y las

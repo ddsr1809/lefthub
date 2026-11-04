@@ -408,8 +408,8 @@ private fun Navegacion(modelo: AppViewModel, estado: EstadoApp) {
     // Vive aquí y no en el Directorio para que no se pierda al abrir una
     // ficha: con el botón de atrás, o al volver a la pestaña desde Novedades,
     // se vuelve a la lista de la última ficha que se vio (la de un creador
-    // lleva a Creadores; la de un canal, a Canales). Al abrir la app, Creadores.
-    var seccionDirectorio by rememberSaveable { mutableStateOf(SeccionDirectorio.CREADORES) }
+    // lleva a Creadores; la de un canal, a Canales). Al abrir la app, Canales.
+    var seccionDirectorio by rememberSaveable { mutableStateOf(SeccionDirectorio.CANALES) }
 
     // Tocar una notificación abre la ficha de su video. El toque puede llegar
     // antes que esta pantalla (la app estaba cerrada): queda guardado en
