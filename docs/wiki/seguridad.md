@@ -10,7 +10,7 @@ Qué protege a las personas que usan la app y al dueño del sistema, dónde est�
 | --- | --- |
 | Datos de las personas en la base | Correo, IP, token de Apple, comprobante y orden de compra, y autor de altas desde la app, cifrados con AES-256-GCM. El chat ya iba cifrado. El identificador del teléfono se guarda solo como huella |
 | Llaves | En el `.env` de cada ambiente, nunca en la base. Van también dentro del respaldo cifrado |
-| Sesiones | JWT de 30 días que se comprueban contra la base en cada petición: se pueden cerrar, y quitar el rol de administrador surte efecto al momento |
+| Sesiones | JWT de 30 días (en el panel, lo que se elija al entrar: hasta un año) que se comprueban contra la base en cada petición: se pueden cerrar, y quitar el rol de administrador surte efecto al momento |
 | Panel y chat del equipo | Solo con una sesión abierta con Google o Apple. El identificador del teléfono nunca da acceso de administrador |
 | Entrar | Límite de entradas por IP en `/api/auth`; fail2ban saca del firewall a quien insiste |
 | Quién habla con la API | Solo la app original: firma con la llave de la app y App Check (Play Integrity). Se elige en el panel si solo se avisa o se exige |
@@ -58,6 +58,7 @@ Las huellas son HMAC-SHA256 con `DATOS_INDICE`. Sirven para encontrar «este cor
 ## Sesiones
 
 - El token dura 30 días y la app lo renueva al abrirse. En cada petición, el servidor comprueba en la base (con 30 s de memoria) que la cuenta existe y que nadie cerró sus sesiones después de emitirlo.
+- **Sesión del panel: se elige al entrar.** «Hasta cerrar el navegador» (como antes: `sessionStorage`, token de 30 días que se olvida al cerrar), «7 días» o «Un año» (`localStorage`: sigue al cerrar el navegador y lo comparten las pestañas; salir en una saca a las demás). El panel manda `diasSesion` a `/api/auth/google` y el servidor emite el token con esa duración (`ServicioJwt.diasDeSesion`: solo con rol de administrador y de 1 a 365 días; a cualquier otra cuenta, 30). El menú dice hasta cuándo vale. Un token de un año es una llave del panel guardada en ese navegador: en una computadora compartida, «Hasta cerrar el navegador»; si se pierde la computadora, «Cerrar todas sus sesiones» (abajo) la anula al momento.
 - **Administrador = la base y el token de acuerdo.** El rol solo viaja en tokens emitidos al entrar con Google o Apple (o al renovar uno que ya lo tenía). Quitar el rol en el panel corta el acceso al momento, aunque esa persona tenga el panel abierto.
 - **El teléfono nunca da acceso de administrador.** Si la sesión del dueño caduca tras un mes sin abrir la app, la app recupera la cuenta con el identificador del teléfono, pero sin rol: para el chat del equipo hay que «Cerrar sesión» y volver a «Guardar con Google».
 - **Cerrar todas las sesiones de una cuenta:** Panel → Usuarios → la cuenta → «Cerrar todas sus sesiones» (`POST /api/admin/usuarios/{id}/cerrar-sesiones`), o la propia persona con `POST /api/cuenta/cerrar-sesiones`. Además desliga su teléfono: vuelve a entrar con Google o Apple y no pierde nada. A un invitado no se le puede hacer (sin teléfono, su cuenta quedaría perdida).

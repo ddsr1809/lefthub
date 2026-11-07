@@ -46,12 +46,18 @@ public final class Dtos {
             String deviceId
     ) {}
 
-    /** El idToken de Google o el identityToken de Apple, según la ruta. */
+    /**
+     * El idToken de Google o el identityToken de Apple, según la ruta.
+     *
+     * @param diasSesion cuántos días quiere el panel que dure la sesión (7, 365);
+     *                   solo vale para administradores. La app no lo manda.
+     */
     public record EntrarConProveedor(
             @NotBlank(message = "Falta el token del proveedor.")
             String token,
             String deviceId,
-            String authorizationCode  // solo Apple, para poder revocar después
+            String authorizationCode,  // solo Apple, para poder revocar después
+            Integer diasSesion
     ) {}
 
     public record Sesion(

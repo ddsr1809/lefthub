@@ -105,19 +105,68 @@
   // ---------------------------------------------------------------------------
   // Sesión
   // ---------------------------------------------------------------------------
-  // sessionStorage y no localStorage: el token de administrador se olvida al
-  // cerrar el navegador. Volver a entrar es un clic.
+  // Cuánto dura la sesión se elige al entrar:
+  // - «Hasta cerrar el navegador»: sessionStorage, como siempre. El token se
+  //   olvida al cerrar el navegador, y cada pestaña nueva pide entrar.
+  // - «7 días» o «Un año»: localStorage. Sigue ahí al cerrar el navegador y lo
+  //   comparten las pestañas. El servidor emite el token con esa duración
+  //   (diasSesion en /api/auth/google); uno anterior lo da de 30 días.
+  // En los dos casos «Cerrar sesión» lo borra, y desde Administradores se
+  // pueden cerrar todas las sesiones de una cuenta.
   const CLAVE = 'vocesleft_admin';
-  let sesion = null;
-  try { sesion = JSON.parse(sessionStorage.getItem(CLAVE) || 'null'); } catch (e) { sesion = null; }
+  const CLAVE_DURACION = 'vocesleft_admin_duracion';
+  const DIAS_DE_SESION = { navegador: null, 7: 7, 365: 365 };
+
+  const leerSesion = (almacen) => {
+    try { return JSON.parse(window[almacen].getItem(CLAVE) || 'null'); } catch (e) { return null; }
+  };
+  let sesion = leerSesion('sessionStorage') || leerSesion('localStorage');
 
   function guardarSesion(s) {
     sesion = s;
+    const quitar = (almacen) => { try { window[almacen].removeItem(CLAVE); } catch (e) { /* nada */ } };
     try {
-      if (s) sessionStorage.setItem(CLAVE, JSON.stringify(s));
-      else sessionStorage.removeItem(CLAVE);
+      if (s && s.dias) { localStorage.setItem(CLAVE, JSON.stringify(s)); quitar('sessionStorage'); }
+      else if (s) { sessionStorage.setItem(CLAVE, JSON.stringify(s)); quitar('localStorage'); }
+      else { quitar('sessionStorage'); quitar('localStorage'); }
     } catch (e) { /* modo privado: la sesión vive solo en memoria */ }
   }
+
+  /** Lo que está marcado en la puerta: 'navegador', '7' o '365'. */
+  function duracionElegida() {
+    const marcada = document.querySelector('input[name="duracion"]:checked');
+    return marcada && marcada.value in DIAS_DE_SESION ? marcada.value : 'navegador';
+  }
+
+  /** Marca en la puerta la que se eligió la última vez (7 días si nunca se eligió). */
+  function prepararDuracion() {
+    let guardada = '7';
+    try { guardada = localStorage.getItem(CLAVE_DURACION) || '7'; } catch (e) { /* nada */ }
+    if (!(guardada in DIAS_DE_SESION)) guardada = '7';
+    document.querySelectorAll('input[name="duracion"]').forEach((r) => {
+      r.checked = r.value === guardada;
+      r.addEventListener('change', () => { try { localStorage.setItem(CLAVE_DURACION, r.value); } catch (e) { /* nada */ } });
+    });
+  }
+
+  /** Hasta cuándo vale el token, según su exp. Null si no se puede leer. */
+  function venceEn(token) {
+    try {
+      const datos = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+      return datos.exp ? new Date(datos.exp * 1000) : null;
+    } catch (e) { return null; }
+  }
+
+  // Entrar o salir en una pestaña vale para las demás (solo con 7 días o un año:
+  // sessionStorage no se comparte).
+  window.addEventListener('storage', (e) => {
+    if (e.key !== CLAVE) return;
+    if (!e.newValue && sesion && sesion.dias) salir('');
+    else if (e.newValue && !sesion) {
+      try { sesion = JSON.parse(e.newValue); } catch (err) { return; }
+      if (sesion && sesion.token && !caducado(sesion.token)) entrarAlPanel(); else sesion = null;
+    }
+  });
 
   function caducado(token) {
     try {
@@ -194,6 +243,7 @@
 
   function arrancar() {
     pintarAmbiente();
+    prepararDuracion();
     if (sesion && sesion.token && !caducado(sesion.token)) {
       entrarAlPanel();
       return;
@@ -247,12 +297,13 @@
   async function alRecibirCredencial(respuesta) {
     mostrarErrorPuerta('');
     try {
-      const s = await api('/api/auth/google', { metodo: 'POST', cuerpo: { token: respuesta.credential } });
+      const dias = DIAS_DE_SESION[duracionElegida()];
+      const s = await api('/api/auth/google', { metodo: 'POST', cuerpo: dias ? { token: respuesta.credential, diasSesion: dias } : { token: respuesta.credential } });
       if (!s.esAdmin) {
         mostrarErrorPuerta('La cuenta ' + (s.email || '') + ' no es administradora. Pide a otro administrador que te nombre desde la sección Administradores.');
         return;
       }
-      guardarSesion({ token: s.token, email: s.email, id: s.usuarioId });
+      guardarSesion({ token: s.token, email: s.email, id: s.usuarioId, dias: dias || null });
       entrarAlPanel();
     } catch (e) {
       mostrarErrorPuerta(e.message);
@@ -263,6 +314,10 @@
     $('#puerta').hidden = true;
     $('#app').hidden = false;
     $('#quien').textContent = sesion.email || 'Administrador';
+    const vence = sesion.dias ? venceEn(sesion.token) : null;
+    $('#sesionHasta').textContent = vence
+      ? 'Sesión abierta hasta el ' + vence.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' })
+      : 'Sesión hasta cerrar el navegador';
     ir(estado.vista);
     refrescarContadores();
   }

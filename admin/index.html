@@ -20,6 +20,13 @@
     <div class="marca">V</div>
     <h1>Panel de VocesLeft</h1>
     <p>Entra con la cuenta de Google que tiene rol de administrador.</p>
+    <fieldset class="duracion" id="duracion">
+      <legend>Mantener la sesión abierta</legend>
+      <label><input type="radio" name="duracion" value="navegador"> Hasta cerrar el navegador</label>
+      <label><input type="radio" name="duracion" value="7"> 7 días</label>
+      <label><input type="radio" name="duracion" value="365"> Un año</label>
+    </fieldset>
+    <p class="duracion-nota">En una computadora que usan otras personas, elige «Hasta cerrar el navegador».</p>
     <div id="botonGoogle"><span class="muted">Cargando…</span></div>
     <div class="puerta-error" id="puertaError" hidden></div>
   </div>
@@ -48,7 +55,7 @@
       <button data-vista="administradores">Administradores</button>
       <button class="solo-movil" id="salirMovil">Cerrar sesión</button>
     </nav>
-    <div class="quien"><span id="quien"></span><br><button id="salir">Cerrar sesión</button></div>
+    <div class="quien"><span id="quien"></span><span class="sesion-hasta" id="sesionHasta"></span><button id="salir">Cerrar sesión</button></div>
   </aside>
   <main id="main" tabindex="-1"></main>
 </div>

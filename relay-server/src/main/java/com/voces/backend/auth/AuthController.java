@@ -108,7 +108,7 @@ public class AuthController {
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.UNAUTHORIZED,
                         "No pudimos verificar tu cuenta de Google. Inténtalo otra vez."));
 
-        return enlazar(identidad, peticion.deviceId(), null, http);
+        return enlazar(identidad, peticion.deviceId(), null, peticion.diasSesion(), http);
     }
 
     @PostMapping("/apple")
@@ -127,7 +127,7 @@ public class AuthController {
             refresh = apple.canjearCodigo(peticion.authorizationCode());
         }
 
-        return enlazar(identidad, peticion.deviceId(), refresh, http);
+        return enlazar(identidad, peticion.deviceId(), refresh, null, http);
     }
 
     /**
@@ -182,7 +182,7 @@ public class AuthController {
     // -------------------------------------------------------------------------
 
     private Dtos.Sesion enlazar(VerificadorIdentidad.Identidad identidad,
-                                String deviceId, String appleRefresh,
+                                String deviceId, String appleRefresh, Integer diasSesion,
                                 HttpServletRequest http) {
 
         Optional<Usuario> existente =
@@ -256,7 +256,7 @@ public class AuthController {
 
             actualizarDatos(usuario, identidad, appleRefresh);
             accesos.anotar(usuario, http);
-            return sesionDe(usuario, fusionados, true);
+            return sesionDe(usuario, fusionados, true, diasSesion);
         }
 
         // Caso B: primer inicio de sesión con este proveedor. Convertimos la
@@ -276,7 +276,7 @@ public class AuthController {
         actualizarDatos(usuario, identidad, appleRefresh);
         accesos.anotar(usuario, http);
 
-        return sesionDe(usuarios.save(usuario), false, true);
+        return sesionDe(usuarios.save(usuario), false, true, diasSesion);
     }
 
     /**
@@ -312,9 +312,14 @@ public class AuthController {
 
     /** @param admin si esta sesión puede tener el rol (solo si la cuenta lo tiene). */
     private Dtos.Sesion sesionDe(Usuario usuario, boolean fusionados, boolean admin) {
+        return sesionDe(usuario, fusionados, admin, null);
+    }
+
+    /** @param diasSesion la duración que pidió el panel; solo cuenta con el rol (ServicioJwt.diasDeSesion) */
+    private Dtos.Sesion sesionDe(Usuario usuario, boolean fusionados, boolean admin, Integer diasSesion) {
         boolean conRol = admin && usuario.isEsAdmin();
         return new Dtos.Sesion(
-                jwt.emitir(usuario, conRol),
+                jwt.emitir(usuario, conRol, diasSesion),
                 usuario.getId(),
                 usuario.getProveedor(),
                 usuario.getEmail(),

@@ -30,7 +30,7 @@ import java.util.UUID;
  *
  * Duran 30 dias a proposito: el publico objetivo incluye gente que abre la app
  * una vez por semana, y obligarles a volver a entrar cada hora seria un
- * despropósito.
+ * despropósito. Las del panel duran lo que se elige al entrar (hasta un año).
  *
  * Que un token sea valido no basta para entrar: FiltroJwt comprueba ademas en
  * la base (seguridad/EstadoDeSesiones) que la cuenta sigue existiendo, que
@@ -76,15 +76,39 @@ public class ServicioJwt {
      *              teléfono (ver AuthController.anonimo).
      */
     public String emitir(Usuario usuario, boolean admin) {
+        return emitir(usuario, admin, null);
+    }
+
+    /** Lo más que puede durar una sesión del panel: «para siempre» es un año. */
+    public static final int DIAS_MAXIMOS_DEL_PANEL = 365;
+
+    /**
+     * Los días que durará una sesión. Una sesión de administrador puede pedir
+     * otra duración desde el panel («Mantener la sesión: 7 días / un año»); a
+     * cualquier otra se le da la de siempre (relay.jwt.dias-validez).
+     *
+     * @param pedidos lo que pidió el panel; null o fuera de 1..365, la de siempre
+     */
+    static long diasDeSesion(boolean admin, Integer pedidos, long deSiempre) {
+        if (!admin || pedidos == null || pedidos < 1 || pedidos > DIAS_MAXIMOS_DEL_PANEL) return deSiempre;
+        return pedidos;
+    }
+
+    /**
+     * @param diasPedidos cuánto quiere durar el panel; solo cuenta con el rol
+     *                    de administrador (ver diasDeSesion)
+     */
+    public String emitir(Usuario usuario, boolean admin, Integer diasPedidos) {
         Instant ahora = Instant.now();
-        Instant expira = ahora.plus(config.jwt().diasValidez(), ChronoUnit.DAYS);
+        boolean conRol = admin && usuario.isEsAdmin();
+        Instant expira = ahora.plus(diasDeSesion(conRol, diasPedidos, config.jwt().diasValidez()), ChronoUnit.DAYS);
 
         JWTClaimsSet claims = new JWTClaimsSet.Builder()
                 .subject(usuario.getId().toString())
                 .issuer(config.jwt().emisor())
                 .issueTime(Date.from(ahora))
                 .expirationTime(Date.from(expira))
-                .claim("adm", admin && usuario.isEsAdmin())
+                .claim("adm", conRol)
                 .claim("prv", usuario.getProveedor())
                 .build();
 
